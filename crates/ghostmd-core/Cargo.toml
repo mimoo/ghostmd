@@ -1,0 +1,33 @@
+[package]
+name = "ghostmd-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ropey = { version = "=2.0.0-beta.1", features = ["metric_chars", "metric_lines_lf"] }
+undo = "0.44"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+ignore = "0.4"
+notify = "7"
+nucleo-matcher = "0.3"
+grep-searcher = "0.1"
+grep-regex = "0.1"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3"
+
+[[bench]]
+name = "buffer_bench"
+harness = false
+
+[[bench]]
+name = "tree_bench"
+harness = false
+
+[[bench]]
+name = "search_bench"
+harness = false

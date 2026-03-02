@@ -1,0 +1,24 @@
+[package]
+name = "ghostmd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ghostmd-core = { path = "../ghostmd-core" }
+gpui = "0.2.2"
+gpui-component = "0.5.1"
+gpui-component-assets = "0.5.1"
+rust-embed = "8"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+tokio = { version = "1", features = ["process"] }
+which = "7"
+
+[dev-dependencies]
+tempfile = "3"
+
+# Required pins to avoid dependency conflicts with gpui 0.2.2 on macOS
+core-foundation = "=0.10.0"
+core-text = "=21.0.0"
