@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
@@ -16,6 +16,26 @@ use crate::theme::{rgb_to_hsla, GhostTheme};
 
 use ghostmd_core::diary;
 use ghostmd_core::note::Note;
+
+fn random_note_name() -> String {
+    const ADJECTIVES: &[&str] = &[
+        "bright", "calm", "deep", "eager", "faint", "gentle", "hazy", "keen",
+        "light", "mellow", "neat", "pale", "quiet", "rare", "soft", "tidy",
+        "vast", "warm", "bold", "crisp", "fresh", "grand", "lucid", "swift",
+    ];
+    const NOUNS: &[&str] = &[
+        "bloom", "cloud", "dawn", "ember", "flame", "grove", "haven", "isle",
+        "jade", "knoll", "lake", "mist", "north", "opal", "pine", "ridge",
+        "spark", "trail", "vale", "wave", "brook", "cliff", "drift", "frost",
+    ];
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos() as usize;
+    let adj = ADJECTIVES[nanos % ADJECTIVES.len()];
+    let noun = NOUNS[(nanos / 7) % NOUNS.len()];
+    format!("{}-{}", adj, noun)
+}
 
 // ---------------------------------------------------------------------------
 // Split tree
@@ -65,6 +85,135 @@ impl SplitNode {
                 right.split_leaf(pane_id, new_id, direction);
             }
             _ => {}
+        }
+    }
+
+    /// Whether this subtree contains the given pane_id.
+    fn contains(&self, pane_id: usize) -> bool {
+        match self {
+            SplitNode::Leaf(id) => *id == pane_id,
+            SplitNode::Split { left, right, .. } => {
+                left.contains(pane_id) || right.contains(pane_id)
+            }
+        }
+    }
+
+    fn leftmost_leaf(&self) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { left, .. } => left.leftmost_leaf(),
+        }
+    }
+
+    fn rightmost_leaf(&self) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { right, .. } => right.leftmost_leaf(),
+        }
+    }
+
+    fn topmost_leaf(&self) -> usize {
+        self.leftmost_leaf()
+    }
+
+    fn bottommost_leaf(&self) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { right, .. } => right.bottommost_leaf(),
+        }
+    }
+
+    /// Find the pane to the right of `from` in a 2D-aware manner.
+    fn find_right(&self, from: usize) -> Option<usize> {
+        match self {
+            SplitNode::Leaf(_) => None,
+            SplitNode::Split { direction, left, right } => {
+                if *direction == SplitDirection::Vertical {
+                    // Side-by-side: if `from` is in left, go to right's leftmost
+                    if left.contains(from) {
+                        // First try to find a right neighbor within the left subtree
+                        if let Some(id) = left.find_right(from) {
+                            return Some(id);
+                        }
+                        return Some(right.leftmost_leaf());
+                    }
+                    // If in right subtree, recurse into right
+                    right.find_right(from)
+                } else {
+                    // Top/bottom: recurse into whichever subtree contains `from`
+                    if left.contains(from) {
+                        left.find_right(from)
+                    } else {
+                        right.find_right(from)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Find the pane to the left of `from` in a 2D-aware manner.
+    fn find_left(&self, from: usize) -> Option<usize> {
+        match self {
+            SplitNode::Leaf(_) => None,
+            SplitNode::Split { direction, left, right } => {
+                if *direction == SplitDirection::Vertical {
+                    if right.contains(from) {
+                        if let Some(id) = right.find_left(from) {
+                            return Some(id);
+                        }
+                        return Some(left.rightmost_leaf());
+                    }
+                    left.find_left(from)
+                } else if left.contains(from) {
+                    left.find_left(from)
+                } else {
+                    right.find_left(from)
+                }
+            }
+        }
+    }
+
+    /// Find the pane below `from` in a 2D-aware manner.
+    fn find_down(&self, from: usize) -> Option<usize> {
+        match self {
+            SplitNode::Leaf(_) => None,
+            SplitNode::Split { direction, left, right } => {
+                if *direction == SplitDirection::Horizontal {
+                    if left.contains(from) {
+                        if let Some(id) = left.find_down(from) {
+                            return Some(id);
+                        }
+                        return Some(right.topmost_leaf());
+                    }
+                    right.find_down(from)
+                } else if left.contains(from) {
+                    left.find_down(from)
+                } else {
+                    right.find_down(from)
+                }
+            }
+        }
+    }
+
+    /// Find the pane above `from` in a 2D-aware manner.
+    fn find_up(&self, from: usize) -> Option<usize> {
+        match self {
+            SplitNode::Leaf(_) => None,
+            SplitNode::Split { direction, left, right } => {
+                if *direction == SplitDirection::Horizontal {
+                    if right.contains(from) {
+                        if let Some(id) = right.find_up(from) {
+                            return Some(id);
+                        }
+                        return Some(left.bottommost_leaf());
+                    }
+                    left.find_up(from)
+                } else if left.contains(from) {
+                    left.find_up(from)
+                } else {
+                    right.find_up(from)
+                }
+            }
         }
     }
 
@@ -151,13 +300,21 @@ impl GhostAppView {
 
         let palette_input = cx.new(|cx| InputState::new(window, cx).placeholder("Type a command..."));
 
-        // Subscribe to palette input changes
-        cx.subscribe(&palette_input, |this: &mut Self, entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>| {
-            if matches!(event, InputEvent::Change) {
-                let value = entity.read(cx).value().to_string();
-                this.palette.query = value;
-                this.palette.selected_index = 0;
-                cx.notify();
+        // Subscribe to palette input changes (with window access for PressEnter)
+        cx.subscribe_in(&palette_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
+            match event {
+                InputEvent::Change => {
+                    let value = this.palette_input.read(cx).value().to_string();
+                    this.palette.query = value;
+                    this.palette.selected_index = 0;
+                    cx.notify();
+                }
+                InputEvent::PressEnter { .. } => {
+                    if this.show_palette {
+                        this.palette_confirm(window, cx);
+                    }
+                }
+                _ => {}
             }
         })
         .detach();
@@ -243,13 +400,13 @@ impl GhostAppView {
         self.workspaces.push(ws);
         self.active_workspace = self.workspaces.len() - 1;
 
-        // Open a new diary note
-        let diary_path = diary::new_diary_path(root, "untitled");
+        // Open a new diary note with a random name
+        let diary_path = diary::new_diary_path(root, &random_note_name());
         let note = Note::new(diary_path.clone());
         note.ensure_dir().ok();
         note.save("").ok();
-        self.open_file(diary_path, window, cx);
         self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+        self.open_file(diary_path, window, cx);
     }
 
     /// Ensure an editor exists for `path` and register it in the tab bar.
@@ -282,12 +439,12 @@ impl GhostAppView {
     /// Create a new diary note and open it in the focused pane of the active workspace (cmd-n).
     fn new_note_in_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let root = self.app.root.clone();
-        let path = diary::new_diary_path(&root, "untitled");
+        let path = diary::new_diary_path(&root, &random_note_name());
         let note = Note::new(path.clone());
         note.ensure_dir().ok();
         note.save("").ok();
-        self.open_file(path, window, cx);
         self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+        self.open_file(path, window, cx);
     }
 
     /// Create a new workspace with a diary note (cmd-t).
@@ -369,19 +526,25 @@ impl GhostAppView {
         cx.notify();
     }
 
-    /// Navigate focus to an adjacent pane in the given direction.
+    /// Navigate focus to an adjacent pane using 2D-aware tree navigation.
+    /// Stops at edges (no wrapping).
     fn focus_pane_direction(&mut self, dx: i32, dy: i32, window: &mut Window, cx: &mut Context<Self>) {
         let ws = self.active_ws_mut();
-        let leaves = ws.split_root.leaves();
-        if leaves.len() <= 1 {
-            return;
-        }
-        if let Some(pos) = leaves.iter().position(|&id| id == ws.focused_pane) {
-            let offset = if dx > 0 || dy > 0 { 1i32 } else { -1i32 };
-            let new_pos = (pos as i32 + offset).rem_euclid(leaves.len() as i32) as usize;
-            ws.focused_pane = leaves[new_pos];
-            let focused = ws.focused_pane;
-            self.focus_pane_editor(focused, window, cx);
+        let from = ws.focused_pane;
+        let target = if dx > 0 {
+            ws.split_root.find_right(from)
+        } else if dx < 0 {
+            ws.split_root.find_left(from)
+        } else if dy > 0 {
+            ws.split_root.find_down(from)
+        } else if dy < 0 {
+            ws.split_root.find_up(from)
+        } else {
+            None
+        };
+        if let Some(new_id) = target {
+            ws.focused_pane = new_id;
+            self.focus_pane_editor(new_id, window, cx);
             self.sync_file_tree_selection(cx);
             cx.notify();
         }
@@ -588,6 +751,37 @@ impl GhostAppView {
         }
     }
 
+    /// Move palette selection up.
+    fn palette_move_up(&mut self, cx: &mut Context<Self>) {
+        if self.palette.selected_index > 0 {
+            self.palette.selected_index -= 1;
+            cx.notify();
+        }
+    }
+
+    /// Move palette selection down.
+    fn palette_move_down(&mut self, cx: &mut Context<Self>) {
+        let count = self.palette.filtered_commands().len();
+        if count > 0 && self.palette.selected_index < count - 1 {
+            self.palette.selected_index += 1;
+            cx.notify();
+        }
+    }
+
+    /// Confirm the selected palette command.
+    fn palette_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let filtered = self.palette.filtered_commands();
+        if let Some(cmd) = filtered.get(self.palette.selected_index) {
+            let action_id = cmd.action_id.clone();
+            self.show_palette = false;
+            self.palette.close();
+            self.dispatch_palette_action(&action_id, window, cx);
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+            cx.notify();
+        }
+    }
+
     /// Close the command palette and refocus the editor.
     fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_palette = false;
@@ -677,7 +871,7 @@ impl GhostAppView {
         tabs
     }
 
-    fn render_split_node(&self, node: &SplitNode, ws: &Workspace) -> Div {
+    fn render_split_node(&self, node: &SplitNode, ws: &Workspace, cx: &mut Context<Self>) -> AnyElement {
         let ghost = GhostTheme::default_dark();
         let bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
@@ -690,6 +884,7 @@ impl GhostAppView {
         match node {
             SplitNode::Leaf(pane_id) => {
                 let is_focused = *pane_id == ws.focused_pane;
+                let pid = *pane_id;
 
                 // Pane title bar
                 let title_text = ws.panes.get(pane_id)
@@ -709,13 +904,23 @@ impl GhostAppView {
                     .child(title_text);
 
                 let mut pane_div = div()
+                    .id(ElementId::NamedInteger("pane".into(), pid as u64))
                     .flex_1()
                     .min_w(px(100.0))
                     .min_h(px(100.0))
                     .flex()
                     .flex_col()
                     .bg(bg)
-                    .text_color(fg);
+                    .text_color(fg)
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        let ws = this.active_ws_mut();
+                        if ws.focused_pane != pid {
+                            ws.focused_pane = pid;
+                            this.focus_pane_editor(pid, window, cx);
+                            this.sync_file_tree_selection(cx);
+                            cx.notify();
+                        }
+                    }));
 
                 if multi_pane {
                     if is_focused {
@@ -735,18 +940,17 @@ impl GhostAppView {
                     }
                 }
 
-                pane_div
+                pane_div.into_any_element()
             }
             SplitNode::Split { direction, left, right } => {
-                let container = div()
+                div()
                     .flex_1()
                     .flex()
                     .when(*direction == SplitDirection::Vertical, |d| d.flex_row())
-                    .when(*direction == SplitDirection::Horizontal, |d| d.flex_col());
-
-                container
-                    .child(self.render_split_node(left, ws))
-                    .child(self.render_split_node(right, ws))
+                    .when(*direction == SplitDirection::Horizontal, |d| d.flex_col())
+                    .child(self.render_split_node(left, ws, cx))
+                    .child(self.render_split_node(right, ws, cx))
+                    .into_any_element()
             }
         }
     }
@@ -952,6 +1156,21 @@ impl Render for GhostAppView {
                     this.close_palette(window, cx);
                 }
             }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, _window, cx| {
+                if this.show_palette {
+                    this.palette_move_up(cx);
+                }
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteDown, _window, cx| {
+                if this.show_palette {
+                    this.palette_move_down(cx);
+                }
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteConfirm, window, cx| {
+                if this.show_palette {
+                    this.palette_confirm(window, cx);
+                }
+            }))
             // Splits
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::SplitRight, window, cx| {
                 this.split(SplitDirection::Vertical, window, cx);
@@ -984,7 +1203,7 @@ impl Render for GhostAppView {
                     .flex_col()
                     .relative()
                     .child(self.render_tab_bar(cx))
-                    .child(self.render_split_node(&split_root, &ws_clone))
+                    .child(self.render_split_node(&split_root, &ws_clone, cx))
                     .when(show_palette, |d| d.child(self.render_command_palette(cx))),
             );
 
