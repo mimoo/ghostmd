@@ -1,3 +1,40 @@
+use gpui::{actions, KeyBinding as GpuiKeyBinding};
+
+// GPUI unit-struct actions
+actions!(
+    ghostmd,
+    [
+        NewNote,
+        Save,
+        Quit,
+        CloseTab,
+        RestoreTab,
+        NextTab,
+        PrevTab,
+        OpenFileFinder,
+        OpenContentSearch,
+        OpenCommandPalette,
+        ToggleSidebar,
+    ]
+);
+
+/// Register all GhostMD keyboard shortcuts with GPUI.
+pub fn register_keybindings(cx: &mut gpui::App) {
+    cx.bind_keys([
+        GpuiKeyBinding::new("cmd-n", NewNote, None),
+        GpuiKeyBinding::new("cmd-s", Save, None),
+        GpuiKeyBinding::new("cmd-q", Quit, None),
+        GpuiKeyBinding::new("cmd-w", CloseTab, None),
+        GpuiKeyBinding::new("cmd-shift-t", RestoreTab, None),
+        GpuiKeyBinding::new("ctrl-tab", NextTab, None),
+        GpuiKeyBinding::new("ctrl-shift-tab", PrevTab, None),
+        GpuiKeyBinding::new("cmd-p", OpenFileFinder, None),
+        GpuiKeyBinding::new("cmd-shift-f", OpenContentSearch, None),
+        GpuiKeyBinding::new("cmd-shift-p", OpenCommandPalette, None),
+        GpuiKeyBinding::new("cmd-b", ToggleSidebar, None),
+    ]);
+}
+
 /// All actions that can be triggered via keyboard shortcuts in GhostMD.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
