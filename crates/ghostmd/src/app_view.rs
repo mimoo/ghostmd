@@ -7,6 +7,7 @@ use gpui::*;
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::resizable::{h_resizable, v_resizable, resizable_panel};
 use gpui_component::Root;
+use serde::{Serialize, Deserialize};
 
 use crate::app::GhostApp;
 use crate::editor_view::EditorView;
@@ -47,6 +48,34 @@ fn random_note_name() -> String {
 enum RenameMode {
     File,
     Tab,
+}
+
+// ---------------------------------------------------------------------------
+// Session persistence types
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+struct SessionState {
+    workspaces: Vec<SessionWorkspace>,
+    active_workspace: usize,
+    sidebar_visible: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SessionWorkspace {
+    title: String,
+    split_root: SessionSplitNode,
+    focused_pane_idx: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+enum SessionSplitNode {
+    Leaf { path: Option<String> },
+    Split {
+        direction: String,
+        left: Box<SessionSplitNode>,
+        right: Box<SessionSplitNode>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +139,7 @@ impl SplitNode {
         }
     }
 
+    #[allow(dead_code)]
     fn leftmost_leaf(&self) -> usize {
         match self {
             SplitNode::Leaf(id) => *id,
@@ -117,17 +147,20 @@ impl SplitNode {
         }
     }
 
+    #[allow(dead_code)]
     fn rightmost_leaf(&self) -> usize {
         match self {
             SplitNode::Leaf(id) => *id,
-            SplitNode::Split { right, .. } => right.leftmost_leaf(),
+            SplitNode::Split { right, .. } => right.rightmost_leaf(),
         }
     }
 
+    #[allow(dead_code)]
     fn topmost_leaf(&self) -> usize {
         self.leftmost_leaf()
     }
 
+    #[allow(dead_code)]
     fn bottommost_leaf(&self) -> usize {
         match self {
             SplitNode::Leaf(id) => *id,
@@ -135,29 +168,128 @@ impl SplitNode {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Position-aware navigation helpers
+    // -----------------------------------------------------------------------
+
+    /// Check if pane is in the top half of this subtree.
+    fn is_in_top_half(&self, pane_id: usize) -> bool {
+        match self {
+            SplitNode::Leaf(_) => true,
+            SplitNode::Split { direction, left, right, .. } => {
+                if *direction == SplitDirection::Horizontal {
+                    left.contains(pane_id)
+                } else if left.contains(pane_id) {
+                    left.is_in_top_half(pane_id)
+                } else {
+                    right.is_in_top_half(pane_id)
+                }
+            }
+        }
+    }
+
+    /// Check if pane is in the left half of this subtree.
+    fn is_in_left_half(&self, pane_id: usize) -> bool {
+        match self {
+            SplitNode::Leaf(_) => true,
+            SplitNode::Split { direction, left, right, .. } => {
+                if *direction == SplitDirection::Vertical {
+                    left.contains(pane_id)
+                } else if left.contains(pane_id) {
+                    left.is_in_left_half(pane_id)
+                } else {
+                    right.is_in_left_half(pane_id)
+                }
+            }
+        }
+    }
+
+    /// Enter this subtree from the right side, preserving vertical position.
+    fn enter_from_right(&self, prefer_top: bool) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { direction, left, right, .. } => {
+                if *direction == SplitDirection::Vertical {
+                    right.enter_from_right(prefer_top)
+                } else if prefer_top {
+                    left.enter_from_right(true)
+                } else {
+                    right.enter_from_right(false)
+                }
+            }
+        }
+    }
+
+    /// Enter this subtree from the left side, preserving vertical position.
+    fn enter_from_left(&self, prefer_top: bool) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { direction, left, right, .. } => {
+                if *direction == SplitDirection::Vertical {
+                    left.enter_from_left(prefer_top)
+                } else if prefer_top {
+                    left.enter_from_left(true)
+                } else {
+                    right.enter_from_left(false)
+                }
+            }
+        }
+    }
+
+    /// Enter this subtree from below, preserving horizontal position.
+    fn enter_from_below(&self, prefer_left: bool) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { direction, left, right, .. } => {
+                if *direction == SplitDirection::Horizontal {
+                    right.enter_from_below(prefer_left)
+                } else if prefer_left {
+                    left.enter_from_below(true)
+                } else {
+                    right.enter_from_below(false)
+                }
+            }
+        }
+    }
+
+    /// Enter this subtree from above, preserving horizontal position.
+    fn enter_from_above(&self, prefer_left: bool) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { direction, left, right, .. } => {
+                if *direction == SplitDirection::Horizontal {
+                    left.enter_from_above(prefer_left)
+                } else if prefer_left {
+                    left.enter_from_above(true)
+                } else {
+                    right.enter_from_above(false)
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Directional navigation (position-aware)
+    // -----------------------------------------------------------------------
+
     /// Find the pane to the right of `from` in a 2D-aware manner.
     fn find_right(&self, from: usize) -> Option<usize> {
         match self {
             SplitNode::Leaf(_) => None,
             SplitNode::Split { direction, left, right } => {
                 if *direction == SplitDirection::Vertical {
-                    // Side-by-side: if `from` is in left, go to right's leftmost
                     if left.contains(from) {
-                        // First try to find a right neighbor within the left subtree
                         if let Some(id) = left.find_right(from) {
                             return Some(id);
                         }
-                        return Some(right.leftmost_leaf());
+                        let prefer_top = left.is_in_top_half(from);
+                        return Some(right.enter_from_left(prefer_top));
                     }
-                    // If in right subtree, recurse into right
                     right.find_right(from)
+                } else if left.contains(from) {
+                    left.find_right(from)
                 } else {
-                    // Top/bottom: recurse into whichever subtree contains `from`
-                    if left.contains(from) {
-                        left.find_right(from)
-                    } else {
-                        right.find_right(from)
-                    }
+                    right.find_right(from)
                 }
             }
         }
@@ -173,7 +305,8 @@ impl SplitNode {
                         if let Some(id) = right.find_left(from) {
                             return Some(id);
                         }
-                        return Some(left.rightmost_leaf());
+                        let prefer_top = right.is_in_top_half(from);
+                        return Some(left.enter_from_right(prefer_top));
                     }
                     left.find_left(from)
                 } else if left.contains(from) {
@@ -195,7 +328,8 @@ impl SplitNode {
                         if let Some(id) = left.find_down(from) {
                             return Some(id);
                         }
-                        return Some(right.topmost_leaf());
+                        let prefer_left = left.is_in_left_half(from);
+                        return Some(right.enter_from_above(prefer_left));
                     }
                     right.find_down(from)
                 } else if left.contains(from) {
@@ -217,7 +351,8 @@ impl SplitNode {
                         if let Some(id) = right.find_up(from) {
                             return Some(id);
                         }
-                        return Some(left.bottommost_leaf());
+                        let prefer_left = right.is_in_left_half(from);
+                        return Some(left.enter_from_below(prefer_left));
                     }
                     left.find_up(from)
                 } else if left.contains(from) {
@@ -259,14 +394,81 @@ impl SplitNode {
             }
         }
     }
+
+    /// Convert to serializable session format.
+    fn to_session(&self, panes: &HashMap<usize, Pane>) -> SessionSplitNode {
+        match self {
+            SplitNode::Leaf(id) => {
+                let path = panes.get(id)
+                    .and_then(|p| p.active_path.as_ref())
+                    .map(|p| p.to_string_lossy().to_string());
+                SessionSplitNode::Leaf { path }
+            }
+            SplitNode::Split { direction, left, right } => {
+                SessionSplitNode::Split {
+                    direction: match direction {
+                        SplitDirection::Vertical => "vertical".to_string(),
+                        SplitDirection::Horizontal => "horizontal".to_string(),
+                    },
+                    left: Box::new(left.to_session(panes)),
+                    right: Box::new(right.to_session(panes)),
+                }
+            }
+        }
+    }
+}
+
+/// Reconstruct a SplitNode tree from a serialized session, creating EditorView entities for each pane.
+fn restore_split_node(
+    session_node: &SessionSplitNode,
+    next_pane_id: &mut usize,
+    panes: &mut HashMap<usize, Pane>,
+    window: &mut Window,
+    cx: &mut Context<GhostAppView>,
+) -> SplitNode {
+    match session_node {
+        SessionSplitNode::Leaf { path } => {
+            let pane_id = *next_pane_id;
+            *next_pane_id += 1;
+
+            let (active_path, editor) = if let Some(p) = path {
+                let path_buf = PathBuf::from(p);
+                if path_buf.exists() {
+                    let pb = path_buf.clone();
+                    let e = cx.new(|cx| EditorView::new(pb, window, cx));
+                    (Some(path_buf), Some(e))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            };
+
+            panes.insert(pane_id, Pane { active_path, editor });
+            SplitNode::Leaf(pane_id)
+        }
+        SessionSplitNode::Split { direction, left, right } => {
+            let dir = if direction == "horizontal" {
+                SplitDirection::Horizontal
+            } else {
+                SplitDirection::Vertical
+            };
+            SplitNode::Split {
+                direction: dir,
+                left: Box::new(restore_split_node(left, next_pane_id, panes, window, cx)),
+                right: Box::new(restore_split_node(right, next_pane_id, panes, window, cx)),
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Pane
+// Pane — each pane owns its own editor (independent scroll, cursor, state)
 // ---------------------------------------------------------------------------
 
 struct Pane {
     active_path: Option<PathBuf>,
+    editor: Option<Entity<EditorView>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +491,6 @@ struct Workspace {
 pub struct GhostAppView {
     app: GhostApp,
     file_tree: Entity<FileTreeView>,
-    editors: HashMap<PathBuf, Entity<EditorView>>,
     workspaces: Vec<Workspace>,
     active_workspace: usize,
     closed_workspaces: Vec<Workspace>,
@@ -401,15 +602,58 @@ impl GhostAppView {
         })
         .detach();
 
+        // --- Load session if available ---
+        let session_path = root.join(".ghostmd").join("session.json");
+        let session: Option<SessionState> = std::fs::read_to_string(&session_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok());
+
+        let mut next_pane_id = 0usize;
+        let mut next_workspace_id = 0usize;
+        let mut workspaces = Vec::new();
+        let mut active_workspace = 0usize;
+        let mut sidebar_visible = true;
+
+        if let Some(session) = session {
+            sidebar_visible = session.sidebar_visible;
+            active_workspace = session.active_workspace.min(session.workspaces.len().saturating_sub(1));
+
+            for sws in &session.workspaces {
+                let ws_id = next_workspace_id;
+                next_workspace_id += 1;
+
+                let mut panes = HashMap::new();
+                let split_root = restore_split_node(&sws.split_root, &mut next_pane_id, &mut panes, window, cx);
+
+                let leaves = split_root.leaves();
+                let focused_pane = if sws.focused_pane_idx < leaves.len() {
+                    leaves[sws.focused_pane_idx]
+                } else {
+                    leaves.first().copied().unwrap_or(0)
+                };
+
+                workspaces.push(Workspace {
+                    id: ws_id,
+                    title: sws.title.clone(),
+                    split_root,
+                    panes,
+                    focused_pane,
+                });
+            }
+        }
+
         let mut view = Self {
-            app,
+            app: {
+                let mut a = app;
+                a.sidebar_visible = sidebar_visible;
+                a
+            },
             file_tree,
-            editors: HashMap::new(),
-            workspaces: Vec::new(),
-            active_workspace: 0,
+            workspaces,
+            active_workspace,
             closed_workspaces: Vec::new(),
-            next_workspace_id: 0,
-            next_pane_id: 0,
+            next_workspace_id,
+            next_pane_id,
             show_palette: false,
             palette,
             palette_input,
@@ -420,8 +664,11 @@ impl GhostAppView {
             focus_handle,
         };
 
-        // Create the first workspace with a diary note
-        view.new_workspace(&root, window, cx);
+        // If no session was loaded (or it was empty), create a default workspace
+        if view.workspaces.is_empty() {
+            let root_ref = view.app.root.clone();
+            view.new_workspace(&root_ref, window, cx);
+        }
 
         // Start auto-save timer
         cx.spawn(async |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
@@ -475,7 +722,7 @@ impl GhostAppView {
         self.next_pane_id += 1;
 
         let mut panes = HashMap::new();
-        panes.insert(pane_id, Pane { active_path: None });
+        panes.insert(pane_id, Pane { active_path: None, editor: None });
 
         let ws = Workspace {
             id: ws_id,
@@ -490,24 +737,42 @@ impl GhostAppView {
         cx.notify();
     }
 
-    /// Ensure an editor exists for `path` and register it in the tab bar.
-    fn ensure_editor(&mut self, path: &PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.editors.contains_key(path) {
+    /// Open a file: create per-pane editor and set it as active in the focused pane.
+    fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        // Save current editor if switching files
+        let save_editor = {
+            let ws = &self.workspaces[self.active_workspace];
+            ws.panes.get(&ws.focused_pane).and_then(|p| {
+                if p.active_path.as_ref() != Some(&path) {
+                    p.editor.clone()
+                } else {
+                    None
+                }
+            })
+        };
+        if let Some(editor) = save_editor {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
+        }
+
+        // Check if this pane already has this file
+        let already_open = {
+            let ws = &self.workspaces[self.active_workspace];
+            ws.panes.get(&ws.focused_pane)
+                .map(|p| p.active_path.as_ref() == Some(&path))
+                .unwrap_or(false)
+        };
+
+        if !already_open {
             let p = path.clone();
             let editor = cx.new(|cx| EditorView::new(p, window, cx));
-            self.editors.insert(path.clone(), editor);
-            self.app.open_file(path.clone());
+            let ws = self.active_ws_mut();
+            if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
+                pane.editor = Some(editor);
+                pane.active_path = Some(path.clone());
+            }
         }
-    }
 
-    /// Open a file: ensure editor exists, set it as active in the focused pane, and focus.
-    fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.ensure_editor(&path, window, cx);
-        let ws = self.active_ws_mut();
-        if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
-            pane.active_path = Some(path.clone());
-        }
-        let focused = ws.focused_pane;
+        let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
         // Sync file tree selection
         self.file_tree.update(cx, |tree, cx| {
@@ -576,12 +841,10 @@ impl GhostAppView {
     fn focus_pane_editor(&self, pane_id: usize, window: &mut Window, cx: &mut Context<Self>) {
         let ws = self.active_ws();
         if let Some(pane) = ws.panes.get(&pane_id) {
-            if let Some(path) = &pane.active_path {
-                if let Some(editor) = self.editors.get(path) {
-                    editor.update(cx, |e, cx| {
-                        e.focus_input(window, cx);
-                    });
-                }
+            if let Some(editor) = &pane.editor {
+                editor.update(cx, |e, cx| {
+                    e.focus_input(window, cx);
+                });
             }
         }
     }
@@ -601,7 +864,7 @@ impl GhostAppView {
         self.next_pane_id += 1;
 
         let ws = self.active_ws_mut();
-        ws.panes.insert(new_id, Pane { active_path: None });
+        ws.panes.insert(new_id, Pane { active_path: None, editor: None });
         ws.split_root.split_leaf(ws.focused_pane, new_id, direction);
         ws.focused_pane = new_id;
         self.focus_pane_editor(new_id, window, cx);
@@ -638,17 +901,13 @@ impl GhostAppView {
             return;
         }
 
-        // Save the file in the focused pane before closing (extract info first to avoid borrow conflict)
-        let save_path = {
+        // Save the file in the focused pane before closing
+        let save_editor = {
             let ws = &self.workspaces[self.active_workspace];
-            ws.panes.get(&ws.focused_pane).and_then(|p| p.active_path.clone())
+            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
         };
-        if let Some(path) = save_path {
-            if let Some(editor) = self.editors.get(&path) {
-                editor.update(cx, |e, _cx| {
-                    e.save(_cx).ok();
-                });
-            }
+        if let Some(editor) = save_editor {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
         }
 
         let pane_count = self.workspaces[self.active_workspace].panes.len();
@@ -667,7 +926,6 @@ impl GhostAppView {
 
             let focused = self.workspaces[self.active_workspace].focused_pane;
             self.focus_pane_editor(focused, window, cx);
-            self.cleanup_unused_editors(cx);
             self.sync_file_tree_selection(cx);
             cx.notify();
             return;
@@ -686,40 +944,24 @@ impl GhostAppView {
 
         let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
-        self.cleanup_unused_editors(cx);
         self.sync_file_tree_selection(cx);
         cx.notify();
     }
 
-    /// Remove editors that are not referenced by any pane in any workspace.
-    fn cleanup_unused_editors(&mut self, cx: &mut Context<Self>) {
-        let mut used_paths = std::collections::HashSet::new();
+    fn auto_save(&mut self, cx: &mut Context<Self>) {
         for ws in &self.workspaces {
             for pane in ws.panes.values() {
-                if let Some(path) = &pane.active_path {
-                    used_paths.insert(path.clone());
+                if let Some(editor) = &pane.editor {
+                    editor.update(cx, |e, cx| {
+                        if e.should_auto_save(300) {
+                            e.save(cx).ok();
+                        }
+                    });
                 }
             }
         }
-        self.editors.retain(|path, editor| {
-            if used_paths.contains(path) {
-                true
-            } else {
-                // Save before dropping
-                editor.update(cx, |e, cx| { e.save(cx).ok(); });
-                false
-            }
-        });
-    }
-
-    fn auto_save(&mut self, cx: &mut Context<Self>) {
-        for editor in self.editors.values() {
-            editor.update(cx, |e, cx| {
-                if e.should_auto_save(300) {
-                    e.save(cx).ok();
-                }
-            });
-        }
+        // Periodically save session state
+        self.save_session();
     }
 
     /// The path currently active in the focused pane of the active workspace.
@@ -736,11 +978,13 @@ impl GhostAppView {
             "new_workspace" => self.new_workspace_tab(window, cx),
             "new_window" => self.new_window(window, cx),
             "save" => {
-                if let Some(path) = self.focused_active_path() {
-                    if let Some(editor) = self.editors.get(&path) {
-                        editor.update(cx, |e, cx| { e.save(cx).ok(); });
-                        cx.notify();
-                    }
+                let editor = {
+                    let ws = self.active_ws();
+                    ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+                };
+                if let Some(editor) = editor {
+                    editor.update(cx, |e, cx| { e.save(cx).ok(); });
+                    cx.notify();
                 }
             }
             "close_pane" => self.close_pane(window, cx),
@@ -837,20 +1081,23 @@ impl GhostAppView {
                     if new_path != old_path {
                         // Rename on disk
                         if std::fs::rename(&old_path, &new_path).is_ok() {
-                            // Update the editor map
-                            if let Some(editor) = self.editors.remove(&old_path) {
-                                editor.update(cx, |e, _cx| {
-                                    e.path = new_path.clone();
-                                });
-                                self.editors.insert(new_path.clone(), editor);
-                            }
-                            // Update all panes that reference this file
+                            // Collect editors that need path updates
+                            let mut editors_to_update = Vec::new();
                             for ws in &mut self.workspaces {
                                 for pane in ws.panes.values_mut() {
                                     if pane.active_path.as_ref() == Some(&old_path) {
                                         pane.active_path = Some(new_path.clone());
+                                        if let Some(editor) = &pane.editor {
+                                            editors_to_update.push(editor.clone());
+                                        }
                                     }
                                 }
+                            }
+                            for editor in editors_to_update {
+                                let np = new_path.clone();
+                                editor.update(cx, |e, _cx| {
+                                    e.path = np;
+                                });
                             }
                             self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
                             self.file_tree.update(cx, |tree, cx| tree.select_file(&new_path, cx));
@@ -880,6 +1127,30 @@ impl GhostAppView {
         cx.notify();
     }
 
+    /// Save session state to disk.
+    fn save_session(&self) {
+        let session = SessionState {
+            workspaces: self.workspaces.iter().map(|ws| {
+                let leaves = ws.split_root.leaves();
+                let focused_idx = leaves.iter().position(|&id| id == ws.focused_pane).unwrap_or(0);
+                SessionWorkspace {
+                    title: ws.title.clone(),
+                    split_root: ws.split_root.to_session(&ws.panes),
+                    focused_pane_idx: focused_idx,
+                }
+            }).collect(),
+            active_workspace: self.active_workspace,
+            sidebar_visible: self.app.sidebar_visible,
+        };
+
+        let dir = self.app.root.join(".ghostmd");
+        std::fs::create_dir_all(&dir).ok();
+        let path = dir.join("session.json");
+        if let Ok(json) = serde_json::to_string_pretty(&session) {
+            std::fs::write(path, json).ok();
+        }
+    }
+
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let ghost = GhostTheme::default_dark();
         let tab_bar_bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
@@ -892,7 +1163,6 @@ impl GhostAppView {
             .flex()
             .flex_row()
             .items_center()
-            .pl(px(70.0))
             .bg(tab_bar_bg)
             .border_b_1()
             .border_color(border_color)
@@ -903,8 +1173,7 @@ impl GhostAppView {
 
             // Check if any pane in this workspace has a dirty editor
             let dirty = ws.panes.values().any(|p| {
-                p.active_path.as_ref()
-                    .and_then(|path| self.editors.get(path))
+                p.editor.as_ref()
                     .map(|e| e.read(cx).dirty)
                     .unwrap_or(false)
             });
@@ -969,29 +1238,16 @@ impl GhostAppView {
         let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
         let pane_title_bg = rgb_to_hsla(ghost.pane_title_bg.0, ghost.pane_title_bg.1, ghost.pane_title_bg.2);
         let pane_title_fg = rgb_to_hsla(ghost.pane_title_fg.0, ghost.pane_title_fg.1, ghost.pane_title_fg.2);
+        let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
+        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
         let multi_pane = ws.panes.len() > 1;
 
         match node {
             SplitNode::Leaf(pane_id) => {
                 let is_focused = *pane_id == ws.focused_pane;
                 let pid = *pane_id;
-
-                // Pane title bar — show full path
-                let title_text = ws.panes.get(pane_id)
-                    .and_then(|p| p.active_path.as_ref())
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "untitled".to_string());
-
-                let title_bar = div()
-                    .w_full()
-                    .h(px(24.0))
-                    .flex()
-                    .items_center()
-                    .px(px(8.0))
-                    .bg(pane_title_bg)
-                    .text_color(pane_title_fg)
-                    .text_xs()
-                    .child(title_text);
+                let pane = ws.panes.get(pane_id);
+                let has_editor = pane.map(|p| p.editor.is_some()).unwrap_or(false);
 
                 let mut pane_div = div()
                     .id(ElementId::NamedInteger("pane".into(), pid as u64))
@@ -1020,14 +1276,46 @@ impl GhostAppView {
                     }
                 }
 
-                pane_div = pane_div.child(title_bar);
+                if has_editor {
+                    // Title bar + editor
+                    let title_text = pane
+                        .and_then(|p| p.active_path.as_ref())
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "untitled".to_string());
 
-                if let Some(pane) = ws.panes.get(pane_id) {
-                    if let Some(path) = &pane.active_path {
-                        if let Some(editor) = self.editors.get(path) {
+                    let title_bar = div()
+                        .w_full()
+                        .h(px(24.0))
+                        .flex()
+                        .items_center()
+                        .px(px(8.0))
+                        .bg(pane_title_bg)
+                        .text_color(pane_title_fg)
+                        .text_xs()
+                        .child(title_text);
+
+                    pane_div = pane_div.child(title_bar);
+
+                    if let Some(p) = pane {
+                        if let Some(editor) = &p.editor {
                             pane_div = pane_div.child(editor.clone());
                         }
                     }
+                } else {
+                    // Empty pane placeholder
+                    pane_div = pane_div.child(
+                        div()
+                            .size_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .flex_col()
+                            .gap(px(8.0))
+                            .bg(sidebar_bg)
+                            .child(div().text_lg().text_color(hint_fg).child("No file open"))
+                            .child(div().text_sm().text_color(hint_fg).child("Cmd+P to search files"))
+                            .child(div().text_sm().text_color(hint_fg).child("Cmd+N to create a new note")),
+                    );
                 }
 
                 pane_div.into_any_element()
@@ -1267,7 +1555,7 @@ impl Render for GhostAppView {
             title: self.active_ws().title.clone(),
             split_root: split_root.clone(),
             panes: self.active_ws().panes.iter().map(|(&k, v)| {
-                (k, Pane { active_path: v.active_path.clone() })
+                (k, Pane { active_path: v.active_path.clone(), editor: v.editor.clone() })
             }).collect(),
             focused_pane: self.active_ws().focused_pane,
         };
@@ -1278,7 +1566,7 @@ impl Render for GhostAppView {
             .id("ghost-app")
             .size_full()
             .flex()
-            .flex_row()
+            .flex_col()
             .bg(bg)
             .track_focus(&self.focus_handle)
             // Action handlers
@@ -1292,16 +1580,27 @@ impl Render for GhostAppView {
                 this.new_window(window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Save, _window, cx| {
-                if let Some(path) = this.focused_active_path() {
-                    if let Some(editor) = this.editors.get(&path) {
-                        editor.update(cx, |e, cx| {
-                            e.save(cx).ok();
-                        });
-                        cx.notify();
-                    }
+                let editor = {
+                    let ws = this.active_ws();
+                    ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+                };
+                if let Some(editor) = editor {
+                    editor.update(cx, |e, cx| {
+                        e.save(cx).ok();
+                    });
+                    cx.notify();
                 }
             }))
-            .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::Quit, _window, cx| {
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Quit, _window, cx| {
+                // Save all open editors before quitting
+                let editors: Vec<Entity<EditorView>> = this.workspaces.iter()
+                    .flat_map(|ws| ws.panes.values())
+                    .filter_map(|p| p.editor.clone())
+                    .collect();
+                for editor in editors {
+                    editor.update(cx, |e, cx| { e.save(cx).ok(); });
+                }
+                this.save_session();
                 cx.quit();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::CloseTab, window, cx| {
@@ -1413,28 +1712,40 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FocusPaneUp, window, cx| {
                 this.focus_pane_direction(0, -1, window, cx);
             }))
-            // Layout
+            // Layout: flex_col with titlebar spacer then main content
             .child(
-                h_resizable("main-layout")
+                // Titlebar spacer — prevents content from overlapping traffic lights
+                div().w_full().h(px(38.0)).flex_shrink_0()
+            )
+            .child(
+                // Main content area fills remaining vertical space
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_row()
                     .child(
-                        resizable_panel()
-                            .size(px(240.0))
-                            .size_range(px(150.)..px(500.))
-                            .visible(sidebar_visible)
-                            .child(self.file_tree.clone()),
-                    )
-                    .child(
-                        resizable_panel()
+                        h_resizable("main-layout")
                             .child(
-                                div()
-                                    .size_full()
-                                    .flex()
-                                    .flex_col()
-                                    .relative()
-                                    .child(self.render_tab_bar(cx))
-                                    .child(self.render_split_node(&split_root, &ws_clone, cx))
-                                    .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
-                                    .when(show_palette, |d| d.child(self.render_command_palette(cx))),
+                                resizable_panel()
+                                    .size(px(240.0))
+                                    .size_range(px(150.)..px(500.))
+                                    .visible(sidebar_visible)
+                                    .child(self.file_tree.clone()),
+                            )
+                            .child(
+                                resizable_panel()
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .flex()
+                                            .flex_col()
+                                            .relative()
+                                            .child(self.render_tab_bar(cx))
+                                            .child(self.render_split_node(&split_root, &ws_clone, cx))
+                                            .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
+                                            .when(show_palette, |d| d.child(self.render_command_palette(cx))),
+                                    ),
                             ),
                     ),
             );

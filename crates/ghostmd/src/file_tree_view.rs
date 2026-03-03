@@ -219,10 +219,11 @@ impl Render for FileTreeView {
 
         // Context menu overlay
         if let Some((ref path, position)) = self.context_menu {
+            let is_file = path.is_file();
             let rename_path = path.clone();
             let finder_path = path.clone();
 
-            let menu = div()
+            let mut menu = div()
                 .absolute()
                 .top(position.y)
                 .left(position.x)
@@ -237,8 +238,11 @@ impl Render for FileTreeView {
                 .on_mouse_down_out(cx.listener(|this: &mut Self, _event: &MouseDownEvent, _window, cx| {
                     this.context_menu = None;
                     cx.notify();
-                }))
-                .child(
+                }));
+
+            // Only show Rename for files, not directories
+            if is_file {
+                menu = menu.child(
                     div()
                         .id("ctx-rename")
                         .px(px(12.0))
@@ -252,22 +256,24 @@ impl Render for FileTreeView {
                             cx.emit(FileRenameRequested(rename_path.clone()));
                         }))
                         .child("Rename"),
-                )
-                .child(
-                    div()
-                        .id("ctx-open-finder")
-                        .px(px(12.0))
-                        .py(px(6.0))
-                        .text_sm()
-                        .text_color(fg)
-                        .cursor_pointer()
-                        .hover(|s| s.bg(selection_bg))
-                        .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
-                            this.context_menu = None;
-                            cx.emit(OpenInFinderRequested(finder_path.clone()));
-                        }))
-                        .child("Open in Finder"),
                 );
+            }
+
+            menu = menu.child(
+                div()
+                    .id("ctx-open-finder")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(selection_bg))
+                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                        this.context_menu = None;
+                        cx.emit(OpenInFinderRequested(finder_path.clone()));
+                    }))
+                    .child("Open in Finder"),
+            );
 
             root = root.child(menu);
         }

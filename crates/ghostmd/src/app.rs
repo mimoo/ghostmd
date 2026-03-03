@@ -7,6 +7,7 @@ pub struct GhostApp {
     /// Whether the sidebar file tree is visible.
     pub sidebar_visible: bool,
     /// Paths of files currently open in tabs (across all splits).
+    #[allow(dead_code)]
     pub open_files: Vec<PathBuf>,
 }
 
@@ -26,6 +27,7 @@ impl GhostApp {
     }
 
     /// Open a file in the active split. Returns true if newly opened, false if already open.
+    #[allow(dead_code)]
     pub fn open_file(&mut self, path: PathBuf) -> bool {
         if self.open_files.contains(&path) {
             return false;
