@@ -1,4 +1,7 @@
 use gpui::{actions, KeyBinding as GpuiKeyBinding};
+use gpui_component::input::{
+    Backspace, DeleteToEndOfLine, MoveDown, MoveLeft, MoveRight, MoveUp,
+};
 
 // GPUI unit-struct actions
 actions!(
@@ -32,6 +35,13 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("cmd-shift-f", OpenContentSearch, None),
         GpuiKeyBinding::new("cmd-shift-p", OpenCommandPalette, None),
         GpuiKeyBinding::new("cmd-b", ToggleSidebar, None),
+        // Emacs-style bindings (active when Input is focused)
+        GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
+        GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),
+        GpuiKeyBinding::new("ctrl-p", MoveUp, Some("Input")),
+        GpuiKeyBinding::new("ctrl-n", MoveDown, Some("Input")),
+        GpuiKeyBinding::new("ctrl-k", DeleteToEndOfLine, Some("Input")),
+        GpuiKeyBinding::new("ctrl-h", Backspace, Some("Input")),
     ]);
 }
 

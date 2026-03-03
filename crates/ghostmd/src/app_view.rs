@@ -78,11 +78,27 @@ impl GhostAppView {
             self.editors.insert(path.clone(), editor);
             self.app.open_file(path.clone());
         }
-        self.active_path = Some(path);
+        self.active_path = Some(path.clone());
+        // Focus the newly active editor's input
+        if let Some(editor) = self.editors.get(&path) {
+            editor.update(cx, |e, cx| {
+                e.focus_input(window, cx);
+            });
+        }
         cx.notify();
     }
 
-    fn close_active_file(&mut self, cx: &mut Context<Self>) {
+    fn focus_active_editor(&self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = &self.active_path {
+            if let Some(editor) = self.editors.get(path) {
+                editor.update(cx, |e, cx| {
+                    e.focus_input(window, cx);
+                });
+            }
+        }
+    }
+
+    fn close_active_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = self.active_path.take() {
             // Save before closing
             if let Some(editor) = self.editors.get(&path) {
@@ -95,6 +111,7 @@ impl GhostAppView {
 
             // Switch to another open file or None
             self.active_path = self.app.open_files.last().cloned();
+            self.focus_active_editor(window, cx);
             cx.notify();
         }
     }
@@ -157,8 +174,9 @@ impl GhostAppView {
                     .bg(tab_bg)
                     .text_color(fg)
                     .cursor_pointer()
-                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                         this.active_path = Some(path_clone.clone());
+                        this.focus_active_editor(window, cx);
                         cx.notify();
                     }))
                     .child(display),
@@ -242,24 +260,25 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::Quit, _window, cx| {
                 cx.quit();
             }))
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::CloseTab, _window, cx| {
-                this.close_active_file(cx);
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::CloseTab, window, cx| {
+                this.close_active_file(window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::RestoreTab, window, cx| {
                 if let Some(path) = this.app.restore_tab() {
                     this.open_file(path, window, cx);
                 }
             }))
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NextTab, _window, cx| {
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NextTab, window, cx| {
                 if let Some(active) = &this.active_path {
                     if let Some(pos) = this.app.open_files.iter().position(|p| p == active) {
                         let next = (pos + 1) % this.app.open_files.len();
                         this.active_path = Some(this.app.open_files[next].clone());
+                        this.focus_active_editor(window, cx);
                         cx.notify();
                     }
                 }
             }))
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PrevTab, _window, cx| {
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PrevTab, window, cx| {
                 if let Some(active) = &this.active_path {
                     if let Some(pos) = this.app.open_files.iter().position(|p| p == active) {
                         let prev = if pos == 0 {
@@ -268,6 +287,7 @@ impl Render for GhostAppView {
                             pos - 1
                         };
                         this.active_path = Some(this.app.open_files[prev].clone());
+                        this.focus_active_editor(window, cx);
                         cx.notify();
                     }
                 }
@@ -276,10 +296,21 @@ impl Render for GhostAppView {
                 this.app.toggle_sidebar();
                 cx.notify();
             }))
-            // Layout
-            .when(sidebar_visible, |d| {
-                d.child(self.file_tree.clone())
-            })
+            .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::OpenFileFinder, _window, _cx| {
+                // TODO: wire up file finder overlay
+            }))
+            .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::OpenContentSearch, _window, _cx| {
+                // TODO: wire up content search overlay
+            }))
+            .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::OpenCommandPalette, _window, _cx| {
+                // TODO: wire up command palette overlay
+            }))
+            // Layout — always render tree to preserve entity state, hide via size
+            .child(
+                div()
+                    .when(!sidebar_visible, |d| d.w(px(0.0)).overflow_hidden())
+                    .child(self.file_tree.clone()),
+            )
             .child(
                 div()
                     .flex_1()
