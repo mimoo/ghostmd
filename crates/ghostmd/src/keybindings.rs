@@ -1,6 +1,7 @@
 use gpui::{actions, KeyBinding as GpuiKeyBinding};
 use gpui_component::input::{
-    Backspace, DeleteToEndOfLine, MoveDown, MoveLeft, MoveRight, MoveUp,
+    Backspace, DeleteToEndOfLine, MoveDown, MoveLeft, MoveRight, MoveToNextWord,
+    MoveToPreviousWord, MoveUp,
 };
 
 // GPUI unit-struct actions
@@ -8,6 +9,7 @@ actions!(
     ghostmd,
     [
         NewNote,
+        NewTab,
         Save,
         Quit,
         CloseTab,
@@ -18,6 +20,12 @@ actions!(
         OpenContentSearch,
         OpenCommandPalette,
         ToggleSidebar,
+        SplitRight,
+        SplitDown,
+        FocusPaneLeft,
+        FocusPaneRight,
+        FocusPaneUp,
+        FocusPaneDown,
     ]
 );
 
@@ -25,6 +33,7 @@ actions!(
 pub fn register_keybindings(cx: &mut gpui::App) {
     cx.bind_keys([
         GpuiKeyBinding::new("cmd-n", NewNote, None),
+        GpuiKeyBinding::new("cmd-shift-n", NewTab, None),
         GpuiKeyBinding::new("cmd-s", Save, None),
         GpuiKeyBinding::new("cmd-q", Quit, None),
         GpuiKeyBinding::new("cmd-w", CloseTab, None),
@@ -35,6 +44,13 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("cmd-shift-f", OpenContentSearch, None),
         GpuiKeyBinding::new("cmd-shift-p", OpenCommandPalette, None),
         GpuiKeyBinding::new("cmd-b", ToggleSidebar, None),
+        // Splits
+        GpuiKeyBinding::new("cmd-d", SplitRight, None),
+        GpuiKeyBinding::new("cmd-shift-d", SplitDown, None),
+        GpuiKeyBinding::new("alt-cmd-left", FocusPaneLeft, None),
+        GpuiKeyBinding::new("alt-cmd-right", FocusPaneRight, None),
+        GpuiKeyBinding::new("alt-cmd-up", FocusPaneUp, None),
+        GpuiKeyBinding::new("alt-cmd-down", FocusPaneDown, None),
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),
@@ -42,6 +58,9 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("ctrl-n", MoveDown, Some("Input")),
         GpuiKeyBinding::new("ctrl-k", DeleteToEndOfLine, Some("Input")),
         GpuiKeyBinding::new("ctrl-h", Backspace, Some("Input")),
+        // Word movement (alt-f/b produce special chars on macOS, bind explicitly)
+        GpuiKeyBinding::new("alt-f", MoveToNextWord, Some("Input")),
+        GpuiKeyBinding::new("alt-b", MoveToPreviousWord, Some("Input")),
     ]);
 }
 
