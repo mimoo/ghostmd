@@ -153,25 +153,34 @@ impl Render for FileTreeView {
             .border_r_1()
             .border_color(border_color)
             .track_focus(&self.focus_handle)
+            .flex()
+            .flex_col()
             .child(
                 div()
                     .p(px(8.0))
                     .text_sm()
+                    .flex_shrink_0()
                     .text_color(rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2))
                     .child("ghostmd"),
             )
             .child(
-                tree(&self.tree_state, |ix, entry, selected, _window, _cx| {
-                    ListItem::new(ix)
-                        .selected(selected)
-                        .child(
-                            div()
-                                .pl(px(16.0 * entry.depth() as f32))
-                                .text_sm()
-                                .child(entry.item().label.clone()),
-                        )
-                })
-                .size_full(),
+                div()
+                    .id("file-tree-scroll")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .child(
+                        tree(&self.tree_state, |ix, entry, selected, _window, _cx| {
+                            ListItem::new(ix)
+                                .selected(selected)
+                                .child(
+                                    div()
+                                        .pl(px(16.0 * entry.depth() as f32))
+                                        .text_sm()
+                                        .child(entry.item().label.clone()),
+                                )
+                        })
+                        .w_full(),
+                    ),
             )
     }
 }

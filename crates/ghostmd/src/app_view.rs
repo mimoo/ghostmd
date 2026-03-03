@@ -38,6 +38,16 @@ fn random_note_name() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Rename mode
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, PartialEq)]
+enum RenameMode {
+    File,
+    Tab,
+}
+
+// ---------------------------------------------------------------------------
 // Split tree
 // ---------------------------------------------------------------------------
 
@@ -256,7 +266,6 @@ struct Pane {
 struct Workspace {
     id: usize,
     title: String,
-    title_generated: bool,
     split_root: SplitNode,
     panes: HashMap<usize, Pane>,
     focused_pane: usize,
@@ -279,6 +288,7 @@ pub struct GhostAppView {
     show_palette: bool,
     palette: CommandPalette,
     palette_input: Entity<InputState>,
+    rename_mode: Option<RenameMode>,
     focus_handle: FocusHandle,
 }
 
@@ -304,13 +314,29 @@ impl GhostAppView {
         cx.subscribe_in(&palette_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
             match event {
                 InputEvent::Change => {
-                    let value = this.palette_input.read(cx).value().to_string();
-                    this.palette.query = value;
-                    this.palette.selected_index = 0;
-                    cx.notify();
+                    if this.rename_mode.is_some() {
+                        // In rename mode, don't filter commands
+                        cx.notify();
+                    } else {
+                        let value = this.palette_input.read(cx).value().to_string();
+                        this.palette.query = value;
+                        this.palette.selected_index = 0;
+                        cx.notify();
+                    }
                 }
                 InputEvent::PressEnter { .. } => {
-                    if this.show_palette {
+                    if let Some(mode) = this.rename_mode.clone() {
+                        let new_name = this.palette_input.read(cx).value().to_string().trim().to_string();
+                        if !new_name.is_empty() {
+                            this.apply_rename(&new_name, &mode, window, cx);
+                        }
+                        this.rename_mode = None;
+                        this.show_palette = false;
+                        this.palette.close();
+                        let focused = this.active_ws().focused_pane;
+                        this.focus_pane_editor(focused, window, cx);
+                        cx.notify();
+                    } else if this.show_palette {
                         this.palette_confirm(window, cx);
                     }
                 }
@@ -331,6 +357,7 @@ impl GhostAppView {
             show_palette: false,
             palette,
             palette_input,
+            rename_mode: None,
             focus_handle,
         };
 
@@ -365,6 +392,8 @@ impl GhostAppView {
             PaletteCommand { label: "Split Right".into(), shortcut_hint: Some("Cmd+D".into()), action_id: "split_right".into() },
             PaletteCommand { label: "Split Down".into(), shortcut_hint: Some("Cmd+Shift+D".into()), action_id: "split_down".into() },
             PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some("Cmd+B".into()), action_id: "toggle_sidebar".into() },
+            PaletteCommand { label: "Rename File...".into(), shortcut_hint: None, action_id: "rename_file".into() },
+            PaletteCommand { label: "Rename Tab...".into(), shortcut_hint: None, action_id: "rename_tab".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
         ]
     }
@@ -390,8 +419,7 @@ impl GhostAppView {
 
         let ws = Workspace {
             id: ws_id,
-            title: format!("Workspace {}", ws_id + 1),
-            title_generated: false,
+            title: random_note_name(),
             split_root: SplitNode::Leaf(pane_id),
             panes,
             focused_pane: pane_id,
@@ -432,7 +460,6 @@ impl GhostAppView {
         self.file_tree.update(cx, |tree, cx| {
             tree.select_file(&path, cx);
         });
-        self.request_workspace_title(self.active_workspace, cx);
         cx.notify();
     }
 
@@ -604,7 +631,6 @@ impl GhostAppView {
 
         let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
-        self.request_workspace_title(self.active_workspace, cx);
         self.cleanup_unused_editors(cx);
         self.sync_file_tree_selection(cx);
         cx.notify();
@@ -629,77 +655,6 @@ impl GhostAppView {
                 false
             }
         });
-    }
-
-    /// Request an AI-generated workspace title using the `claude` CLI.
-    fn request_workspace_title(&mut self, workspace_idx: usize, cx: &mut Context<Self>) {
-        if workspace_idx >= self.workspaces.len() {
-            return;
-        }
-
-        let ws = &self.workspaces[workspace_idx];
-
-        // Collect file titles from all panes
-        let titles: Vec<String> = ws.panes.values()
-            .filter_map(|p| p.active_path.as_ref())
-            .map(|p| Note::title_from_path(p))
-            .collect();
-
-        if titles.is_empty() {
-            return;
-        }
-
-        // If only one file, just use its title directly (no AI needed)
-        if titles.len() == 1 {
-            if let Some(ws) = self.workspaces.get_mut(workspace_idx) {
-                ws.title = titles[0].clone();
-                ws.title_generated = false;
-            }
-            cx.notify();
-            return;
-        }
-
-        // Skip if already generated for this set
-        if ws.title_generated {
-            return;
-        }
-
-        let ws_id = ws.id;
-        let prompt = format!(
-            "Generate a short (2-4 word) workspace title that captures the theme of these notes: {}. Reply with ONLY the title, nothing else.",
-            titles.join(", ")
-        );
-
-        // Use first file's title as immediate fallback
-        let fallback_title = titles[0].clone();
-
-        // Run the blocking claude CLI command on a background thread
-        let bg_executor = cx.background_executor().clone();
-        cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
-            let title = bg_executor.spawn(async move {
-                let result = std::process::Command::new("claude")
-                    .arg("-p")
-                    .arg(&prompt)
-                    .output();
-
-                match result {
-                    Ok(output) if output.status.success() => {
-                        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                        if raw.is_empty() { fallback_title } else { raw }
-                    }
-                    _ => fallback_title,
-                }
-            }).await;
-
-            this.update(cx, |this: &mut GhostAppView, cx: &mut Context<GhostAppView>| {
-                if let Some(ws) = this.workspaces.iter_mut().find(|w| w.id == ws_id) {
-                    ws.title = title;
-                    ws.title_generated = true;
-                }
-                cx.notify();
-            }).ok();
-        })
-        .detach();
     }
 
     fn auto_save(&mut self, cx: &mut Context<Self>) {
@@ -746,6 +701,8 @@ impl GhostAppView {
             "split_right" => self.split(SplitDirection::Vertical, window, cx),
             "split_down" => self.split(SplitDirection::Horizontal, window, cx),
             "toggle_sidebar" => { self.app.toggle_sidebar(); cx.notify(); }
+            "rename_file" => self.enter_rename_mode(RenameMode::File, window, cx),
+            "rename_tab" => self.enter_rename_mode(RenameMode::Tab, window, cx),
             "quit" => cx.quit(),
             _ => {}
         }
@@ -782,9 +739,70 @@ impl GhostAppView {
         }
     }
 
+    /// Enter rename mode for file or tab.
+    fn enter_rename_mode(&mut self, mode: RenameMode, window: &mut Window, cx: &mut Context<Self>) {
+        let current_value = match mode {
+            RenameMode::File => {
+                self.focused_active_path()
+                    .map(|p| Note::title_from_path(&p))
+                    .unwrap_or_default()
+            }
+            RenameMode::Tab => {
+                self.active_ws().title.clone()
+            }
+        };
+        self.rename_mode = Some(mode);
+        self.show_palette = true;
+        self.palette_input.update(cx, |state, cx| {
+            state.set_value(&current_value, window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Apply the rename.
+    fn apply_rename(&mut self, new_name: &str, mode: &RenameMode, _window: &mut Window, cx: &mut Context<Self>) {
+        match mode {
+            RenameMode::Tab => {
+                self.active_ws_mut().title = new_name.to_string();
+            }
+            RenameMode::File => {
+                if let Some(old_path) = self.focused_active_path() {
+                    // Build new path: same directory, new filename with .md extension
+                    let slug = ghostmd_core::diary::slugify(new_name);
+                    let new_filename = if slug.is_empty() { "untitled".to_string() } else { slug };
+                    let new_path = old_path.with_file_name(format!("{}.md", new_filename));
+                    if new_path != old_path {
+                        // Rename on disk
+                        if std::fs::rename(&old_path, &new_path).is_ok() {
+                            // Update the editor map
+                            if let Some(editor) = self.editors.remove(&old_path) {
+                                editor.update(cx, |e, _cx| {
+                                    e.path = new_path.clone();
+                                });
+                                self.editors.insert(new_path.clone(), editor);
+                            }
+                            // Update all panes that reference this file
+                            for ws in &mut self.workspaces {
+                                for pane in ws.panes.values_mut() {
+                                    if pane.active_path.as_ref() == Some(&old_path) {
+                                        pane.active_path = Some(new_path.clone());
+                                    }
+                                }
+                            }
+                            self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+                            self.file_tree.update(cx, |tree, cx| tree.select_file(&new_path, cx));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Close the command palette and refocus the editor.
     fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_palette = false;
+        self.rename_mode = None;
         self.palette.close();
         let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
@@ -886,10 +904,10 @@ impl GhostAppView {
                 let is_focused = *pane_id == ws.focused_pane;
                 let pid = *pane_id;
 
-                // Pane title bar
+                // Pane title bar — show full path
                 let title_text = ws.panes.get(pane_id)
                     .and_then(|p| p.active_path.as_ref())
-                    .map(|p| Note::title_from_path(p))
+                    .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "untitled".to_string());
 
                 let title_bar = div()
@@ -963,51 +981,74 @@ impl GhostAppView {
         let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
         let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
 
-        let filtered = self.palette.filtered_commands();
+        let is_rename = self.rename_mode.is_some();
+        let rename_label = match &self.rename_mode {
+            Some(RenameMode::File) => "Rename file:",
+            Some(RenameMode::Tab) => "Rename tab:",
+            None => "",
+        };
 
-        let mut list = div()
-            .flex()
-            .flex_col()
-            .max_h(px(300.0))
-            .overflow_y_hidden();
+        let mut body = div().flex().flex_col();
 
-        for (i, cmd) in filtered.iter().enumerate() {
-            let is_selected = i == self.palette.selected_index;
-            let bg = if is_selected { selection_bg } else { overlay_bg };
-            let action_id = cmd.action_id.clone();
+        if is_rename {
+            // Rename mode: show label + input only
+            body = body.child(
+                div()
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(hint_fg)
+                    .child(rename_label),
+            );
+        } else {
+            // Normal palette: show filtered command list
+            let filtered = self.palette.filtered_commands();
 
-            let mut row = div()
-                .id(ElementId::NamedInteger("palette-item".into(), i as u64))
-                .w_full()
-                .px(px(12.0))
-                .py(px(6.0))
+            let mut list = div()
                 .flex()
-                .flex_row()
-                .justify_between()
-                .bg(bg)
-                .text_color(fg)
-                .text_sm()
-                .cursor_pointer()
-                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                    this.show_palette = false;
-                    this.palette.close();
-                    this.dispatch_palette_action(&action_id, window, cx);
-                    let focused = this.active_ws().focused_pane;
-                    this.focus_pane_editor(focused, window, cx);
-                    cx.notify();
-                }))
-                .child(cmd.label.clone());
+                .flex_col()
+                .max_h(px(300.0))
+                .overflow_y_hidden();
 
-            if let Some(hint) = &cmd.shortcut_hint {
-                row = row.child(
-                    div()
-                        .text_color(hint_fg)
-                        .text_xs()
-                        .child(hint.clone()),
-                );
+            for (i, cmd) in filtered.iter().enumerate() {
+                let is_selected = i == self.palette.selected_index;
+                let bg = if is_selected { selection_bg } else { overlay_bg };
+                let action_id = cmd.action_id.clone();
+
+                let mut row = div()
+                    .id(ElementId::NamedInteger("palette-item".into(), i as u64))
+                    .w_full()
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .flex()
+                    .flex_row()
+                    .justify_between()
+                    .bg(bg)
+                    .text_color(fg)
+                    .text_sm()
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.show_palette = false;
+                        this.palette.close();
+                        this.dispatch_palette_action(&action_id, window, cx);
+                        let focused = this.active_ws().focused_pane;
+                        this.focus_pane_editor(focused, window, cx);
+                        cx.notify();
+                    }))
+                    .child(cmd.label.clone());
+
+                if let Some(hint) = &cmd.shortcut_hint {
+                    row = row.child(
+                        div()
+                            .text_color(hint_fg)
+                            .text_xs()
+                            .child(hint.clone()),
+                    );
+                }
+
+                list = list.child(row);
             }
-
-            list = list.child(row);
+            body = body.child(list);
         }
 
         // Overlay container — absolutely positioned centered
@@ -1040,7 +1081,7 @@ impl GhostAppView {
                                     .w_full(),
                             ),
                     )
-                    .child(list),
+                    .child(body),
             )
     }
 }
@@ -1060,7 +1101,6 @@ impl Render for GhostAppView {
         let ws_clone = Workspace {
             id: self.active_ws().id,
             title: self.active_ws().title.clone(),
-            title_generated: self.active_ws().title_generated,
             split_root: split_root.clone(),
             panes: self.active_ws().panes.iter().map(|(&k, v)| {
                 (k, Pane { active_path: v.active_path.clone() })

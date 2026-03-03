@@ -58,10 +58,9 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("alt-cmd-right", FocusPaneRight, None),
         GpuiKeyBinding::new("alt-cmd-up", FocusPaneUp, None),
         GpuiKeyBinding::new("alt-cmd-down", FocusPaneDown, None),
-        // Palette navigation (global; action handlers check show_palette)
+        // Palette navigation (up/down only; Enter handled via InputEvent::PressEnter)
         GpuiKeyBinding::new("up", PaletteUp, None),
         GpuiKeyBinding::new("down", PaletteDown, None),
-        GpuiKeyBinding::new("enter", PaletteConfirm, None),
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),
