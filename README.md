@@ -12,18 +12,38 @@ Notes are plain `.md` files in `~/Documents/ghostmd/`. No database, no lock-in. 
 - **Zero configuration**: sane defaults, no settings to fiddle with.
 - **Keyboard-first**: Ghostty-style tabs/splits, Emacs text navigation, command palette.
 
+## Install
+
+### From source
+
+Requires Rust 1.75+ and Xcode with Metal on macOS.
+
+```
+git clone https://github.com/user/ghostmd.git
+cd ghostmd
+cargo build --release
+./scripts/bundle-macos.sh
+cp -r target/GhostMD.app /Applications/
+```
+
+### From release
+
+Download the latest `.tar.gz` from [Releases](https://github.com/user/ghostmd/releases), extract, and drag `GhostMD.app` to `/Applications/`.
+
 ## Features
 
 - GPU-accelerated rendering via [GPUI](https://gpui.rs) (Metal on macOS)
 - Branching undo tree (undo past a fork, type something new — old branch preserved)
 - Auto-save on every keystroke (debounced 300ms) — quit anytime, nothing is lost
 - Diary structure: new notes go to `~/Documents/ghostmd/diary/YYYY/MM/DD/`
-- Always-visible file tree sidebar
-- Fuzzy file finder (Cmd+P) and full-text search (Cmd+Shift+F)
-- Command palette (Cmd+Shift+P)
-- Ghostty-style tabs and splits
-- AI-powered title suggestions and note organization via Claude Code
-- JetBrains Mono, warm dark theme
+- Always-visible file tree sidebar with expand/collapse indicators
+- Fuzzy file finder (Cmd+P) with full-text content search via ripgrep
+- Agentic search (Cmd+Shift+F) — ask Claude natural language questions about your notes
+- Command palette (Cmd+Shift+P) with theme switching
+- Ghostty-style tabs and splits with close buttons
+- 5 built-in themes: Rose Pine, Nord, Solarized, Dracula, Light
+- Session persistence (tabs, splits, theme restored on relaunch)
+- JetBrains Mono font
 
 ## Keyboard Shortcuts
 
@@ -39,9 +59,11 @@ Notes are plain `.md` files in `~/Documents/ghostmd/`. No database, no lock-in. 
 | Split right | Cmd+D |
 | Split down | Cmd+Shift+D |
 | Navigate splits | Opt+Cmd+Arrows |
+| Find in file | Cmd+F |
 | File finder | Cmd+P |
-| Content search | Cmd+Shift+F |
+| Agentic search | Cmd+Shift+F |
 | Command palette | Cmd+Shift+P |
+| Toggle sidebar | Cmd+B |
 
 ### Emacs Navigation
 
@@ -57,21 +79,18 @@ Notes are plain `.md` files in `~/Documents/ghostmd/`. No database, no lock-in. 
 | Kill line | C-k |
 | Yank | C-y |
 
-## Building
-
-Requires Rust 1.75+ and Xcode with Metal Toolchain on macOS.
+## Development
 
 ```
-cargo build --release
 cargo run --release
 ```
 
 ## Testing
 
 ```
-cargo test                  # all 202 tests
-cargo test -p ghostmd-core  # core logic (77 unit + 8 integration)
-cargo test -p ghostmd       # UI logic (117 unit)
+cargo test                  # all tests
+cargo test -p ghostmd-core  # core logic + integration tests
+cargo test -p ghostmd       # UI state machine tests
 ```
 
 ## Benchmarks
@@ -86,23 +105,20 @@ Benchmarks cover buffer operations, file tree scanning (100-10K files), and fuzz
 
 ```
 crates/
-  ghostmd-core/   # Pure business logic, no UI dependency
-    buffer.rs     # Rope-based text buffer with branching undo tree
-    note.rs       # Note CRUD and auto-save
-    diary.rs      # Date-based diary path generation
-    tree.rs       # File tree model
-    search.rs     # Fuzzy file search + full-text content search
-  ghostmd/        # Native GPUI application
-    editor.rs     # Editor panel state machine
-    app.rs        # Workspace state (overlays, splits, tabs)
-    file_tree.rs  # File tree sidebar with keyboard navigation
-    search.rs     # File finder and content search overlays
-    tabs.rs       # Tab manager with restore history
-    splits.rs     # Split pane layout
-    palette.rs    # Command palette
-    ai.rs         # Claude Code integration for title/org suggestions
-    theme.rs      # Warm dark color scheme
-    keybindings.rs# All keyboard shortcut definitions
+  ghostmd-core/       # Pure business logic, no UI dependency
+    buffer.rs         # Rope-based text buffer with branching undo tree
+    note.rs           # Note CRUD and auto-save
+    diary.rs          # Date-based diary path generation
+    tree.rs           # File tree model with reveal/collapse
+    search.rs         # Fuzzy file search (nucleo) + content search (ripgrep)
+  ghostmd/            # Native GPUI application
+    app_view.rs       # Main GPUI view: workspaces, splits, overlays, search
+    editor_view.rs    # GPUI editor view wrapping InputState
+    file_tree_view.rs # Sidebar file tree with context menu events
+    palette.rs        # Command palette state machine
+    search.rs         # File finder + content search state machines
+    theme.rs          # 5 themes with runtime switching
+    keybindings.rs    # Keyboard shortcut definitions
 ```
 
 ## License
