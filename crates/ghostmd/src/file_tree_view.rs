@@ -11,6 +11,12 @@ use ghostmd_core::tree::TreeNode;
 /// Event emitted when a file is selected in the tree.
 pub struct FileSelected(pub PathBuf);
 
+/// Event emitted when a file rename is requested (double-click on a file).
+pub struct FileRenameRequested(pub PathBuf);
+
+/// Event emitted when "Open in Finder" is requested for a path.
+pub struct OpenInFinderRequested(pub PathBuf);
+
 /// GPUI view wrapping the FileTreePanel state machine with a gpui-component Tree.
 pub struct FileTreeView {
     panel: FileTreePanel,
@@ -20,9 +26,13 @@ pub struct FileTreeView {
     last_selected_id: Option<String>,
     /// Flat list of tree item IDs in display order (for path→index lookups).
     flat_ids: Vec<String>,
+    /// Context menu state: (path, position) when visible.
+    context_menu: Option<(PathBuf, Point<Pixels>)>,
 }
 
 impl EventEmitter<FileSelected> for FileTreeView {}
+impl EventEmitter<FileRenameRequested> for FileTreeView {}
+impl EventEmitter<OpenInFinderRequested> for FileTreeView {}
 
 impl FileTreeView {
     pub fn new(root: PathBuf, cx: &mut Context<Self>) -> Self {
@@ -56,6 +66,7 @@ impl FileTreeView {
             focus_handle,
             last_selected_id: None,
             flat_ids,
+            context_menu: None,
         }
     }
 
@@ -140,13 +151,16 @@ impl Focusable for FileTreeView {
 }
 
 impl Render for FileTreeView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ghost = crate::theme::GhostTheme::default_dark();
         let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
+        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
 
-        div()
+        let mut root = div()
             .size_full()
+            .relative()
             .bg(sidebar_bg)
             .border_r_1()
             .border_color(border_color)
@@ -166,6 +180,25 @@ impl Render for FileTreeView {
                     .id("file-tree-scroll")
                     .flex_1()
                     .overflow_y_scroll()
+                    .on_click(cx.listener(|this: &mut Self, event: &ClickEvent, _window, cx| {
+                        if event.click_count() >= 2 {
+                            // Double-click: emit rename for the selected file
+                            if let Some(id) = &this.last_selected_id {
+                                let path = PathBuf::from(id);
+                                if path.is_file() {
+                                    cx.emit(FileRenameRequested(path));
+                                }
+                            }
+                        }
+                    }))
+                    .on_mouse_down(MouseButton::Right, cx.listener(|this: &mut Self, event: &MouseDownEvent, _window, cx| {
+                        // Right-click: show context menu for the selected item
+                        if let Some(id) = &this.last_selected_id {
+                            let path = PathBuf::from(id);
+                            this.context_menu = Some((path, event.position));
+                            cx.notify();
+                        }
+                    }))
                     .child(
                         tree(&self.tree_state, |ix, entry, selected, _window, _cx| {
                             ListItem::new(ix)
@@ -182,6 +215,63 @@ impl Render for FileTreeView {
                         })
                         .w_full(),
                     ),
-            )
+            );
+
+        // Context menu overlay
+        if let Some((ref path, position)) = self.context_menu {
+            let rename_path = path.clone();
+            let finder_path = path.clone();
+
+            let menu = div()
+                .absolute()
+                .top(position.y)
+                .left(position.x)
+                .bg(sidebar_bg)
+                .border_1()
+                .border_color(border_color)
+                .rounded(px(4.0))
+                .shadow_lg()
+                .min_w(px(160.0))
+                .flex()
+                .flex_col()
+                .on_mouse_down_out(cx.listener(|this: &mut Self, _event: &MouseDownEvent, _window, cx| {
+                    this.context_menu = None;
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .id("ctx-rename")
+                        .px(px(12.0))
+                        .py(px(6.0))
+                        .text_sm()
+                        .text_color(fg)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(selection_bg))
+                        .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                            this.context_menu = None;
+                            cx.emit(FileRenameRequested(rename_path.clone()));
+                        }))
+                        .child("Rename"),
+                )
+                .child(
+                    div()
+                        .id("ctx-open-finder")
+                        .px(px(12.0))
+                        .py(px(6.0))
+                        .text_sm()
+                        .text_color(fg)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(selection_bg))
+                        .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                            this.context_menu = None;
+                            cx.emit(OpenInFinderRequested(finder_path.clone()));
+                        }))
+                        .child("Open in Finder"),
+                );
+
+            root = root.child(menu);
+        }
+
+        root
     }
 }

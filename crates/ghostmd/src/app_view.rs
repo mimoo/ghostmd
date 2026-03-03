@@ -10,9 +10,10 @@ use gpui_component::Root;
 
 use crate::app::GhostApp;
 use crate::editor_view::EditorView;
-use crate::file_tree_view::{FileSelected, FileTreeView};
+use crate::file_tree_view::{FileSelected, FileTreeView, FileRenameRequested, OpenInFinderRequested};
 use crate::keybindings;
 use crate::palette::{CommandPalette, PaletteCommand};
+use crate::search::FileFinder;
 use crate::theme::{rgb_to_hsla, GhostTheme};
 
 use ghostmd_core::diary;
@@ -298,6 +299,9 @@ pub struct GhostAppView {
     palette: CommandPalette,
     palette_input: Entity<InputState>,
     rename_mode: Option<RenameMode>,
+    show_file_finder: bool,
+    file_finder: FileFinder,
+    file_finder_input: Entity<InputState>,
     focus_handle: FocusHandle,
 }
 
@@ -310,6 +314,22 @@ impl GhostAppView {
         // Subscribe to file selection events from the tree (with window access)
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &FileSelected, window, cx| {
             this.open_file(event.0.clone(), window, cx);
+        })
+        .detach();
+
+        // Subscribe to rename requests from the tree
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &FileRenameRequested, window, cx| {
+            // Open the file first (so it's the focused file), then enter rename mode
+            this.open_file(event.0.clone(), window, cx);
+            this.enter_rename_mode(RenameMode::File, window, cx);
+        })
+        .detach();
+
+        // Subscribe to open-in-finder requests from the tree
+        cx.subscribe_in(&file_tree, window, |_this: &mut Self, _entity, event: &OpenInFinderRequested, _window, _cx| {
+            if let Some(parent) = event.0.parent() {
+                std::process::Command::new("open").arg(parent).spawn().ok();
+            }
         })
         .detach();
 
@@ -354,6 +374,33 @@ impl GhostAppView {
         })
         .detach();
 
+        let file_finder = FileFinder::new(root.clone());
+        let file_finder_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search files..."));
+
+        // Subscribe to file finder input changes
+        cx.subscribe_in(&file_finder_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
+            match event {
+                InputEvent::Change => {
+                    if this.show_file_finder {
+                        let value = this.file_finder_input.read(cx).value().to_string();
+                        this.file_finder.set_query(&value);
+                        cx.notify();
+                    }
+                }
+                InputEvent::PressEnter { .. } => {
+                    if this.show_file_finder {
+                        if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                            this.show_file_finder = false;
+                            this.file_finder.close();
+                            this.open_file(path, window, cx);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        })
+        .detach();
+
         let mut view = Self {
             app,
             file_tree,
@@ -367,6 +414,9 @@ impl GhostAppView {
             palette,
             palette_input,
             rename_mode: None,
+            show_file_finder: false,
+            file_finder,
+            file_finder_input,
             focus_handle,
         };
 
@@ -403,6 +453,7 @@ impl GhostAppView {
             PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some("Cmd+B".into()), action_id: "toggle_sidebar".into() },
             PaletteCommand { label: "Rename File...".into(), shortcut_hint: None, action_id: "rename_file".into() },
             PaletteCommand { label: "Rename Tab...".into(), shortcut_hint: None, action_id: "rename_tab".into() },
+            PaletteCommand { label: "Open in Finder".into(), shortcut_hint: None, action_id: "open_in_finder".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
         ]
     }
@@ -415,8 +466,8 @@ impl GhostAppView {
         &mut self.workspaces[self.active_workspace]
     }
 
-    /// Create a new workspace with one pane and a diary note.
-    fn new_workspace(&mut self, root: &std::path::Path, window: &mut Window, cx: &mut Context<Self>) {
+    /// Create a new empty workspace with one pane.
+    fn new_workspace(&mut self, _root: &std::path::Path, _window: &mut Window, cx: &mut Context<Self>) {
         let ws_id = self.next_workspace_id;
         self.next_workspace_id += 1;
 
@@ -436,14 +487,7 @@ impl GhostAppView {
 
         self.workspaces.push(ws);
         self.active_workspace = self.workspaces.len() - 1;
-
-        // Open a new diary note with a random name
-        let diary_path = diary::new_diary_path(root, &random_note_name());
-        let note = Note::new(diary_path.clone());
-        note.ensure_dir().ok();
-        note.save("").ok();
-        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
-        self.open_file(diary_path, window, cx);
+        cx.notify();
     }
 
     /// Ensure an editor exists for `path` and register it in the tab bar.
@@ -499,6 +543,11 @@ impl GhostAppView {
                     WindowOptions {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
                         focus: true,
+                        titlebar: Some(TitlebarOptions {
+                            appears_transparent: true,
+                            traffic_light_position: Some(gpui::point(px(9.0), px(9.0))),
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     },
                     |window, cx| {
@@ -552,10 +601,7 @@ impl GhostAppView {
         self.next_pane_id += 1;
 
         let ws = self.active_ws_mut();
-        let current_path = ws.panes.get(&ws.focused_pane)
-            .and_then(|p| p.active_path.clone());
-
-        ws.panes.insert(new_id, Pane { active_path: current_path });
+        ws.panes.insert(new_id, Pane { active_path: None });
         ws.split_root.split_leaf(ws.focused_pane, new_id, direction);
         ws.focused_pane = new_id;
         self.focus_pane_editor(new_id, window, cx);
@@ -712,6 +758,13 @@ impl GhostAppView {
             "toggle_sidebar" => { self.app.toggle_sidebar(); cx.notify(); }
             "rename_file" => self.enter_rename_mode(RenameMode::File, window, cx),
             "rename_tab" => self.enter_rename_mode(RenameMode::Tab, window, cx),
+            "open_in_finder" => {
+                if let Some(path) = self.focused_active_path() {
+                    if let Some(parent) = path.parent() {
+                        std::process::Command::new("open").arg(parent).spawn().ok();
+                    }
+                }
+            }
             "quit" => cx.quit(),
             _ => {}
         }
@@ -808,6 +861,15 @@ impl GhostAppView {
         }
     }
 
+    /// Close the file finder and refocus the editor.
+    fn close_file_finder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_file_finder = false;
+        self.file_finder.close();
+        let focused = self.active_ws().focused_pane;
+        self.focus_pane_editor(focused, window, cx);
+        cx.notify();
+    }
+
     /// Close the command palette and refocus the editor.
     fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_palette = false;
@@ -830,6 +892,7 @@ impl GhostAppView {
             .flex()
             .flex_row()
             .items_center()
+            .pl(px(70.0))
             .bg(tab_bar_bg)
             .border_b_1()
             .border_color(border_color)
@@ -987,6 +1050,93 @@ impl GhostAppView {
         }
     }
 
+    fn render_file_finder(&self, _cx: &mut Context<Self>) -> Div {
+        let ghost = GhostTheme::default_dark();
+        let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
+        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
+        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
+        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+
+        let root_prefix = self.app.root.to_string_lossy().to_string();
+
+        let mut list = div()
+            .id("finder-results")
+            .flex()
+            .flex_col()
+            .max_h(px(400.0))
+            .overflow_y_scroll();
+
+        let max_display = 50.min(self.file_finder.results.len());
+        for i in 0..max_display {
+            let result = &self.file_finder.results[i];
+            let is_selected = i == self.file_finder.selected_index;
+            let bg = if is_selected { selection_bg } else { overlay_bg };
+
+            // Strip root prefix for display
+            let display_path = result.path.to_string_lossy().to_string();
+            let display_path = display_path
+                .strip_prefix(&root_prefix)
+                .unwrap_or(&display_path)
+                .trim_start_matches('/')
+                .to_string();
+
+            list = list.child(
+                div()
+                    .id(ElementId::NamedInteger("finder-item".into(), i as u64))
+                    .w_full()
+                    .px(px(12.0))
+                    .py(px(4.0))
+                    .bg(bg)
+                    .text_color(fg)
+                    .text_sm()
+                    .child(display_path),
+            );
+        }
+
+        let count_text = format!("{} files", self.file_finder.result_count());
+
+        div()
+            .absolute()
+            .top(px(60.0))
+            .left_0()
+            .right_0()
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .w(px(500.0))
+                    .bg(overlay_bg)
+                    .border_1()
+                    .border_color(border_color)
+                    .rounded(px(8.0))
+                    .shadow_lg()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .px(px(8.0))
+                            .py(px(6.0))
+                            .border_b_1()
+                            .border_color(border_color)
+                            .child(
+                                Input::new(&self.file_finder_input)
+                                    .appearance(false)
+                                    .w_full(),
+                            ),
+                    )
+                    .child(list)
+                    .child(
+                        div()
+                            .px(px(12.0))
+                            .py(px(4.0))
+                            .text_xs()
+                            .text_color(hint_fg)
+                            .child(count_text),
+                    ),
+            )
+    }
+
     fn render_command_palette(&self, cx: &mut Context<Self>) -> Div {
         let ghost = GhostTheme::default_dark();
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
@@ -1122,6 +1272,7 @@ impl Render for GhostAppView {
             focused_pane: self.active_ws().focused_pane,
         };
         let show_palette = self.show_palette;
+        let show_file_finder = self.show_file_finder;
 
         let root = div()
             .id("ghost-app")
@@ -1185,8 +1336,18 @@ impl Render for GhostAppView {
                 this.app.toggle_sidebar();
                 cx.notify();
             }))
-            .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::OpenFileFinder, _window, _cx| {
-                // TODO: wire up file finder overlay
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenFileFinder, window, cx| {
+                this.show_file_finder = !this.show_file_finder;
+                if this.show_file_finder {
+                    this.file_finder.open().ok();
+                    this.file_finder_input.update(cx, |state, cx| {
+                        state.set_value("", window, cx);
+                        state.focus(window, cx);
+                    });
+                } else {
+                    this.close_file_finder(window, cx);
+                }
+                cx.notify();
             }))
             .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::OpenContentSearch, _window, _cx| {
                 // TODO: wire up content search overlay
@@ -1206,17 +1367,25 @@ impl Render for GhostAppView {
                 cx.notify();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
-                if this.show_palette {
+                if this.show_file_finder {
+                    this.close_file_finder(window, cx);
+                } else if this.show_palette {
                     this.close_palette(window, cx);
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, _window, cx| {
-                if this.show_palette {
+                if this.show_file_finder {
+                    this.file_finder.select_prev();
+                    cx.notify();
+                } else if this.show_palette {
                     this.palette_move_up(cx);
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteDown, _window, cx| {
-                if this.show_palette {
+                if this.show_file_finder {
+                    this.file_finder.select_next();
+                    cx.notify();
+                } else if this.show_palette {
                     this.palette_move_down(cx);
                 }
             }))
@@ -1264,6 +1433,7 @@ impl Render for GhostAppView {
                                     .relative()
                                     .child(self.render_tab_bar(cx))
                                     .child(self.render_split_node(&split_root, &ws_clone, cx))
+                                    .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
                                     .when(show_palette, |d| d.child(self.render_command_palette(cx))),
                             ),
                     ),

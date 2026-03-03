@@ -10,7 +10,6 @@ mod file_tree;
 mod file_tree_view;
 mod keybindings;
 mod palette;
-#[cfg(test)]
 mod search;
 #[cfg(test)]
 mod splits;
@@ -52,6 +51,11 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     focus: true,
+                    titlebar: Some(TitlebarOptions {
+                        appears_transparent: true,
+                        traffic_light_position: Some(point(px(9.0), px(9.0))),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 },
                 |window, cx| {

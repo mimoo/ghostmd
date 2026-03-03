@@ -80,6 +80,7 @@ impl FileFinder {
 }
 
 /// State for the content search panel (Cmd+Shift+F grep-like search).
+#[allow(dead_code)]
 pub struct ContentSearchPanel {
     /// Whether the panel is currently visible.
     pub visible: bool,
@@ -93,6 +94,7 @@ pub struct ContentSearchPanel {
     searcher: ContentSearch,
 }
 
+#[allow(dead_code)]
 impl ContentSearchPanel {
     /// Creates a new content search panel for the given root.
     pub fn new(root: PathBuf) -> Self {
