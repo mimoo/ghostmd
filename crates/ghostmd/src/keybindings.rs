@@ -64,6 +64,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
     ]);
 }
 
+#[allow(dead_code)]
 /// All actions that can be triggered via keyboard shortcuts in GhostMD.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -108,6 +109,7 @@ pub enum Action {
     EmacsDeleteBackward,
 }
 
+#[allow(dead_code)]
 /// A keyboard modifier set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Modifiers {
@@ -150,6 +152,7 @@ impl Modifiers {
     }
 }
 
+#[allow(dead_code)]
 /// A key binding mapping a key + modifiers to an action.
 #[derive(Debug, Clone)]
 pub struct KeyBinding {
@@ -158,6 +161,7 @@ pub struct KeyBinding {
     pub action: Action,
 }
 
+#[allow(dead_code)]
 /// Returns the default set of key bindings for GhostMD.
 pub fn default_bindings() -> Vec<KeyBinding> {
     vec![

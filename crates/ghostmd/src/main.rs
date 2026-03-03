@@ -1,5 +1,3 @@
-#![allow(dead_code)] // State machine modules are tested but progressively wired to GPUI
-
 mod ai;
 mod app;
 mod app_view;

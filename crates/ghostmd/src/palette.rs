@@ -6,6 +6,7 @@ pub struct PaletteCommand {
     /// Optional keyboard shortcut hint (e.g. "Cmd+S").
     pub shortcut_hint: Option<String>,
     /// The action to dispatch when this command is selected.
+    #[allow(dead_code)]
     pub action: crate::keybindings::Action,
 }
 

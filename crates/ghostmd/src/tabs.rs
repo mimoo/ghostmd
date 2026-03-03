@@ -3,13 +3,16 @@ use std::path::PathBuf;
 
 /// Information about a tab that was recently closed, enabling restore.
 pub struct ClosedTab {
+    #[allow(dead_code)]
     pub path: PathBuf,
+    #[allow(dead_code)]
     pub cursor_position: usize,
 }
 
 /// Manages a bounded stack of recently-closed tabs for restore (Cmd-Shift-T).
 pub struct TabManager {
     closed_tabs: VecDeque<ClosedTab>,
+    #[allow(dead_code)]
     max_closed: usize,
 }
 
@@ -23,6 +26,7 @@ impl TabManager {
     }
 
     /// Records a closed tab. If the capacity is full, the oldest entry is evicted.
+    #[allow(dead_code)]
     pub fn push_closed(&mut self, tab: ClosedTab) {
         if self.closed_tabs.len() == self.max_closed {
             self.closed_tabs.pop_front();
@@ -31,16 +35,19 @@ impl TabManager {
     }
 
     /// Restores the most recently closed tab, or `None` if the stack is empty.
+    #[allow(dead_code)]
     pub fn pop_closed(&mut self) -> Option<ClosedTab> {
         self.closed_tabs.pop_back()
     }
 
     /// Returns the number of closed tabs currently stored.
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.closed_tabs.len()
     }
 
     /// Returns `true` if there are no closed tabs stored.
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.closed_tabs.is_empty()
     }

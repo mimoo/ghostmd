@@ -83,13 +83,22 @@ impl EditorView {
     }
 
     /// Get a display title from the file path.
+    #[allow(dead_code)]
     pub fn title(&self) -> String {
         Note::title_from_path(&self.path)
     }
 
     /// Get the text content.
+    #[allow(dead_code)]
     pub fn text(&self, cx: &App) -> String {
         self.input_state.read(cx).value().to_string()
+    }
+
+    /// Focus this editor's input for typing.
+    pub fn focus_input(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.input_state.update(cx, |state, cx| {
+            state.focus(window, cx);
+        });
     }
 }
 

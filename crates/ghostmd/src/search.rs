@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 
 use ghostmd_core::search::{ContentMatch, ContentSearch, FuzzySearch, SearchResult};

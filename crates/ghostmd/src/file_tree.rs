@@ -5,14 +5,17 @@ use ghostmd_core::tree::{FileTree, TreeNode};
 /// UI state for the sidebar file tree panel.
 pub struct FileTreePanel {
     /// Root directory of the vault being displayed.
+    #[allow(dead_code)]
     pub root: PathBuf,
     /// The underlying file tree data.
     pub tree: FileTree,
     /// Index into the flattened visible items for the current selection.
     pub selected_index: Option<usize>,
     /// Width of the sidebar panel in pixels.
+    #[allow(dead_code)]
     pub width: f32,
     /// Whether the panel is visible.
+    #[allow(dead_code)]
     pub visible: bool,
 }
 
@@ -42,11 +45,13 @@ impl FileTreePanel {
     }
 
     /// Get the flattened visible items (depth, node) pairs.
+    #[allow(dead_code)]
     pub fn visible_items(&self) -> Vec<(usize, &TreeNode)> {
         self.tree.flatten()
     }
 
     /// Move selection down. Wraps to the beginning at the end.
+    #[allow(dead_code)]
     pub fn select_next(&mut self) {
         let count = self.visible_items().len();
         if count == 0 {
@@ -59,6 +64,7 @@ impl FileTreePanel {
     }
 
     /// Move selection up. Wraps to the end at the beginning.
+    #[allow(dead_code)]
     pub fn select_prev(&mut self) {
         let count = self.visible_items().len();
         if count == 0 {
@@ -72,6 +78,7 @@ impl FileTreePanel {
     }
 
     /// Get the path of the currently selected item.
+    #[allow(dead_code)]
     pub fn selected_path(&self) -> Option<PathBuf> {
         let idx = self.selected_index?;
         let items = self.visible_items();
@@ -79,6 +86,7 @@ impl FileTreePanel {
     }
 
     /// Toggle expand/collapse if selected item is a directory. No-op for files.
+    #[allow(dead_code)]
     pub fn toggle_selected(&mut self) {
         if let Some(path) = self.selected_path() {
             self.tree.toggle_dir(&path);
@@ -93,6 +101,7 @@ impl FileTreePanel {
     }
 
     /// Select a specific path. If the path is not found in visible items, selection is unchanged.
+    #[allow(dead_code)]
     pub fn select_path(&mut self, path: &Path) {
         let items = self.visible_items();
         for (i, (_, node)) in items.iter().enumerate() {
@@ -104,6 +113,7 @@ impl FileTreePanel {
     }
 }
 
+#[allow(dead_code)]
 /// Helper to extract the path from a TreeNode.
 fn node_path(node: &TreeNode) -> &Path {
     match node {

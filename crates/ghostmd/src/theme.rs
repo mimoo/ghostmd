@@ -17,6 +17,8 @@ pub struct GhostTheme {
     pub accent: Rgb,
     pub error: Rgb,
     pub border: Rgb,
+    pub pane_title_bg: Rgb,
+    pub pane_title_fg: Rgb,
 }
 
 impl GhostTheme {
@@ -34,6 +36,8 @@ impl GhostTheme {
             accent: (0x9c, 0xce, 0xf8),      // #9ccef8
             error: (0xeb, 0x6f, 0x92),       // #eb6f92
             border: (0x2a, 0x2a, 0x4a),      // #2a2a4a
+            pane_title_bg: (0x22, 0x22, 0x3a), // #22223a — slightly lighter than bg
+            pane_title_fg: (0x6e, 0x6a, 0x86), // #6e6a86 — same as line_number
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::splits::SplitLayout;
 use crate::tabs::{ClosedTab, TabManager};
 
 /// Which overlay is currently displayed on top of the workspace.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Overlay {
     None,
@@ -17,14 +18,18 @@ pub struct GhostApp {
     /// Root directory of the note vault.
     pub root: PathBuf,
     /// Recently-closed tab stack for restore.
+    #[allow(dead_code)]
     pub tab_manager: TabManager,
     /// Split pane layout.
+    #[allow(dead_code)]
     pub splits: SplitLayout,
     /// Whether the sidebar file tree is visible.
     pub sidebar_visible: bool,
     /// Currently active overlay.
+    #[allow(dead_code)]
     pub overlay: Overlay,
     /// Index of the currently focused split pane.
+    #[allow(dead_code)]
     pub focused_split: usize,
     /// Paths of files currently open in tabs (across all splits).
     pub open_files: Vec<PathBuf>,
@@ -50,16 +55,19 @@ impl GhostApp {
     }
 
     /// Open an overlay (closes any current one first).
+    #[allow(dead_code)]
     pub fn open_overlay(&mut self, overlay: Overlay) {
         self.overlay = overlay;
     }
 
     /// Close the current overlay.
+    #[allow(dead_code)]
     pub fn close_overlay(&mut self) {
         self.overlay = Overlay::None;
     }
 
     /// Toggle a specific overlay (open if closed, close if open).
+    #[allow(dead_code)]
     pub fn toggle_overlay(&mut self, overlay: Overlay) {
         if self.overlay == overlay {
             self.overlay = Overlay::None;
@@ -78,6 +86,7 @@ impl GhostApp {
     }
 
     /// Close a file, push to TabManager for restore.
+    #[allow(dead_code)]
     pub fn close_file(&mut self, path: &Path, cursor_position: usize) {
         if let Some(pos) = self.open_files.iter().position(|p| p == path) {
             self.open_files.remove(pos);
@@ -89,6 +98,7 @@ impl GhostApp {
     }
 
     /// Restore most recently closed tab. Returns the path if restored.
+    #[allow(dead_code)]
     pub fn restore_tab(&mut self) -> Option<PathBuf> {
         let closed = self.tab_manager.pop_closed()?;
         self.open_files.push(closed.path.clone());
@@ -96,11 +106,13 @@ impl GhostApp {
     }
 
     /// Check if a file is currently open.
+    #[allow(dead_code)]
     pub fn is_file_open(&self, path: &Path) -> bool {
         self.open_files.iter().any(|p| p == path)
     }
 
     /// Navigate to the next split (wraps around).
+    #[allow(dead_code)]
     pub fn focus_next_split(&mut self) {
         let count = self.splits.pane_count();
         if count > 0 {
@@ -109,6 +121,7 @@ impl GhostApp {
     }
 
     /// Navigate to the previous split (wraps around).
+    #[allow(dead_code)]
     pub fn focus_prev_split(&mut self) {
         let count = self.splits.pane_count();
         if count > 0 {
