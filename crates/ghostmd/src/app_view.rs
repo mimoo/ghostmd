@@ -514,6 +514,11 @@ pub struct GhostAppView {
     active_theme: ThemeName,
     // Context menu (from file tree right-click)
     tree_context_menu: Option<(PathBuf, Point<Pixels>)>,
+    // Agentic search (cmd-shift-f)
+    show_agentic_search: bool,
+    agentic_input: Entity<InputState>,
+    agentic_results: Vec<String>,
+    agentic_loading: bool,
 }
 
 impl GhostAppView {
@@ -644,6 +649,20 @@ impl GhostAppView {
         })
         .detach();
 
+        // Agentic search input (cmd-shift-f)
+        let agentic_input = cx.new(|cx| InputState::new(window, cx).placeholder("Ask Claude about your notes..."));
+        cx.subscribe_in(&agentic_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
+            match event {
+                InputEvent::PressEnter { .. } => {
+                    if this.show_agentic_search && !this.agentic_loading {
+                        this.run_agentic_search(window, cx);
+                    }
+                }
+                _ => {}
+            }
+        })
+        .detach();
+
         // --- Load session if available ---
         let session_path = root.join(".ghostmd").join("session.json");
         let session: Option<SessionState> = std::fs::read_to_string(&session_path)
@@ -718,6 +737,10 @@ impl GhostAppView {
             search_match_count: 0,
             active_theme,
             tree_context_menu: None,
+            show_agentic_search: false,
+            agentic_input,
+            agentic_results: Vec::new(),
+            agentic_loading: false,
         };
 
         // If no session was loaded (or it was empty), create a default workspace
@@ -1218,6 +1241,81 @@ impl GhostAppView {
         cx.notify();
     }
 
+    fn open_agentic_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_agentic_search = true;
+        self.agentic_results.clear();
+        self.agentic_loading = false;
+        self.agentic_input.update(cx, |state, cx| {
+            state.set_value("", window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    fn close_agentic_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_agentic_search = false;
+        self.agentic_loading = false;
+        let focused = self.active_ws().focused_pane;
+        self.focus_pane_editor(focused, window, cx);
+        cx.notify();
+    }
+
+    fn run_agentic_search(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let query = self.agentic_input.read(cx).value().to_string().trim().to_string();
+        if query.is_empty() {
+            return;
+        }
+        self.agentic_loading = true;
+        self.agentic_results.clear();
+        cx.notify();
+
+        let root = self.app.root.clone();
+        cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            let output = cx.background_executor().spawn(async move {
+                let prompt = format!(
+                    "Search through the markdown notes in {} and answer: {}. \
+                     Be concise. List relevant file paths and quotes.",
+                    root.display(), query
+                );
+                std::process::Command::new("claude")
+                    .arg("-p")
+                    .arg(&prompt)
+                    .arg("--no-input")
+                    .current_dir(&root)
+                    .output()
+            }).await;
+
+            match output {
+                Ok(out) => {
+                    let text = String::from_utf8_lossy(&out.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                    let lines: Vec<String> = if text.trim().is_empty() {
+                        if stderr.trim().is_empty() {
+                            vec!["No results found.".to_string()]
+                        } else {
+                            vec![format!("Error: {}", stderr.trim())]
+                        }
+                    } else {
+                        text.lines().map(|l| l.to_string()).collect()
+                    };
+                    this.update(cx, |this, cx| {
+                        this.agentic_results = lines;
+                        this.agentic_loading = false;
+                        cx.notify();
+                    }).ok();
+                }
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.agentic_results = vec![format!("Failed to run claude: {}", e)];
+                        this.agentic_loading = false;
+                        cx.notify();
+                    }).ok();
+                }
+            }
+        })
+        .detach();
+    }
+
     /// Update match count based on current search query and focused editor.
     fn update_search_matches(&mut self, cx: &mut Context<Self>) {
         let query = self.search_input.read(cx).value().to_string().to_lowercase();
@@ -1676,6 +1774,94 @@ impl GhostAppView {
             )
     }
 
+    fn render_agentic_search(&self, _cx: &mut Context<Self>) -> Div {
+        let ghost = GhostTheme::from_name(self.active_theme);
+        let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
+        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
+        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+        let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
+
+        let mut results_div = div()
+            .id("agentic-results")
+            .flex()
+            .flex_col()
+            .max_h(px(400.0))
+            .overflow_y_scroll();
+
+        if self.agentic_loading {
+            results_div = results_div.child(
+                div()
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .text_sm()
+                    .text_color(accent)
+                    .child("Searching with Claude..."),
+            );
+        } else {
+            for (i, line) in self.agentic_results.iter().enumerate() {
+                results_div = results_div.child(
+                    div()
+                        .id(ElementId::NamedInteger("agentic-line".into(), i as u64))
+                        .w_full()
+                        .px(px(12.0))
+                        .py(px(2.0))
+                        .text_color(fg)
+                        .text_sm()
+                        .child(line.clone()),
+                );
+            }
+        }
+
+        let status = if self.agentic_loading {
+            "Running...".to_string()
+        } else if self.agentic_results.is_empty() {
+            "Press Enter to search".to_string()
+        } else {
+            format!("{} lines", self.agentic_results.len())
+        };
+
+        div()
+            .absolute()
+            .top(px(60.0))
+            .left_0()
+            .right_0()
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .w(px(600.0))
+                    .bg(overlay_bg)
+                    .border_1()
+                    .border_color(border_color)
+                    .rounded(px(8.0))
+                    .shadow_lg()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .px(px(8.0))
+                            .py(px(6.0))
+                            .border_b_1()
+                            .border_color(border_color)
+                            .child(
+                                Input::new(&self.agentic_input)
+                                    .appearance(false)
+                                    .w_full(),
+                            ),
+                    )
+                    .child(results_div)
+                    .child(
+                        div()
+                            .px(px(12.0))
+                            .py(px(4.0))
+                            .text_xs()
+                            .text_color(hint_fg)
+                            .child(status),
+                    ),
+            )
+    }
+
     fn render_command_palette(&self, cx: &mut Context<Self>) -> Div {
         let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
@@ -1812,6 +1998,7 @@ impl Render for GhostAppView {
         };
         let show_palette = self.show_palette;
         let show_file_finder = self.show_file_finder;
+        let show_agentic_search = self.show_agentic_search;
 
         // Context menu overlay data
         let ctx_menu = self.tree_context_menu.clone();
@@ -1901,8 +2088,12 @@ impl Render for GhostAppView {
                 }
                 cx.notify();
             }))
-            .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::OpenContentSearch, _window, _cx| {
-                // TODO: wire up content search overlay
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenContentSearch, window, cx| {
+                if this.show_agentic_search {
+                    this.close_agentic_search(window, cx);
+                } else {
+                    this.open_agentic_search(window, cx);
+                }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenCommandPalette, window, cx| {
                 this.show_palette = !this.show_palette;
@@ -1920,6 +2111,8 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
                 if this.show_search {
                     this.close_search(window, cx);
+                } else if this.show_agentic_search {
+                    this.close_agentic_search(window, cx);
                 } else if this.show_file_finder {
                     this.close_file_finder(window, cx);
                 } else if this.show_palette {
@@ -2026,6 +2219,7 @@ impl Render for GhostAppView {
                                             .child(self.render_tab_bar(cx))
                                             .child(self.render_split_node(&split_root, &ws_clone, cx))
                                             .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
+                                            .when(show_agentic_search, |d| d.child(self.render_agentic_search(cx)))
                                             .when(show_palette, |d| d.child(self.render_command_palette(cx))),
                                     ),
                             ),
