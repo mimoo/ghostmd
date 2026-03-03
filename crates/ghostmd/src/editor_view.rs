@@ -82,6 +82,11 @@ impl EditorView {
         }
     }
 
+    /// Get the current text content.
+    pub fn text(&self, cx: &App) -> String {
+        self.input_state.read(cx).value().to_string()
+    }
+
     /// Focus this editor's input for typing.
     pub fn focus_input(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.input_state.update(cx, |state, cx| {

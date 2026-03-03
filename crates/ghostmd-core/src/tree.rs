@@ -61,6 +61,12 @@ impl FileTree {
     pub fn file_count(&self) -> usize {
         count_files(&self.nodes)
     }
+
+    /// Collapse all directories except those on the path to `target`.
+    /// Ancestor directories are expanded; all others are collapsed.
+    pub fn reveal_path(&mut self, target: &Path) {
+        reveal_in_nodes(&mut self.nodes, target);
+    }
 }
 
 fn scan_dir(dir: &Path) -> Result<Vec<TreeNode>> {
@@ -166,6 +172,19 @@ fn flatten_nodes<'a>(nodes: &'a [TreeNode], depth: usize, result: &mut Vec<(usiz
         } = node
         {
             flatten_nodes(children, depth + 1, result);
+        }
+    }
+}
+
+fn reveal_in_nodes(nodes: &mut [TreeNode], target: &Path) {
+    for node in nodes.iter_mut() {
+        if let TreeNode::Directory { path, children, expanded, .. } = node {
+            if target.starts_with(path) {
+                *expanded = true;
+                reveal_in_nodes(children, target);
+            } else {
+                *expanded = false;
+            }
         }
     }
 }
@@ -364,6 +383,29 @@ mod tests {
 
         assert_eq!(tree.file_count(), 1);
         assert!(tree.find_node(&root.join("only.md")).is_some());
+    }
+
+    #[test]
+    fn reveal_path_expands_ancestors_collapses_others() {
+        let tmp = TempDir::new().unwrap();
+        create_test_structure(&tmp);
+
+        let mut tree = FileTree::new(tmp.path().to_path_buf());
+        tree.scan().unwrap();
+
+        let target = tmp.path().join("diary/2024/jan.md");
+        tree.reveal_path(&target);
+
+        // diary should be expanded (ancestor)
+        let diary = tree.find_node(&tmp.path().join("diary")).unwrap();
+        if let TreeNode::Directory { expanded, .. } = diary {
+            assert!(*expanded, "diary should be expanded");
+        }
+        // notes should be collapsed (not ancestor)
+        let notes = tree.find_node(&tmp.path().join("notes")).unwrap();
+        if let TreeNode::Directory { expanded, .. } = notes {
+            assert!(!*expanded, "notes should be collapsed");
+        }
     }
 
     #[test]

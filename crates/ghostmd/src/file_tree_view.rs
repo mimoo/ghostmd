@@ -5,7 +5,7 @@ use gpui_component::list::ListItem;
 use gpui_component::tree::{tree, TreeItem, TreeState};
 
 use crate::file_tree::FileTreePanel;
-use crate::theme::rgb_to_hsla;
+use crate::theme::{rgb_to_hsla, GhostTheme, ThemeName};
 use ghostmd_core::tree::TreeNode;
 
 /// Event emitted when a file is selected in the tree.
@@ -20,6 +20,10 @@ pub struct OpenInFinderRequested(pub PathBuf);
 /// Event emitted when "Move to Trash" is requested for a path.
 pub struct MoveToTrashRequested(pub PathBuf);
 
+/// Event emitted when a context menu should appear (right-click).
+/// Contains the path and the window-relative position.
+pub struct ContextMenuRequested(pub PathBuf, pub Point<Pixels>);
+
 /// GPUI view wrapping the FileTreePanel state machine with a gpui-component Tree.
 pub struct FileTreeView {
     panel: FileTreePanel,
@@ -29,14 +33,15 @@ pub struct FileTreeView {
     last_selected_id: Option<String>,
     /// Flat list of tree item IDs in display order (for path→index lookups).
     flat_ids: Vec<String>,
-    /// Context menu state: (path, position) when visible.
-    context_menu: Option<(PathBuf, Point<Pixels>)>,
+    /// Active theme name.
+    active_theme: ThemeName,
 }
 
 impl EventEmitter<FileSelected> for FileTreeView {}
 impl EventEmitter<FileRenameRequested> for FileTreeView {}
 impl EventEmitter<OpenInFinderRequested> for FileTreeView {}
 impl EventEmitter<MoveToTrashRequested> for FileTreeView {}
+impl EventEmitter<ContextMenuRequested> for FileTreeView {}
 
 impl FileTreeView {
     pub fn new(root: PathBuf, cx: &mut Context<Self>) -> Self {
@@ -70,7 +75,7 @@ impl FileTreeView {
             focus_handle,
             last_selected_id: None,
             flat_ids,
-            context_menu: None,
+            active_theme: ThemeName::default(),
         }
     }
 
@@ -94,6 +99,28 @@ impl FileTreeView {
                 state.set_selected_index(Some(idx), cx);
             });
         }
+    }
+
+    /// Reveal a file in the tree: collapse non-ancestors, expand ancestors, scroll to file.
+    pub fn reveal_file(&mut self, path: &Path, cx: &mut Context<Self>) {
+        self.panel.tree.reveal_path(path);
+        let items = tree_items_from_panel(&self.panel);
+        self.flat_ids = flatten_node_ids(&self.panel.tree.nodes);
+        self.tree_state.update(cx, |state, cx| {
+            state.set_items(items, cx);
+        });
+        let id = path.to_string_lossy().to_string();
+        self.last_selected_id = Some(id.clone());
+        if let Some(idx) = self.flat_ids.iter().position(|p| p == &id) {
+            self.tree_state.update(cx, |state, cx| {
+                state.set_selected_index(Some(idx), cx);
+            });
+        }
+    }
+
+    /// Set the active theme.
+    pub fn set_theme(&mut self, name: ThemeName) {
+        self.active_theme = name;
     }
 }
 
@@ -156,13 +183,11 @@ impl Focusable for FileTreeView {
 
 impl Render for FileTreeView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let ghost = crate::theme::GhostTheme::default_dark();
+        let ghost = GhostTheme::from_name(self.active_theme);
         let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
-        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
 
-        let mut root = div()
+        div()
             .size_full()
             .relative()
             .bg(sidebar_bg)
@@ -186,7 +211,6 @@ impl Render for FileTreeView {
                     .overflow_y_scroll()
                     .on_click(cx.listener(|this: &mut Self, event: &ClickEvent, _window, cx| {
                         if event.click_count() >= 2 {
-                            // Double-click: emit rename for the selected file
                             if let Some(id) = &this.last_selected_id {
                                 let path = PathBuf::from(id);
                                 if path.is_file() {
@@ -196,15 +220,23 @@ impl Render for FileTreeView {
                         }
                     }))
                     .on_mouse_down(MouseButton::Right, cx.listener(|this: &mut Self, event: &MouseDownEvent, _window, cx| {
-                        // Right-click: show context menu for the selected item
                         if let Some(id) = &this.last_selected_id {
                             let path = PathBuf::from(id);
-                            this.context_menu = Some((path, event.position));
-                            cx.notify();
+                            cx.emit(ContextMenuRequested(path, event.position));
                         }
                     }))
                     .child(
                         tree(&self.tree_state, |ix, entry, selected, _window, _cx| {
+                            let label = entry.item().label.clone();
+                            let is_folder = entry.is_folder();
+                            let is_expanded = entry.is_expanded();
+
+                            let prefix = if is_folder {
+                                if is_expanded { "\u{25be} " } else { "\u{25b8} " }
+                            } else {
+                                "  "
+                            };
+
                             ListItem::new(ix)
                                 .selected(selected)
                                 .child(
@@ -214,92 +246,11 @@ impl Render for FileTreeView {
                                         .overflow_hidden()
                                         .whitespace_nowrap()
                                         .text_ellipsis()
-                                        .child(entry.item().label.clone()),
+                                        .child(format!("{}{}", prefix, label)),
                                 )
                         })
                         .w_full(),
                     ),
-            );
-
-        // Context menu overlay
-        if let Some((ref path, position)) = self.context_menu {
-            let is_file = path.is_file();
-            let rename_path = path.clone();
-            let finder_path = path.clone();
-            let trash_path = path.clone();
-
-            let mut menu = div()
-                .absolute()
-                .top(position.y)
-                .left(position.x)
-                .bg(sidebar_bg)
-                .border_1()
-                .border_color(border_color)
-                .rounded(px(4.0))
-                .shadow_lg()
-                .min_w(px(160.0))
-                .flex()
-                .flex_col()
-                .on_mouse_down_out(cx.listener(|this: &mut Self, _event: &MouseDownEvent, _window, cx| {
-                    this.context_menu = None;
-                    cx.notify();
-                }));
-
-            // Only show Rename for files, not directories
-            if is_file {
-                menu = menu.child(
-                    div()
-                        .id("ctx-rename")
-                        .px(px(12.0))
-                        .py(px(6.0))
-                        .text_sm()
-                        .text_color(fg)
-                        .cursor_pointer()
-                        .hover(|s| s.bg(selection_bg))
-                        .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
-                            this.context_menu = None;
-                            cx.emit(FileRenameRequested(rename_path.clone()));
-                        }))
-                        .child("Rename"),
-                );
-            }
-
-            menu = menu.child(
-                div()
-                    .id("ctx-open-finder")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(selection_bg))
-                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
-                        this.context_menu = None;
-                        cx.emit(OpenInFinderRequested(finder_path.clone()));
-                    }))
-                    .child("Open in Finder"),
-            );
-
-            let error_fg = rgb_to_hsla(ghost.error.0, ghost.error.1, ghost.error.2);
-            menu = menu.child(
-                div()
-                    .id("ctx-move-to-trash")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(error_fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(selection_bg))
-                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
-                        this.context_menu = None;
-                        cx.emit(MoveToTrashRequested(trash_path.clone()));
-                    }))
-                    .child("Move to Trash"),
-            );
-
-            root = root.child(menu);
-        }
-
-        root
+            )
     }
 }

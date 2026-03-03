@@ -31,6 +31,16 @@ actions!(
         PaletteUp,
         PaletteDown,
         PaletteConfirm,
+        FindInFile,
+        SwitchTab1,
+        SwitchTab2,
+        SwitchTab3,
+        SwitchTab4,
+        SwitchTab5,
+        SwitchTab6,
+        SwitchTab7,
+        SwitchTab8,
+        SwitchTab9,
     ]
 );
 
@@ -61,6 +71,18 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         // Palette navigation (up/down only; Enter handled via InputEvent::PressEnter)
         GpuiKeyBinding::new("up", PaletteUp, None),
         GpuiKeyBinding::new("down", PaletteDown, None),
+        // Find in file
+        GpuiKeyBinding::new("cmd-f", FindInFile, None),
+        // Quick tab switching
+        GpuiKeyBinding::new("cmd-1", SwitchTab1, None),
+        GpuiKeyBinding::new("cmd-2", SwitchTab2, None),
+        GpuiKeyBinding::new("cmd-3", SwitchTab3, None),
+        GpuiKeyBinding::new("cmd-4", SwitchTab4, None),
+        GpuiKeyBinding::new("cmd-5", SwitchTab5, None),
+        GpuiKeyBinding::new("cmd-6", SwitchTab6, None),
+        GpuiKeyBinding::new("cmd-7", SwitchTab7, None),
+        GpuiKeyBinding::new("cmd-8", SwitchTab8, None),
+        GpuiKeyBinding::new("cmd-9", SwitchTab9, None),
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),

@@ -11,11 +11,11 @@ use serde::{Serialize, Deserialize};
 
 use crate::app::GhostApp;
 use crate::editor_view::EditorView;
-use crate::file_tree_view::{FileSelected, FileTreeView, FileRenameRequested, OpenInFinderRequested, MoveToTrashRequested};
+use crate::file_tree_view::{FileSelected, FileTreeView, FileRenameRequested, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
 use crate::palette::{CommandPalette, PaletteCommand};
 use crate::search::FileFinder;
-use crate::theme::{rgb_to_hsla, GhostTheme};
+use crate::theme::{rgb_to_hsla, GhostTheme, ThemeName};
 
 use ghostmd_core::diary;
 use ghostmd_core::note::Note;
@@ -59,6 +59,8 @@ struct SessionState {
     workspaces: Vec<SessionWorkspace>,
     active_workspace: usize,
     sidebar_visible: bool,
+    #[serde(default)]
+    theme: Option<ThemeName>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -504,6 +506,14 @@ pub struct GhostAppView {
     file_finder: FileFinder,
     file_finder_input: Entity<InputState>,
     focus_handle: FocusHandle,
+    // Search bar
+    show_search: bool,
+    search_input: Entity<InputState>,
+    search_match_count: usize,
+    // Theme
+    active_theme: ThemeName,
+    // Context menu (from file tree right-click)
+    tree_context_menu: Option<(PathBuf, Point<Pixels>)>,
 }
 
 impl GhostAppView {
@@ -537,6 +547,13 @@ impl GhostAppView {
         // Subscribe to move-to-trash requests from the tree
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &MoveToTrashRequested, window, cx| {
             this.move_to_trash(event.0.clone(), window, cx);
+        })
+        .detach();
+
+        // Subscribe to context menu requests from the tree
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ContextMenuRequested, _window, cx| {
+            this.tree_context_menu = Some((event.0.clone(), event.1));
+            cx.notify();
         })
         .detach();
 
@@ -608,6 +625,25 @@ impl GhostAppView {
         })
         .detach();
 
+        // Search bar input
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Find in file..."));
+        cx.subscribe_in(&search_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
+            match event {
+                InputEvent::Change => {
+                    if this.show_search {
+                        this.update_search_matches(cx);
+                    }
+                }
+                InputEvent::PressEnter { .. } => {
+                    if this.show_search {
+                        this.close_search(window, cx);
+                    }
+                }
+                _ => {}
+            }
+        })
+        .detach();
+
         // --- Load session if available ---
         let session_path = root.join(".ghostmd").join("session.json");
         let session: Option<SessionState> = std::fs::read_to_string(&session_path)
@@ -619,10 +655,14 @@ impl GhostAppView {
         let mut workspaces = Vec::new();
         let mut active_workspace = 0usize;
         let mut sidebar_visible = true;
+        let mut active_theme = ThemeName::default();
 
         if let Some(session) = session {
             sidebar_visible = session.sidebar_visible;
             active_workspace = session.active_workspace.min(session.workspaces.len().saturating_sub(1));
+            if let Some(theme) = session.theme {
+                active_theme = theme;
+            }
 
             for sws in &session.workspaces {
                 let ws_id = next_workspace_id;
@@ -648,6 +688,11 @@ impl GhostAppView {
             }
         }
 
+        // Apply saved theme to file tree
+        file_tree.update(cx, |tree, _cx| {
+            tree.set_theme(active_theme);
+        });
+
         let mut view = Self {
             app: {
                 let mut a = app;
@@ -668,6 +713,11 @@ impl GhostAppView {
             file_finder,
             file_finder_input,
             focus_handle,
+            show_search: false,
+            search_input,
+            search_match_count: 0,
+            active_theme,
+            tree_context_menu: None,
         };
 
         // If no session was loaded (or it was empty), create a default workspace
@@ -707,6 +757,11 @@ impl GhostAppView {
             PaletteCommand { label: "Rename File...".into(), shortcut_hint: None, action_id: "rename_file".into() },
             PaletteCommand { label: "Rename Tab...".into(), shortcut_hint: None, action_id: "rename_tab".into() },
             PaletteCommand { label: "Open in Finder".into(), shortcut_hint: None, action_id: "open_in_finder".into() },
+            PaletteCommand { label: "Theme: Rose Pine".into(), shortcut_hint: None, action_id: "theme_rose_pine".into() },
+            PaletteCommand { label: "Theme: Nord".into(), shortcut_hint: None, action_id: "theme_nord".into() },
+            PaletteCommand { label: "Theme: Solarized".into(), shortcut_hint: None, action_id: "theme_solarized".into() },
+            PaletteCommand { label: "Theme: Dracula".into(), shortcut_hint: None, action_id: "theme_dracula".into() },
+            PaletteCommand { label: "Theme: Light".into(), shortcut_hint: None, action_id: "theme_light".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
         ]
     }
@@ -720,7 +775,7 @@ impl GhostAppView {
     }
 
     /// Create a new empty workspace with one pane.
-    fn new_workspace(&mut self, _root: &std::path::Path, _window: &mut Window, cx: &mut Context<Self>) {
+    fn new_workspace(&mut self, _root: &std::path::Path, window: &mut Window, cx: &mut Context<Self>) {
         let ws_id = self.next_workspace_id;
         self.next_workspace_id += 1;
 
@@ -740,6 +795,7 @@ impl GhostAppView {
 
         self.workspaces.push(ws);
         self.active_workspace = self.workspaces.len() - 1;
+        self.focus_pane_editor(pane_id, window, cx);
         cx.notify();
     }
 
@@ -780,9 +836,9 @@ impl GhostAppView {
 
         let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
-        // Sync file tree selection
+        // Reveal file in tree (collapse non-ancestors, expand ancestors, scroll)
         self.file_tree.update(cx, |tree, cx| {
-            tree.select_file(&path, cx);
+            tree.reveal_file(&path, cx);
         });
         cx.notify();
     }
@@ -844,6 +900,8 @@ impl GhostAppView {
     }
 
     /// Focus the editor shown in the given pane.
+    /// Falls back to root focus handle when the pane has no editor,
+    /// so keybindings (cmd-n, cmd-w, etc.) still work in empty panes.
     fn focus_pane_editor(&self, pane_id: usize, window: &mut Window, cx: &mut Context<Self>) {
         let ws = self.active_ws();
         if let Some(pane) = ws.panes.get(&pane_id) {
@@ -851,8 +909,10 @@ impl GhostAppView {
                 editor.update(cx, |e, cx| {
                     e.focus_input(window, cx);
                 });
+                return;
             }
         }
+        window.focus(&self.focus_handle);
     }
 
     /// Sync the file tree selection to the currently focused pane's file.
@@ -1015,6 +1075,11 @@ impl GhostAppView {
                     }
                 }
             }
+            "theme_rose_pine" => self.switch_theme(ThemeName::RosePine, cx),
+            "theme_nord" => self.switch_theme(ThemeName::Nord, cx),
+            "theme_solarized" => self.switch_theme(ThemeName::Solarized, cx),
+            "theme_dracula" => self.switch_theme(ThemeName::Dracula, cx),
+            "theme_light" => self.switch_theme(ThemeName::Light, cx),
             "quit" => cx.quit(),
             _ => {}
         }
@@ -1106,7 +1171,7 @@ impl GhostAppView {
                                 });
                             }
                             self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
-                            self.file_tree.update(cx, |tree, cx| tree.select_file(&new_path, cx));
+                            self.file_tree.update(cx, |tree, cx| tree.reveal_file(&new_path, cx));
                         }
                     }
                 }
@@ -1130,6 +1195,87 @@ impl GhostAppView {
         self.palette.close();
         let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
+        cx.notify();
+    }
+
+    /// Open the search bar.
+    fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_search = true;
+        self.search_match_count = 0;
+        self.search_input.update(cx, |state, cx| {
+            state.set_value("", window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Close the search bar and refocus the editor.
+    fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_search = false;
+        self.search_match_count = 0;
+        let focused = self.active_ws().focused_pane;
+        self.focus_pane_editor(focused, window, cx);
+        cx.notify();
+    }
+
+    /// Update match count based on current search query and focused editor.
+    fn update_search_matches(&mut self, cx: &mut Context<Self>) {
+        let query = self.search_input.read(cx).value().to_string().to_lowercase();
+        if query.is_empty() {
+            self.search_match_count = 0;
+            cx.notify();
+            return;
+        }
+        let editor = {
+            let ws = self.active_ws();
+            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+        };
+        if let Some(editor) = editor {
+            let text = editor.read(cx).text(cx).to_lowercase();
+            self.search_match_count = text.matches(&query).count();
+        } else {
+            self.search_match_count = 0;
+        }
+        cx.notify();
+    }
+
+    /// Switch to a named theme.
+    fn switch_theme(&mut self, name: ThemeName, cx: &mut Context<Self>) {
+        self.active_theme = name;
+        self.file_tree.update(cx, |tree, _cx| {
+            tree.set_theme(name);
+        });
+        crate::theme::apply_theme(name, cx);
+        cx.notify();
+    }
+
+    /// Close workspace at given index.
+    fn close_workspace(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if idx >= self.workspaces.len() {
+            return;
+        }
+        // Save editors in the workspace
+        let editors: Vec<Entity<EditorView>> = self.workspaces[idx].panes.values()
+            .filter_map(|p| p.editor.clone())
+            .collect();
+        for editor in editors {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
+        }
+        let removed = self.workspaces.remove(idx);
+        self.closed_workspaces.push(removed);
+
+        if self.workspaces.is_empty() {
+            let root = self.app.root.clone();
+            self.new_workspace(&root, window, cx);
+        } else if self.active_workspace >= self.workspaces.len() {
+            self.active_workspace = self.workspaces.len() - 1;
+        } else if idx < self.active_workspace {
+            self.active_workspace -= 1;
+        }
+
+        let focused = self.workspaces[self.active_workspace].focused_pane;
+        self.focus_pane_editor(focused, window, cx);
+        self.sync_file_tree_selection(cx);
         cx.notify();
     }
 
@@ -1180,6 +1326,7 @@ impl GhostAppView {
             }).collect(),
             active_workspace: self.active_workspace,
             sidebar_visible: self.app.sidebar_visible,
+            theme: Some(self.active_theme),
         };
 
         let dir = self.app.root.join(".ghostmd");
@@ -1191,10 +1338,11 @@ impl GhostAppView {
     }
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let ghost = GhostTheme::default_dark();
+        let ghost = GhostTheme::from_name(self.active_theme);
         let tab_bar_bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
         let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
+        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
 
         let mut tabs = div()
             .w_full()
@@ -1210,7 +1358,6 @@ impl GhostAppView {
         for (i, ws) in self.workspaces.iter().enumerate() {
             let is_active = i == self.active_workspace;
 
-            // Check if any pane in this workspace has a dirty editor
             let dirty = ws.panes.values().any(|p| {
                 p.editor.as_ref()
                     .map(|e| e.read(cx).dirty)
@@ -1231,10 +1378,16 @@ impl GhostAppView {
             let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
 
             let ws_idx = i;
+            let close_idx = i;
             let mut tab_div = div()
                 .id(ElementId::NamedInteger("ws-tab".into(), i as u64))
+                .group(SharedString::from(format!("tab-{}", i)))
                 .px(px(12.0))
                 .py(px(6.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
                 .text_sm()
                 .bg(tab_bg)
                 .text_color(fg)
@@ -1242,7 +1395,20 @@ impl GhostAppView {
                 .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                     this.switch_workspace(ws_idx, window, cx);
                 }))
-                .child(display);
+                .child(display)
+                .child(
+                    div()
+                        .id(ElementId::NamedInteger("ws-close".into(), i as u64))
+                        .text_xs()
+                        .text_color(hint_fg)
+                        .opacity(0.0)
+                        .group_hover(SharedString::from(format!("tab-{}", i)), |s| s.opacity(1.0))
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this: &mut Self, _event: &ClickEvent, window, cx| {
+                            this.close_workspace(close_idx, window, cx);
+                        }))
+                        .child("\u{00d7}"),
+                );
 
             if is_active {
                 tab_div = tab_div.border_b_2().border_color(accent);
@@ -1258,7 +1424,7 @@ impl GhostAppView {
                 .px(px(8.0))
                 .py(px(6.0))
                 .text_sm()
-                .text_color(rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2))
+                .text_color(hint_fg)
                 .cursor_pointer()
                 .on_click(cx.listener(|this: &mut Self, _event, window, cx| {
                     this.new_workspace_tab(window, cx);
@@ -1270,7 +1436,7 @@ impl GhostAppView {
     }
 
     fn render_split_node(&self, node: &SplitNode, ws: &Workspace, cx: &mut Context<Self>) -> AnyElement {
-        let ghost = GhostTheme::default_dark();
+        let ghost = GhostTheme::from_name(self.active_theme);
         let bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
@@ -1335,6 +1501,39 @@ impl GhostAppView {
 
                     pane_div = pane_div.child(title_bar);
 
+                    // Search bar (only on focused pane)
+                    if is_focused && self.show_search {
+                        let match_text = if self.search_match_count > 0 {
+                            format!("{} matches", self.search_match_count)
+                        } else {
+                            let query = self.search_input.read(cx).value().to_string();
+                            if query.is_empty() { String::new() } else { "No matches".to_string() }
+                        };
+                        let search_bar = div()
+                            .w_full()
+                            .h(px(32.0))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .px(px(8.0))
+                            .bg(pane_title_bg)
+                            .border_b_1()
+                            .border_color(border_color)
+                            .child(
+                                Input::new(&self.search_input)
+                                    .appearance(false)
+                                    .w(px(200.0)),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(hint_fg)
+                                    .child(match_text),
+                            );
+                        pane_div = pane_div.child(search_bar);
+                    }
+
                     if let Some(p) = pane {
                         if let Some(editor) = &p.editor {
                             pane_div = pane_div.child(editor.clone());
@@ -1378,7 +1577,7 @@ impl GhostAppView {
     }
 
     fn render_file_finder(&self, _cx: &mut Context<Self>) -> Div {
-        let ghost = GhostTheme::default_dark();
+        let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
@@ -1465,7 +1664,7 @@ impl GhostAppView {
     }
 
     fn render_command_palette(&self, cx: &mut Context<Self>) -> Div {
-        let ghost = GhostTheme::default_dark();
+        let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
@@ -1585,7 +1784,7 @@ impl Focusable for GhostAppView {
 
 impl Render for GhostAppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let ghost = GhostTheme::default_dark();
+        let ghost = GhostTheme::from_name(self.active_theme);
         let bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
         let sidebar_visible = self.app.sidebar_visible;
         let split_root = self.active_ws().split_root.clone();
@@ -1601,7 +1800,10 @@ impl Render for GhostAppView {
         let show_palette = self.show_palette;
         let show_file_finder = self.show_file_finder;
 
-        let root = div()
+        // Context menu overlay data
+        let ctx_menu = self.tree_context_menu.clone();
+
+        let mut root = div()
             .id("ghost-app")
             .size_full()
             .flex()
@@ -1631,7 +1833,6 @@ impl Render for GhostAppView {
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Quit, _window, cx| {
-                // Save all open editors before quitting
                 let editors: Vec<Entity<EditorView>> = this.workspaces.iter()
                     .flat_map(|ws| ws.panes.values())
                     .filter_map(|p| p.editor.clone())
@@ -1694,7 +1895,6 @@ impl Render for GhostAppView {
                 this.show_palette = !this.show_palette;
                 if this.show_palette {
                     this.palette.open();
-                    // Reset and focus the palette input
                     this.palette_input.update(cx, |state, cx| {
                         state.set_value("", window, cx);
                         state.focus(window, cx);
@@ -1705,10 +1905,15 @@ impl Render for GhostAppView {
                 cx.notify();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
-                if this.show_file_finder {
+                if this.show_search {
+                    this.close_search(window, cx);
+                } else if this.show_file_finder {
                     this.close_file_finder(window, cx);
                 } else if this.show_palette {
                     this.close_palette(window, cx);
+                } else if this.tree_context_menu.is_some() {
+                    this.tree_context_menu = None;
+                    cx.notify();
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, _window, cx| {
@@ -1732,6 +1937,24 @@ impl Render for GhostAppView {
                     this.palette_confirm(window, cx);
                 }
             }))
+            // Find in file
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FindInFile, window, cx| {
+                if this.show_search {
+                    this.close_search(window, cx);
+                } else {
+                    this.open_search(window, cx);
+                }
+            }))
+            // Quick tab switching (cmd-1 through cmd-9)
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab1, window, cx| { this.switch_workspace(0, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab2, window, cx| { this.switch_workspace(1, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab3, window, cx| { this.switch_workspace(2, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab4, window, cx| { this.switch_workspace(3, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab5, window, cx| { this.switch_workspace(4, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab6, window, cx| { this.switch_workspace(5, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab7, window, cx| { this.switch_workspace(6, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab8, window, cx| { this.switch_workspace(7, window, cx); }))
+            .on_action(cx.listener(|this, _: &keybindings::SwitchTab9, window, cx| { this.switch_workspace(8, window, cx); }))
             // Splits
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::SplitRight, window, cx| {
                 this.split(SplitDirection::Vertical, window, cx);
@@ -1750,6 +1973,13 @@ impl Render for GhostAppView {
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FocusPaneUp, window, cx| {
                 this.focus_pane_direction(0, -1, window, cx);
+            }))
+            // Dismiss context menu on click
+            .on_mouse_down(MouseButton::Left, cx.listener(|this: &mut Self, _event: &MouseDownEvent, _window, cx| {
+                if this.tree_context_menu.is_some() {
+                    this.tree_context_menu = None;
+                    cx.notify();
+                }
             }))
             // Layout: flex_col with titlebar spacer then main content
             .child(
@@ -1788,6 +2018,89 @@ impl Render for GhostAppView {
                             ),
                     ),
             );
+
+        // Context menu overlay (rendered at root level for correct z-order and positioning)
+        if let Some((ref path, position)) = ctx_menu {
+            let is_file = path.is_file();
+            let rename_path = path.clone();
+            let finder_path = path.clone();
+            let trash_path = path.clone();
+
+            let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
+            let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
+            let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+            let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
+            let error_fg = rgb_to_hsla(ghost.error.0, ghost.error.1, ghost.error.2);
+
+            let mut menu = div()
+                .absolute()
+                .top(position.y)
+                .left(position.x)
+                .bg(sidebar_bg)
+                .border_1()
+                .border_color(border_color)
+                .rounded(px(4.0))
+                .shadow_lg()
+                .min_w(px(160.0))
+                .flex()
+                .flex_col();
+
+            if is_file {
+                menu = menu.child(
+                    div()
+                        .id("ctx-rename")
+                        .px(px(12.0))
+                        .py(px(6.0))
+                        .text_sm()
+                        .text_color(fg)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(selection_bg))
+                        .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                            this.tree_context_menu = None;
+                            this.open_file(rename_path.clone(), window, cx);
+                            this.enter_rename_mode(RenameMode::File, window, cx);
+                        }))
+                        .child("Rename"),
+                );
+            }
+
+            menu = menu.child(
+                div()
+                    .id("ctx-open-finder")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(selection_bg))
+                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                        this.tree_context_menu = None;
+                        if let Some(parent) = finder_path.parent() {
+                            std::process::Command::new("open").arg(parent).spawn().ok();
+                        }
+                        cx.notify();
+                    }))
+                    .child("Open in Finder"),
+            );
+
+            menu = menu.child(
+                div()
+                    .id("ctx-move-to-trash")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(error_fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(selection_bg))
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.tree_context_menu = None;
+                        this.move_to_trash(trash_path.clone(), window, cx);
+                    }))
+                    .child("Move to Trash"),
+            );
+
+            root = root.child(menu);
+        }
 
         root
     }
