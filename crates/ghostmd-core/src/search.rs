@@ -37,7 +37,7 @@ impl FuzzySearch {
         let walker = ignore::WalkBuilder::new(&self.root).build();
         for entry in walker {
             let entry = entry?;
-            if entry.file_type().map_or(false, |ft| ft.is_file()) {
+            if entry.file_type().is_some_and(|ft| ft.is_file()) {
                 self.file_cache.push(entry.into_path());
             }
         }
@@ -112,7 +112,7 @@ impl ContentSearch {
         let walker = ignore::WalkBuilder::new(&self.root).build();
         for entry in walker {
             let entry = entry?;
-            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
                 continue;
             }
             let path = entry.path().to_path_buf();
@@ -175,7 +175,7 @@ mod tests {
         search.refresh_cache().unwrap();
 
         let results = search.search_files("abc");
-        assert!(results.len() >= 1);
+        assert!(!results.is_empty());
         // First result should be the exact match
         assert!(results[0].path.to_string_lossy().contains("abc"));
     }
@@ -247,7 +247,7 @@ mod tests {
         let mut search = FuzzySearch::new(tmp.path().to_path_buf());
         search.refresh_cache().unwrap();
 
-        let results = search.search_files("zzzzzzzzzz");
+        let _results = search.search_files("zzzzzzzzzz");
         // Fuzzy match may or may not return results; at minimum the scores should be low
         // The key behavior is that it doesn't panic
     }

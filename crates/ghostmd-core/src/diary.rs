@@ -137,8 +137,6 @@ mod tests {
     fn new_diary_path_format() {
         let root = Path::new("/notes");
         let path = new_diary_path(root, "Meeting Notes");
-        let path_str = path.to_string_lossy();
-
         // Should be under today's diary directory
         let today = Local::now().date_naive();
         let expected_dir = diary_dir(root, today);

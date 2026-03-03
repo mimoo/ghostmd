@@ -43,6 +43,12 @@ pub struct UndoBuffer {
     history: History<TextEdit>,
 }
 
+impl Default for UndoBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UndoBuffer {
     /// Creates a new empty buffer.
     pub fn new() -> Self {
@@ -53,6 +59,7 @@ impl UndoBuffer {
     }
 
     /// Creates a buffer pre-filled with the given text.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         Self {
             rope: Rope::from_str(s),
