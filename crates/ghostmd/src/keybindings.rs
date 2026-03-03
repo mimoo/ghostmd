@@ -10,6 +10,7 @@ actions!(
     [
         NewNote,
         NewTab,
+        NewWindow,
         Save,
         Quit,
         CloseTab,
@@ -26,6 +27,7 @@ actions!(
         FocusPaneRight,
         FocusPaneUp,
         FocusPaneDown,
+        Escape,
     ]
 );
 
@@ -33,7 +35,8 @@ actions!(
 pub fn register_keybindings(cx: &mut gpui::App) {
     cx.bind_keys([
         GpuiKeyBinding::new("cmd-n", NewNote, None),
-        GpuiKeyBinding::new("cmd-shift-n", NewTab, None),
+        GpuiKeyBinding::new("cmd-t", NewTab, None),
+        GpuiKeyBinding::new("cmd-shift-n", NewWindow, None),
         GpuiKeyBinding::new("cmd-s", Save, None),
         GpuiKeyBinding::new("cmd-q", Quit, None),
         GpuiKeyBinding::new("cmd-w", CloseTab, None),
@@ -44,6 +47,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("cmd-shift-f", OpenContentSearch, None),
         GpuiKeyBinding::new("cmd-shift-p", OpenCommandPalette, None),
         GpuiKeyBinding::new("cmd-b", ToggleSidebar, None),
+        GpuiKeyBinding::new("escape", Escape, None),
         // Splits
         GpuiKeyBinding::new("cmd-d", SplitRight, None),
         GpuiKeyBinding::new("cmd-shift-d", SplitDown, None),
@@ -64,7 +68,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
     ]);
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 /// All actions that can be triggered via keyboard shortcuts in GhostMD.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -79,15 +83,10 @@ pub enum Action {
     RestoreTab,
     NextTab,
     PrevTab,
-    JumpToTab(u8), // 1-9
 
     // Splits
     SplitRight,
     SplitDown,
-    FocusSplitLeft,
-    FocusSplitRight,
-    FocusSplitUp,
-    FocusSplitDown,
 
     // Panels / search
     OpenFileFinder,
@@ -109,7 +108,7 @@ pub enum Action {
     EmacsDeleteBackward,
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 /// A keyboard modifier set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Modifiers {
@@ -119,6 +118,7 @@ pub struct Modifiers {
     pub alt: bool,
 }
 
+#[cfg(test)]
 impl Modifiers {
     pub fn none() -> Self {
         Modifiers {
@@ -152,7 +152,7 @@ impl Modifiers {
     }
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 /// A key binding mapping a key + modifiers to an action.
 #[derive(Debug, Clone)]
 pub struct KeyBinding {
@@ -161,7 +161,7 @@ pub struct KeyBinding {
     pub action: Action,
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 /// Returns the default set of key bindings for GhostMD.
 pub fn default_bindings() -> Vec<KeyBinding> {
     vec![
@@ -317,5 +317,20 @@ mod tests {
         assert!(actions.contains(&&Action::OpenCommandPalette));
         assert!(actions.contains(&&Action::SplitRight));
         assert!(actions.contains(&&Action::SplitDown));
+    }
+
+    #[test]
+    fn bindings_have_valid_keys_and_modifiers() {
+        let bindings = default_bindings();
+        for binding in &bindings {
+            assert!(!binding.key.is_empty(), "Key should not be empty for {:?}", binding.action);
+            // At least one modifier should be set (all bindings use cmd or ctrl)
+            let mods = &binding.modifiers;
+            assert!(
+                mods.cmd || mods.ctrl || mods.shift || mods.alt,
+                "At least one modifier expected for {:?}",
+                binding.action
+            );
+        }
     }
 }

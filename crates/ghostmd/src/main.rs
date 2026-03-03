@@ -1,15 +1,20 @@
+#[cfg(test)]
 mod ai;
 mod app;
 mod app_view;
 mod assets;
+#[cfg(test)]
 mod editor;
 mod editor_view;
 mod file_tree;
 mod file_tree_view;
 mod keybindings;
 mod palette;
+#[cfg(test)]
 mod search;
+#[cfg(test)]
 mod splits;
+#[cfg(test)]
 mod tabs;
 mod theme;
 

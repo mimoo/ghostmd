@@ -1,33 +1,21 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use ghostmd_core::tree::{FileTree, TreeNode};
+use ghostmd_core::tree::FileTree;
 
 /// UI state for the sidebar file tree panel.
 pub struct FileTreePanel {
-    /// Root directory of the vault being displayed.
-    #[allow(dead_code)]
-    pub root: PathBuf,
     /// The underlying file tree data.
     pub tree: FileTree,
     /// Index into the flattened visible items for the current selection.
     pub selected_index: Option<usize>,
-    /// Width of the sidebar panel in pixels.
-    #[allow(dead_code)]
-    pub width: f32,
-    /// Whether the panel is visible.
-    #[allow(dead_code)]
-    pub visible: bool,
 }
 
 impl FileTreePanel {
     /// Creates a new file tree panel for the given root.
     pub fn new(root: PathBuf) -> Self {
         FileTreePanel {
-            tree: FileTree::new(root.clone()),
-            root,
+            tree: FileTree::new(root),
             selected_index: None,
-            width: 240.0,
-            visible: true,
         }
     }
 
@@ -43,15 +31,30 @@ impl FileTreePanel {
         }
         Ok(())
     }
+}
 
+#[cfg(test)]
+use ghostmd_core::tree::TreeNode;
+#[cfg(test)]
+use std::path::Path;
+
+#[cfg(test)]
+/// Helper to extract the path from a TreeNode.
+fn node_path(node: &TreeNode) -> &Path {
+    match node {
+        TreeNode::Directory { path, .. } => path,
+        TreeNode::File { path, .. } => path,
+    }
+}
+
+#[cfg(test)]
+impl FileTreePanel {
     /// Get the flattened visible items (depth, node) pairs.
-    #[allow(dead_code)]
     pub fn visible_items(&self) -> Vec<(usize, &TreeNode)> {
         self.tree.flatten()
     }
 
     /// Move selection down. Wraps to the beginning at the end.
-    #[allow(dead_code)]
     pub fn select_next(&mut self) {
         let count = self.visible_items().len();
         if count == 0 {
@@ -64,7 +67,6 @@ impl FileTreePanel {
     }
 
     /// Move selection up. Wraps to the end at the beginning.
-    #[allow(dead_code)]
     pub fn select_prev(&mut self) {
         let count = self.visible_items().len();
         if count == 0 {
@@ -78,7 +80,6 @@ impl FileTreePanel {
     }
 
     /// Get the path of the currently selected item.
-    #[allow(dead_code)]
     pub fn selected_path(&self) -> Option<PathBuf> {
         let idx = self.selected_index?;
         let items = self.visible_items();
@@ -86,7 +87,6 @@ impl FileTreePanel {
     }
 
     /// Toggle expand/collapse if selected item is a directory. No-op for files.
-    #[allow(dead_code)]
     pub fn toggle_selected(&mut self) {
         if let Some(path) = self.selected_path() {
             self.tree.toggle_dir(&path);
@@ -101,7 +101,6 @@ impl FileTreePanel {
     }
 
     /// Select a specific path. If the path is not found in visible items, selection is unchanged.
-    #[allow(dead_code)]
     pub fn select_path(&mut self, path: &Path) {
         let items = self.visible_items();
         for (i, (_, node)) in items.iter().enumerate() {
@@ -110,15 +109,6 @@ impl FileTreePanel {
                 return;
             }
         }
-    }
-}
-
-#[allow(dead_code)]
-/// Helper to extract the path from a TreeNode.
-fn node_path(node: &TreeNode) -> &Path {
-    match node {
-        TreeNode::Directory { path, .. } => path,
-        TreeNode::File { path, .. } => path,
     }
 }
 
@@ -147,8 +137,6 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let panel = FileTreePanel::new(tmp.path().to_path_buf());
         assert!(panel.selected_index.is_none());
-        assert!((panel.width - 240.0).abs() < f32::EPSILON);
-        assert!(panel.visible);
     }
 
     #[test]
@@ -156,7 +144,6 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         setup_basic_tree(&tmp);
         let panel = make_panel(&tmp);
-        // "notes" dir, "alpha.md", "beta.md" (inside notes, expanded), "readme.md"
         assert!(!panel.visible_items().is_empty());
         assert!(panel.tree.file_count() > 0);
     }
@@ -189,11 +176,10 @@ mod tests {
         setup_basic_tree(&tmp);
         let mut panel = make_panel(&tmp);
         let count = panel.visible_items().len();
-        // First call goes None -> 0, then count more calls to wrap back to 0
         for _ in 0..=count {
             panel.select_next();
         }
-        assert_eq!(panel.selected_index, Some(0)); // wrapped
+        assert_eq!(panel.selected_index, Some(0));
     }
 
     #[test]
@@ -222,9 +208,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         setup_basic_tree(&tmp);
         let mut panel = make_panel(&tmp);
-        panel.select_next(); // select first item
+        panel.select_next();
         let path = panel.selected_path().unwrap();
-        // First item should be the "notes" directory (dirs sorted before files)
         assert_eq!(path, tmp.path().join("notes"));
     }
 
@@ -235,15 +220,12 @@ mod tests {
         let mut panel = make_panel(&tmp);
 
         let before_count = panel.visible_items().len();
-        // Select the "notes" directory (first item)
         panel.select_next();
         assert_eq!(panel.selected_path().unwrap(), tmp.path().join("notes"));
 
-        // Toggle it (collapse)
         panel.toggle_selected();
 
         let after_count = panel.visible_items().len();
-        // After collapsing, "notes" children should be hidden
         assert!(after_count < before_count);
     }
 
@@ -254,10 +236,8 @@ mod tests {
         let mut panel = make_panel(&tmp);
 
         let before_count = panel.visible_items().len();
-        // Navigate to a file: "notes" (dir), "alpha.md" (file at index 1)
         panel.selected_index = Some(1);
         let path = panel.selected_path().unwrap();
-        // It should be a file inside the notes directory
         assert!(path.extension().is_some());
 
         panel.toggle_selected();
@@ -286,14 +266,13 @@ mod tests {
         panel.selected_index = Some(0);
 
         panel.select_path(Path::new("/nonexistent/path.md"));
-        assert_eq!(panel.selected_index, Some(0)); // unchanged
+        assert_eq!(panel.selected_index, Some(0));
     }
 
     #[test]
     fn select_next_on_empty_tree_is_noop() {
         let tmp = TempDir::new().unwrap();
         let mut panel = make_panel(&tmp);
-        assert!(panel.visible_items().is_empty());
         panel.select_next();
         assert!(panel.selected_index.is_none());
     }
@@ -302,7 +281,6 @@ mod tests {
     fn select_prev_on_empty_tree_is_noop() {
         let tmp = TempDir::new().unwrap();
         let mut panel = make_panel(&tmp);
-        assert!(panel.visible_items().is_empty());
         panel.select_prev();
         assert!(panel.selected_index.is_none());
     }

@@ -1,13 +1,4 @@
-#![allow(dead_code)]
-
 use std::path::PathBuf;
-
-/// Orientation of a split.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SplitDirection {
-    Horizontal,
-    Vertical,
-}
 
 /// A pane in the split layout, holding the path of its active editor.
 #[derive(Debug, Clone)]

@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
+use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::Root;
 
 use crate::app::GhostApp;
 use crate::editor_view::EditorView;
@@ -127,6 +129,7 @@ pub struct GhostAppView {
     next_pane_id: usize,
     show_palette: bool,
     palette: CommandPalette,
+    palette_input: Entity<InputState>,
     focus_handle: FocusHandle,
 }
 
@@ -146,6 +149,19 @@ impl GhostAppView {
 
         let palette = CommandPalette::new(Self::palette_commands());
 
+        let palette_input = cx.new(|cx| InputState::new(window, cx).placeholder("Type a command..."));
+
+        // Subscribe to palette input changes
+        cx.subscribe(&palette_input, |this: &mut Self, entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>| {
+            if matches!(event, InputEvent::Change) {
+                let value = entity.read(cx).value().to_string();
+                this.palette.query = value;
+                this.palette.selected_index = 0;
+                cx.notify();
+            }
+        })
+        .detach();
+
         let mut view = Self {
             app,
             file_tree,
@@ -157,6 +173,7 @@ impl GhostAppView {
             next_pane_id: 0,
             show_palette: false,
             palette,
+            palette_input,
             focus_handle,
         };
 
@@ -181,17 +198,17 @@ impl GhostAppView {
     }
 
     fn palette_commands() -> Vec<PaletteCommand> {
-        use crate::keybindings::Action;
         vec![
-            PaletteCommand { label: "New Note".into(), shortcut_hint: Some("Cmd+N".into()), action: Action::NewNote },
-            PaletteCommand { label: "New Workspace".into(), shortcut_hint: Some("Cmd+Shift+N".into()), action: Action::NewTab },
-            PaletteCommand { label: "Save".into(), shortcut_hint: Some("Cmd+S".into()), action: Action::Save },
-            PaletteCommand { label: "Close Pane".into(), shortcut_hint: Some("Cmd+W".into()), action: Action::CloseTab },
-            PaletteCommand { label: "Restore Workspace".into(), shortcut_hint: Some("Cmd+Shift+T".into()), action: Action::RestoreTab },
-            PaletteCommand { label: "Split Right".into(), shortcut_hint: Some("Cmd+D".into()), action: Action::SplitRight },
-            PaletteCommand { label: "Split Down".into(), shortcut_hint: Some("Cmd+Shift+D".into()), action: Action::SplitDown },
-            PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some("Cmd+B".into()), action: Action::OpenFileFinder },
-            PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action: Action::Quit },
+            PaletteCommand { label: "New Note".into(), shortcut_hint: Some("Cmd+N".into()), action_id: "new_note".into() },
+            PaletteCommand { label: "New Workspace".into(), shortcut_hint: Some("Cmd+T".into()), action_id: "new_workspace".into() },
+            PaletteCommand { label: "New Window".into(), shortcut_hint: Some("Cmd+Shift+N".into()), action_id: "new_window".into() },
+            PaletteCommand { label: "Save".into(), shortcut_hint: Some("Cmd+S".into()), action_id: "save".into() },
+            PaletteCommand { label: "Close Pane".into(), shortcut_hint: Some("Cmd+W".into()), action_id: "close_pane".into() },
+            PaletteCommand { label: "Restore Workspace".into(), shortcut_hint: Some("Cmd+Shift+T".into()), action_id: "restore_workspace".into() },
+            PaletteCommand { label: "Split Right".into(), shortcut_hint: Some("Cmd+D".into()), action_id: "split_right".into() },
+            PaletteCommand { label: "Split Down".into(), shortcut_hint: Some("Cmd+Shift+D".into()), action_id: "split_down".into() },
+            PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some("Cmd+B".into()), action_id: "toggle_sidebar".into() },
+            PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
         ]
     }
 
@@ -254,6 +271,10 @@ impl GhostAppView {
         }
         let focused = ws.focused_pane;
         self.focus_pane_editor(focused, window, cx);
+        // Sync file tree selection
+        self.file_tree.update(cx, |tree, cx| {
+            tree.select_file(&path, cx);
+        });
         self.request_workspace_title(self.active_workspace, cx);
         cx.notify();
     }
@@ -269,10 +290,32 @@ impl GhostAppView {
         self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
     }
 
-    /// Create a new workspace with a diary note (cmd-shift-n).
+    /// Create a new workspace with a diary note (cmd-t).
     fn new_workspace_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let root = self.app.root.clone();
         self.new_workspace(&root, window, cx);
+    }
+
+    /// Open a new OS window (cmd-shift-n).
+    fn new_window(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let root = self.app.root.clone();
+        cx.spawn(async move |_this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            cx.update(|cx: &mut App| {
+                let bounds = Bounds::centered(None, size(px(1200.), px(800.)), cx);
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        focus: true,
+                        ..Default::default()
+                    },
+                    |window, cx| {
+                        let app_view = cx.new(|cx| GhostAppView::new(root, window, cx));
+                        cx.new(|cx| Root::new(app_view, window, cx))
+                    },
+                ).ok();
+            }).ok();
+        })
+        .detach();
     }
 
     /// Switch to workspace at index.
@@ -281,6 +324,8 @@ impl GhostAppView {
             self.active_workspace = idx;
             let focused = self.workspaces[idx].focused_pane;
             self.focus_pane_editor(focused, window, cx);
+            // Sync file tree selection for the new workspace's focused file
+            self.sync_file_tree_selection(cx);
             cx.notify();
         }
     }
@@ -296,6 +341,15 @@ impl GhostAppView {
                     });
                 }
             }
+        }
+    }
+
+    /// Sync the file tree selection to the currently focused pane's file.
+    fn sync_file_tree_selection(&self, cx: &mut Context<Self>) {
+        if let Some(path) = self.focused_active_path() {
+            self.file_tree.update(cx, |tree, cx| {
+                tree.select_file(&path, cx);
+            });
         }
     }
 
@@ -328,6 +382,7 @@ impl GhostAppView {
             ws.focused_pane = leaves[new_pos];
             let focused = ws.focused_pane;
             self.focus_pane_editor(focused, window, cx);
+            self.sync_file_tree_selection(cx);
             cx.notify();
         }
     }
@@ -368,6 +423,7 @@ impl GhostAppView {
             let focused = self.workspaces[self.active_workspace].focused_pane;
             self.focus_pane_editor(focused, window, cx);
             self.cleanup_unused_editors(cx);
+            self.sync_file_tree_selection(cx);
             cx.notify();
             return;
         }
@@ -387,6 +443,7 @@ impl GhostAppView {
         self.focus_pane_editor(focused, window, cx);
         self.request_workspace_title(self.active_workspace, cx);
         self.cleanup_unused_editors(cx);
+        self.sync_file_tree_selection(cx);
         cx.notify();
     }
 
@@ -453,20 +510,23 @@ impl GhostAppView {
         // Use first file's title as immediate fallback
         let fallback_title = titles[0].clone();
 
+        // Run the blocking claude CLI command on a background thread
+        let bg_executor = cx.background_executor().clone();
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
-            // Try running claude CLI
-            let result = std::process::Command::new("claude")
-                .arg("-p")
-                .arg(&prompt)
-                .output();
+            let title = bg_executor.spawn(async move {
+                let result = std::process::Command::new("claude")
+                    .arg("-p")
+                    .arg(&prompt)
+                    .output();
 
-            let title = match result {
-                Ok(output) if output.status.success() => {
-                    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if raw.is_empty() { fallback_title } else { raw }
+                match result {
+                    Ok(output) if output.status.success() => {
+                        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        if raw.is_empty() { fallback_title } else { raw }
+                    }
+                    _ => fallback_title,
                 }
-                _ => fallback_title,
-            };
+            }).await;
 
             this.update(cx, |this: &mut GhostAppView, cx: &mut Context<GhostAppView>| {
                 if let Some(ws) = this.workspaces.iter_mut().find(|w| w.id == ws_id) {
@@ -494,6 +554,47 @@ impl GhostAppView {
         let ws = self.active_ws();
         ws.panes.get(&ws.focused_pane)
             .and_then(|p| p.active_path.clone())
+    }
+
+    /// Dispatch a palette command by action_id.
+    fn dispatch_palette_action(&mut self, action_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        match action_id {
+            "new_note" => self.new_note_in_pane(window, cx),
+            "new_workspace" => self.new_workspace_tab(window, cx),
+            "new_window" => self.new_window(window, cx),
+            "save" => {
+                if let Some(path) = self.focused_active_path() {
+                    if let Some(editor) = self.editors.get(&path) {
+                        editor.update(cx, |e, cx| { e.save(cx).ok(); });
+                        cx.notify();
+                    }
+                }
+            }
+            "close_pane" => self.close_pane(window, cx),
+            "restore_workspace" => {
+                if let Some(ws) = self.closed_workspaces.pop() {
+                    self.workspaces.push(ws);
+                    self.active_workspace = self.workspaces.len() - 1;
+                    let focused = self.workspaces[self.active_workspace].focused_pane;
+                    self.focus_pane_editor(focused, window, cx);
+                    cx.notify();
+                }
+            }
+            "split_right" => self.split(SplitDirection::Vertical, window, cx),
+            "split_down" => self.split(SplitDirection::Horizontal, window, cx),
+            "toggle_sidebar" => { self.app.toggle_sidebar(); cx.notify(); }
+            "quit" => cx.quit(),
+            _ => {}
+        }
+    }
+
+    /// Close the command palette and refocus the editor.
+    fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_palette = false;
+        self.palette.close();
+        let focused = self.active_ws().focused_pane;
+        self.focus_pane_editor(focused, window, cx);
+        cx.notify();
     }
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -650,7 +751,7 @@ impl GhostAppView {
         }
     }
 
-    fn render_command_palette(&self, _cx: &mut Context<Self>) -> Div {
+    fn render_command_palette(&self, cx: &mut Context<Self>) -> Div {
         let ghost = GhostTheme::default_dark();
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
@@ -669,8 +770,10 @@ impl GhostAppView {
         for (i, cmd) in filtered.iter().enumerate() {
             let is_selected = i == self.palette.selected_index;
             let bg = if is_selected { selection_bg } else { overlay_bg };
+            let action_id = cmd.action_id.clone();
 
             let mut row = div()
+                .id(ElementId::NamedInteger("palette-item".into(), i as u64))
                 .w_full()
                 .px(px(12.0))
                 .py(px(6.0))
@@ -680,6 +783,15 @@ impl GhostAppView {
                 .bg(bg)
                 .text_color(fg)
                 .text_sm()
+                .cursor_pointer()
+                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                    this.show_palette = false;
+                    this.palette.close();
+                    this.dispatch_palette_action(&action_id, window, cx);
+                    let focused = this.active_ws().focused_pane;
+                    this.focus_pane_editor(focused, window, cx);
+                    cx.notify();
+                }))
                 .child(cmd.label.clone());
 
             if let Some(hint) = &cmd.shortcut_hint {
@@ -714,13 +826,15 @@ impl GhostAppView {
                     .flex_col()
                     .child(
                         div()
-                            .px(px(12.0))
-                            .py(px(8.0))
+                            .px(px(8.0))
+                            .py(px(6.0))
                             .border_b_1()
                             .border_color(border_color)
-                            .text_color(hint_fg)
-                            .text_sm()
-                            .child("Command Palette"),
+                            .child(
+                                Input::new(&self.palette_input)
+                                    .appearance(false)
+                                    .w_full(),
+                            ),
                     )
                     .child(list),
             )
@@ -764,6 +878,9 @@ impl Render for GhostAppView {
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NewTab, window, cx| {
                 this.new_workspace_tab(window, cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NewWindow, window, cx| {
+                this.new_window(window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Save, _window, cx| {
                 if let Some(path) = this.focused_active_path() {
@@ -816,14 +933,24 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|_this: &mut Self, _action: &keybindings::OpenContentSearch, _window, _cx| {
                 // TODO: wire up content search overlay
             }))
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenCommandPalette, _window, cx| {
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenCommandPalette, window, cx| {
                 this.show_palette = !this.show_palette;
                 if this.show_palette {
                     this.palette.open();
+                    // Reset and focus the palette input
+                    this.palette_input.update(cx, |state, cx| {
+                        state.set_value("", window, cx);
+                        state.focus(window, cx);
+                    });
                 } else {
-                    this.palette.close();
+                    this.close_palette(window, cx);
                 }
                 cx.notify();
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
+                if this.show_palette {
+                    this.close_palette(window, cx);
+                }
             }))
             // Splits
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::SplitRight, window, cx| {

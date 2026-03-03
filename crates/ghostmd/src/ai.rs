@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -48,11 +46,6 @@ impl AiManager {
     /// Returns the path to the CLAUDE.md file.
     pub fn claude_md_path(&self) -> &Path {
         &self.claude_md_path
-    }
-
-    /// Checks whether the `claude` CLI is available on PATH.
-    pub fn is_available() -> bool {
-        which::which("claude").is_ok()
     }
 
     /// Generates the content for a CLAUDE.md file tailored to the vault structure.

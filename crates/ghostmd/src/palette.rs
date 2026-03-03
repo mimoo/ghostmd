@@ -5,9 +5,8 @@ pub struct PaletteCommand {
     pub label: String,
     /// Optional keyboard shortcut hint (e.g. "Cmd+S").
     pub shortcut_hint: Option<String>,
-    /// The action to dispatch when this command is selected.
-    #[allow(dead_code)]
-    pub action: crate::keybindings::Action,
+    /// Identifier used to dispatch this command (e.g. "new_note", "save").
+    pub action_id: String,
 }
 
 /// State for the command palette overlay.
@@ -61,24 +60,23 @@ impl CommandPalette {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keybindings::Action;
 
     fn sample_commands() -> Vec<PaletteCommand> {
         vec![
             PaletteCommand {
                 label: "New Note".into(),
                 shortcut_hint: Some("Cmd+N".into()),
-                action: Action::NewNote,
+                action_id: "new_note".into(),
             },
             PaletteCommand {
                 label: "Save".into(),
                 shortcut_hint: Some("Cmd+S".into()),
-                action: Action::Save,
+                action_id: "save".into(),
             },
             PaletteCommand {
                 label: "Split Right".into(),
                 shortcut_hint: None,
-                action: Action::SplitRight,
+                action_id: "split_right".into(),
             },
         ]
     }
@@ -140,7 +138,6 @@ mod tests {
         palette.query = String::new();
         let results = palette.filtered_commands();
         assert_eq!(results.len(), 3);
-        // Order should be preserved
         assert_eq!(results[0].label, "New Note");
         assert_eq!(results[1].label, "Save");
         assert_eq!(results[2].label, "Split Right");
@@ -157,15 +154,12 @@ mod tests {
     #[test]
     fn commands_include_keybinding_display() {
         let commands = sample_commands();
-        // "New Note" has a shortcut hint
         let new_note = &commands[0];
         assert_eq!(new_note.shortcut_hint, Some("Cmd+N".to_string()));
 
-        // "Save" has a shortcut hint
         let save = &commands[1];
         assert_eq!(save.shortcut_hint, Some("Cmd+S".to_string()));
 
-        // "Split Right" has no shortcut hint
         let split = &commands[2];
         assert!(split.shortcut_hint.is_none());
     }

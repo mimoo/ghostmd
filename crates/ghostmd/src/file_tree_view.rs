@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gpui::*;
 use gpui_component::list::ListItem;
@@ -18,6 +18,8 @@ pub struct FileTreeView {
     focus_handle: FocusHandle,
     /// Last known selected entry ID (to detect changes).
     last_selected_id: Option<String>,
+    /// Flat list of tree item IDs in display order (for path→index lookups).
+    flat_ids: Vec<String>,
 }
 
 impl EventEmitter<FileSelected> for FileTreeView {}
@@ -28,6 +30,7 @@ impl FileTreeView {
         panel.refresh().ok();
 
         let items = tree_items_from_panel(&panel);
+        let flat_ids = flatten_node_ids(&panel.tree.nodes);
         let tree_state = cx.new(|cx| TreeState::new(cx).items(items));
 
         // Observe tree state changes to detect selection
@@ -52,6 +55,7 @@ impl FileTreeView {
             tree_state,
             focus_handle,
             last_selected_id: None,
+            flat_ids,
         }
     }
 
@@ -59,9 +63,22 @@ impl FileTreeView {
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         self.panel.refresh().ok();
         let items = tree_items_from_panel(&self.panel);
+        self.flat_ids = flatten_node_ids(&self.panel.tree.nodes);
         self.tree_state.update(cx, |state, cx| {
             state.set_items(items, cx);
         });
+    }
+
+    /// Programmatically select a file in the tree by path.
+    /// Updates `last_selected_id` to prevent the observer from re-emitting FileSelected.
+    pub fn select_file(&mut self, path: &Path, cx: &mut Context<Self>) {
+        let id = path.to_string_lossy().to_string();
+        self.last_selected_id = Some(id.clone());
+        if let Some(idx) = self.flat_ids.iter().position(|p| p == &id) {
+            self.tree_state.update(cx, |state, cx| {
+                state.set_selected_index(Some(idx), cx);
+            });
+        }
     }
 }
 
@@ -80,13 +97,12 @@ fn convert_nodes(nodes: &[TreeNode]) -> Vec<TreeItem> {
                 children,
                 expanded,
             } => {
-                let item = TreeItem::new(
+                TreeItem::new(
                     path.to_string_lossy().to_string(),
                     name.clone(),
                 )
                 .expanded(*expanded)
-                .children(convert_nodes(children));
-                item
+                .children(convert_nodes(children))
             }
             TreeNode::File { path, name } => {
                 TreeItem::new(
@@ -96,6 +112,25 @@ fn convert_nodes(nodes: &[TreeNode]) -> Vec<TreeItem> {
             }
         })
         .collect()
+}
+
+/// Flatten tree nodes into a list of IDs in display order (expanded dirs recurse).
+fn flatten_node_ids(nodes: &[TreeNode]) -> Vec<String> {
+    let mut result = Vec::new();
+    for node in nodes {
+        match node {
+            TreeNode::Directory { path, children, expanded, .. } => {
+                result.push(path.to_string_lossy().to_string());
+                if *expanded {
+                    result.extend(flatten_node_ids(children));
+                }
+            }
+            TreeNode::File { path, .. } => {
+                result.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    result
 }
 
 impl Focusable for FileTreeView {
