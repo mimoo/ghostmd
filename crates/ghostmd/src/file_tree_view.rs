@@ -146,9 +146,7 @@ impl Render for FileTreeView {
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
 
         div()
-            .h_full()
-            .w(px(240.0))
-            .flex_shrink_0()
+            .size_full()
             .bg(sidebar_bg)
             .border_r_1()
             .border_color(border_color)
@@ -176,6 +174,9 @@ impl Render for FileTreeView {
                                     div()
                                         .pl(px(16.0 * entry.depth() as f32))
                                         .text_sm()
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .text_ellipsis()
                                         .child(entry.item().label.clone()),
                                 )
                         })

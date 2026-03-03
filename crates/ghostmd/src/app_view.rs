@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::resizable::{h_resizable, v_resizable, resizable_panel};
 use gpui_component::Root;
 
 use crate::app::GhostApp;
@@ -224,6 +225,14 @@ impl SplitNode {
                     right.find_up(from)
                 }
             }
+        }
+    }
+
+    /// A stable ID for this node, derived from the leftmost leaf.
+    fn stable_id(&self) -> usize {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { left, .. } => left.stable_id(),
         }
     }
 
@@ -961,14 +970,19 @@ impl GhostAppView {
                 pane_div.into_any_element()
             }
             SplitNode::Split { direction, left, right } => {
-                div()
-                    .flex_1()
-                    .flex()
-                    .when(*direction == SplitDirection::Vertical, |d| d.flex_row())
-                    .when(*direction == SplitDirection::Horizontal, |d| d.flex_col())
-                    .child(self.render_split_node(left, ws, cx))
-                    .child(self.render_split_node(right, ws, cx))
-                    .into_any_element()
+                let left_el = self.render_split_node(left, ws, cx);
+                let right_el = self.render_split_node(right, ws, cx);
+                let sid = node.stable_id();
+                let group = if *direction == SplitDirection::Vertical {
+                    h_resizable(ElementId::NamedInteger("split-h".into(), sid as u64))
+                        .child(resizable_panel().child(left_el))
+                        .child(resizable_panel().child(right_el))
+                } else {
+                    v_resizable(ElementId::NamedInteger("split-v".into(), sid as u64))
+                        .child(resizable_panel().child(left_el))
+                        .child(resizable_panel().child(right_el))
+                };
+                group.into_any_element()
             }
         }
     }
@@ -1232,19 +1246,27 @@ impl Render for GhostAppView {
             }))
             // Layout
             .child(
-                div()
-                    .when(!sidebar_visible, |d| d.w(px(0.0)).overflow_hidden())
-                    .child(self.file_tree.clone()),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .relative()
-                    .child(self.render_tab_bar(cx))
-                    .child(self.render_split_node(&split_root, &ws_clone, cx))
-                    .when(show_palette, |d| d.child(self.render_command_palette(cx))),
+                h_resizable("main-layout")
+                    .child(
+                        resizable_panel()
+                            .size(px(240.0))
+                            .size_range(px(150.)..px(500.))
+                            .visible(sidebar_visible)
+                            .child(self.file_tree.clone()),
+                    )
+                    .child(
+                        resizable_panel()
+                            .child(
+                                div()
+                                    .size_full()
+                                    .flex()
+                                    .flex_col()
+                                    .relative()
+                                    .child(self.render_tab_bar(cx))
+                                    .child(self.render_split_node(&split_root, &ws_clone, cx))
+                                    .when(show_palette, |d| d.child(self.render_command_palette(cx))),
+                            ),
+                    ),
             );
 
         root
