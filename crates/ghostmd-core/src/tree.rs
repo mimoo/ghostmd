@@ -92,6 +92,10 @@ fn scan_dir(dir: &Path) -> Result<Vec<TreeNode>> {
                 expanded: true,
             });
         } else {
+            // Skip hidden files (e.g. .DS_Store)
+            if name.starts_with('.') {
+                continue;
+            }
             files.push(TreeNode::File { path, name });
         }
     }

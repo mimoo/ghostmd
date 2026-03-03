@@ -1,8 +1,39 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use ghostmd_core::search::{ContentMatch, ContentSearch, FuzzySearch, SearchResult};
 
-/// State for the file-finder overlay (Cmd+P fuzzy file search).
+/// Escape regex special characters for literal string matching.
+fn regex_escape(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len());
+    for c in s.chars() {
+        if r"\.+*?()|[]{}^$".contains(c) {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
+}
+
+/// A unified result shown in the file finder.
+#[derive(Debug, Clone)]
+pub enum FinderResult {
+    /// Filename match (fuzzy).
+    File(SearchResult),
+    /// Content match (ripgrep).
+    Content(ContentMatch),
+}
+
+impl FinderResult {
+    pub fn path(&self) -> &Path {
+        match self {
+            FinderResult::File(r) => &r.path,
+            FinderResult::Content(m) => &m.path,
+        }
+    }
+}
+
+/// State for the file-finder overlay (Cmd+P fuzzy file + content search).
 pub struct FileFinder {
     /// Whether the finder is currently visible.
     pub visible: bool,
@@ -10,10 +41,12 @@ pub struct FileFinder {
     pub query: String,
     /// Index of the currently highlighted result.
     pub selected_index: usize,
-    /// Current search results.
-    pub results: Vec<SearchResult>,
+    /// Current search results (filename matches + content matches).
+    pub results: Vec<FinderResult>,
     /// Underlying fuzzy search engine.
     fuzzy: FuzzySearch,
+    /// Underlying content search engine.
+    content: ContentSearch,
 }
 
 impl FileFinder {
@@ -24,7 +57,8 @@ impl FileFinder {
             query: String::new(),
             selected_index: 0,
             results: Vec::new(),
-            fuzzy: FuzzySearch::new(root),
+            fuzzy: FuzzySearch::new(root.clone()),
+            content: ContentSearch::new(root),
         }
     }
 
@@ -34,7 +68,10 @@ impl FileFinder {
         self.query.clear();
         self.selected_index = 0;
         self.fuzzy.refresh_cache()?;
-        self.results = self.fuzzy.search_files("");
+        self.results = self.fuzzy.search_files("")
+            .into_iter()
+            .map(FinderResult::File)
+            .collect();
         Ok(())
     }
 
@@ -43,11 +80,36 @@ impl FileFinder {
         self.visible = false;
     }
 
-    /// Update the query and re-run fuzzy search.
+    /// Update the query and re-run fuzzy + content search.
     pub fn set_query(&mut self, query: &str) {
         self.query = query.to_string();
         self.selected_index = 0;
-        self.results = self.fuzzy.search_files(query);
+
+        // Fuzzy filename matches first
+        let file_results = self.fuzzy.search_files(query);
+        let mut seen_paths: HashSet<PathBuf> = HashSet::new();
+        let mut merged: Vec<FinderResult> = Vec::new();
+
+        for r in file_results {
+            seen_paths.insert(r.path.clone());
+            merged.push(FinderResult::File(r));
+        }
+
+        // Content search (only for non-empty queries, >=2 chars to avoid noise)
+        if query.len() >= 2 {
+            // Escape regex special characters for literal search
+            let escaped = regex_escape(query);
+            if let Ok(content_matches) = self.content.search(&escaped) {
+                for m in content_matches {
+                    if !seen_paths.contains(&m.path) {
+                        seen_paths.insert(m.path.clone());
+                    }
+                    merged.push(FinderResult::Content(m));
+                }
+            }
+        }
+
+        self.results = merged;
     }
 
     /// Move selection down (wraps around).
@@ -70,7 +132,7 @@ impl FileFinder {
 
     /// Get the path of the currently selected result.
     pub fn selected_path(&self) -> Option<&Path> {
-        self.results.get(self.selected_index).map(|r| r.path.as_path())
+        self.results.get(self.selected_index).map(|r| r.path())
     }
 
     /// Get current result count.
@@ -229,7 +291,7 @@ mod tests {
         assert!(finder
             .results
             .iter()
-            .any(|r| r.path.to_string_lossy().contains("meeting")));
+            .any(|r| r.path().to_string_lossy().contains("meeting")));
     }
 
     #[test]
@@ -305,11 +367,11 @@ mod tests {
         finder.open().unwrap();
 
         let path = finder.selected_path().unwrap();
-        assert_eq!(path, finder.results[0].path);
+        assert_eq!(path, finder.results[0].path());
 
         finder.select_next();
         let path = finder.selected_path().unwrap();
-        assert_eq!(path, finder.results[1].path);
+        assert_eq!(path, finder.results[1].path());
     }
 
     #[test]

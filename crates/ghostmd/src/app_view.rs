@@ -1600,12 +1600,25 @@ impl GhostAppView {
             let bg = if is_selected { selection_bg } else { overlay_bg };
 
             // Strip root prefix for display
-            let display_path = result.path.to_string_lossy().to_string();
-            let display_path = display_path
+            let full_path = result.path().to_string_lossy().to_string();
+            let display_path = full_path
                 .strip_prefix(&root_prefix)
-                .unwrap_or(&display_path)
+                .unwrap_or(&full_path)
                 .trim_start_matches('/')
                 .to_string();
+
+            let display = match result {
+                crate::search::FinderResult::File(_) => display_path,
+                crate::search::FinderResult::Content(m) => {
+                    let line_preview = m.line_text.trim();
+                    let truncated = if line_preview.len() > 60 {
+                        format!("{}…", &line_preview[..60])
+                    } else {
+                        line_preview.to_string()
+                    };
+                    format!("{}:{} — {}", display_path, m.line_number, truncated)
+                }
+            };
 
             list = list.child(
                 div()
@@ -1616,7 +1629,7 @@ impl GhostAppView {
                     .bg(bg)
                     .text_color(fg)
                     .text_sm()
-                    .child(display_path),
+                    .child(display),
             );
         }
 
