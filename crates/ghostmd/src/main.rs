@@ -25,6 +25,32 @@ use assets::Assets;
 use keybindings::register_keybindings;
 use theme::apply_ghost_theme;
 
+/// Set the macOS dock icon from embedded PNG data.
+#[allow(unexpected_cfgs)]
+fn set_dock_icon() {
+    let icon_data = include_bytes!("../../../assets/icon.png");
+    unsafe {
+        use objc::runtime::{Class, Object};
+        use objc::{msg_send, sel, sel_impl};
+        use std::ffi::c_void;
+
+        let ns_data_cls = Class::get("NSData").unwrap();
+        let data: *mut Object = msg_send![
+            ns_data_cls,
+            dataWithBytes: icon_data.as_ptr() as *const c_void
+            length: icon_data.len()
+        ];
+
+        let ns_image_cls = Class::get("NSImage").unwrap();
+        let image: *mut Object = msg_send![ns_image_cls, alloc];
+        let image: *mut Object = msg_send![image, initWithData: data];
+
+        let ns_app_cls = Class::get("NSApplication").unwrap();
+        let app: *mut Object = msg_send![ns_app_cls, sharedApplication];
+        let _: () = msg_send![app, setApplicationIconImage: image];
+    }
+}
+
 fn main() {
     let root = ghostmd_core::diary::ghostmd_root();
     std::fs::create_dir_all(&root).ok();
@@ -34,6 +60,7 @@ fn main() {
         .run(|cx: &mut App| {
             apply_ghost_theme(cx);
             register_keybindings(cx);
+            set_dock_icon();
 
             // Load JetBrains Mono font
             if let Ok(Some(font)) = cx.asset_source().load("fonts/JetBrainsMono-Regular.ttf") {

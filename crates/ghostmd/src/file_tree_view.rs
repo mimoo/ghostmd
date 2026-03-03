@@ -17,6 +17,9 @@ pub struct FileRenameRequested(pub PathBuf);
 /// Event emitted when "Open in Finder" is requested for a path.
 pub struct OpenInFinderRequested(pub PathBuf);
 
+/// Event emitted when "Move to Trash" is requested for a path.
+pub struct MoveToTrashRequested(pub PathBuf);
+
 /// GPUI view wrapping the FileTreePanel state machine with a gpui-component Tree.
 pub struct FileTreeView {
     panel: FileTreePanel,
@@ -33,6 +36,7 @@ pub struct FileTreeView {
 impl EventEmitter<FileSelected> for FileTreeView {}
 impl EventEmitter<FileRenameRequested> for FileTreeView {}
 impl EventEmitter<OpenInFinderRequested> for FileTreeView {}
+impl EventEmitter<MoveToTrashRequested> for FileTreeView {}
 
 impl FileTreeView {
     pub fn new(root: PathBuf, cx: &mut Context<Self>) -> Self {
@@ -222,6 +226,7 @@ impl Render for FileTreeView {
             let is_file = path.is_file();
             let rename_path = path.clone();
             let finder_path = path.clone();
+            let trash_path = path.clone();
 
             let mut menu = div()
                 .absolute()
@@ -273,6 +278,23 @@ impl Render for FileTreeView {
                         cx.emit(OpenInFinderRequested(finder_path.clone()));
                     }))
                     .child("Open in Finder"),
+            );
+
+            let error_fg = rgb_to_hsla(ghost.error.0, ghost.error.1, ghost.error.2);
+            menu = menu.child(
+                div()
+                    .id("ctx-move-to-trash")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(error_fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(selection_bg))
+                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                        this.context_menu = None;
+                        cx.emit(MoveToTrashRequested(trash_path.clone()));
+                    }))
+                    .child("Move to Trash"),
             );
 
             root = root.child(menu);

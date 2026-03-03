@@ -11,7 +11,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::app::GhostApp;
 use crate::editor_view::EditorView;
-use crate::file_tree_view::{FileSelected, FileTreeView, FileRenameRequested, OpenInFinderRequested};
+use crate::file_tree_view::{FileSelected, FileTreeView, FileRenameRequested, OpenInFinderRequested, MoveToTrashRequested};
 use crate::keybindings;
 use crate::palette::{CommandPalette, PaletteCommand};
 use crate::search::FileFinder;
@@ -531,6 +531,12 @@ impl GhostAppView {
             if let Some(parent) = event.0.parent() {
                 std::process::Command::new("open").arg(parent).spawn().ok();
             }
+        })
+        .detach();
+
+        // Subscribe to move-to-trash requests from the tree
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &MoveToTrashRequested, window, cx| {
+            this.move_to_trash(event.0.clone(), window, cx);
         })
         .detach();
 
@@ -1125,6 +1131,39 @@ impl GhostAppView {
         let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
         cx.notify();
+    }
+
+    /// Move a file or folder to the macOS Trash and update the UI.
+    fn move_to_trash(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        // Close any panes showing this file (or files inside this directory)
+        let is_dir = path.is_dir();
+        let mut editors_to_save: Vec<Entity<EditorView>> = Vec::new();
+        for ws in &mut self.workspaces {
+            for pane in ws.panes.values_mut() {
+                let should_close = pane.active_path.as_ref().map(|p| {
+                    if is_dir { p.starts_with(&path) } else { p == &path }
+                }).unwrap_or(false);
+                if should_close {
+                    if let Some(editor) = pane.editor.take() {
+                        editors_to_save.push(editor);
+                    }
+                    pane.active_path = None;
+                }
+            }
+        }
+        // Save editors before trashing (best effort)
+        for editor in editors_to_save {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
+        }
+
+        // Move to Trash using the trash crate (macOS native)
+        if trash::delete(&path).is_ok() {
+            self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+            // Re-focus current pane
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+            cx.notify();
+        }
     }
 
     /// Save session state to disk.
