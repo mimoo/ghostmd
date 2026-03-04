@@ -21,14 +21,41 @@ use ghostmd_core::diary;
 
 fn random_note_name() -> String {
     const ADJECTIVES: &[&str] = &[
-        "bright", "calm", "deep", "eager", "faint", "gentle", "hazy", "keen",
-        "light", "mellow", "neat", "pale", "quiet", "rare", "soft", "tidy",
-        "vast", "warm", "bold", "crisp", "fresh", "grand", "lucid", "swift",
+        "amber", "azure", "bleak", "bold", "brisk", "bright", "broad", "calm",
+        "clear", "cool", "crisp", "dark", "deep", "dense", "dim", "dry",
+        "eager", "even", "faint", "fair", "fast", "fine", "firm", "flat",
+        "fleet", "fond", "free", "fresh", "full", "gentle", "glad", "gold",
+        "grand", "gray", "green", "grim", "hale", "harsh", "hazy", "high",
+        "idle", "keen", "kind", "last", "lean", "light", "live", "lone",
+        "long", "lost", "loud", "lucid", "main", "meek", "mellow", "mild",
+        "mint", "moody", "mute", "neat", "new", "next", "noble", "odd",
+        "old", "open", "pale", "plain", "plum", "pure", "quick", "quiet",
+        "rapid", "rare", "raw", "real", "rich", "ripe", "rosy", "rough",
+        "round", "rust", "sage", "sharp", "sheer", "short", "shy", "silent",
+        "slim", "slow", "small", "smooth", "snug", "soft", "solid", "spare",
+        "stark", "steep", "still", "stout", "stray", "strong", "sure", "sweet",
+        "swift", "tall", "tame", "taut", "thick", "thin", "tidy", "tiny",
+        "true", "twin", "vast", "vivid", "warm", "weak", "whole", "wide",
+        "wild", "wise", "worn", "young", "zeal",
     ];
     const NOUNS: &[&str] = &[
-        "bloom", "cloud", "dawn", "ember", "flame", "grove", "haven", "isle",
-        "jade", "knoll", "lake", "mist", "north", "opal", "pine", "ridge",
-        "spark", "trail", "vale", "wave", "brook", "cliff", "drift", "frost",
+        "arch", "aspen", "birch", "blade", "blaze", "bloom", "bolt", "bone",
+        "brook", "cairn", "cedar", "chalk", "chime", "clay", "cliff", "cloud",
+        "coast", "coral", "cove", "crane", "creek", "crest", "crown", "dawn",
+        "delta", "dew", "dove", "drift", "dune", "dusk", "echo", "edge",
+        "elm", "ember", "fern", "field", "finch", "fjord", "flame", "flare",
+        "flint", "frost", "gale", "gate", "gem", "glade", "glen", "glow",
+        "gorge", "grain", "grove", "gust", "hare", "haven", "hawk", "hazel",
+        "heath", "heron", "hill", "hive", "hollow", "horn", "inlet", "iris",
+        "isle", "ivy", "jade", "knoll", "lake", "lark", "leaf", "ledge",
+        "lily", "loch", "marsh", "meadow", "mist", "moon", "moss", "north",
+        "oak", "opal", "orbit", "otter", "pass", "path", "peak", "pearl",
+        "pier", "pine", "plume", "point", "pond", "quartz", "rain", "range",
+        "reef", "ridge", "river", "robin", "root", "rover", "sage", "sand",
+        "shade", "shell", "shore", "slate", "slope", "snow", "spark", "spire",
+        "spray", "spring", "spur", "star", "stem", "stone", "storm", "stream",
+        "summit", "thorn", "tide", "timber", "tower", "trail", "vale", "vine",
+        "wave", "weald", "wheat", "wind", "wing", "wren", "yarrow",
     ];
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -804,12 +831,14 @@ impl GhostAppView {
             PaletteCommand { label: "Rename File...".into(), shortcut_hint: None, action_id: "rename_file".into() },
             PaletteCommand { label: "Rename Tab...".into(), shortcut_hint: None, action_id: "rename_tab".into() },
             PaletteCommand { label: "Open in Finder".into(), shortcut_hint: None, action_id: "open_in_finder".into() },
+            PaletteCommand { label: "Collapse All Folders".into(), shortcut_hint: None, action_id: "collapse_all".into() },
+            PaletteCommand { label: "Expand All Folders".into(), shortcut_hint: None, action_id: "expand_all".into() },
             PaletteCommand { label: "Theme: Rose Pine".into(), shortcut_hint: None, action_id: "theme_rose_pine".into() },
             PaletteCommand { label: "Theme: Nord".into(), shortcut_hint: None, action_id: "theme_nord".into() },
             PaletteCommand { label: "Theme: Solarized".into(), shortcut_hint: None, action_id: "theme_solarized".into() },
             PaletteCommand { label: "Theme: Dracula".into(), shortcut_hint: None, action_id: "theme_dracula".into() },
             PaletteCommand { label: "Theme: Light".into(), shortcut_hint: None, action_id: "theme_light".into() },
-            PaletteCommand { label: "Delete Current File".into(), shortcut_hint: None, action_id: "delete_file".into() },
+            PaletteCommand { label: "Delete Current File".into(), shortcut_hint: Some("Cmd+\u{232b}".into()), action_id: "delete_file".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
         ]
     }
@@ -1213,6 +1242,12 @@ impl GhostAppView {
                 if let Some(path) = self.focused_active_path() {
                     std::process::Command::new("open").arg("-R").arg(&path).spawn().ok();
                 }
+            }
+            "collapse_all" => {
+                self.file_tree.update(cx, |tree, cx| tree.collapse_all(cx));
+            }
+            "expand_all" => {
+                self.file_tree.update(cx, |tree, cx| tree.expand_all(cx));
             }
             "theme_rose_pine" => self.switch_theme(ThemeName::RosePine, cx),
             "theme_nord" => self.switch_theme(ThemeName::Nord, cx),
@@ -2197,6 +2232,17 @@ impl Render for GhostAppView {
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::CloseTab, window, cx| {
                 this.close_pane(window, cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::MoveToTrash, window, cx| {
+                // If sidebar is focused with selection, delete those; otherwise delete focused file
+                let tree_paths: Vec<PathBuf> = this.file_tree.read(cx).selected_paths().iter().cloned().collect();
+                if !tree_paths.is_empty() && this.app.sidebar_visible {
+                    for path in tree_paths {
+                        this.move_to_trash(path, window, cx);
+                    }
+                } else if let Some(path) = this.focused_active_path() {
+                    this.move_to_trash(path, window, cx);
+                }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::RestoreTab, window, cx| {
                 if let Some(ws) = this.closed_workspaces.pop() {

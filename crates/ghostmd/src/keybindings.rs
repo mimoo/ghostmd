@@ -41,6 +41,7 @@ actions!(
         SwitchTab7,
         SwitchTab8,
         SwitchTab9,
+        MoveToTrash,
     ]
 );
 
@@ -83,6 +84,8 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("cmd-7", SwitchTab7, None),
         GpuiKeyBinding::new("cmd-8", SwitchTab8, None),
         GpuiKeyBinding::new("cmd-9", SwitchTab9, None),
+        // Move to Trash
+        GpuiKeyBinding::new("cmd-backspace", MoveToTrash, None),
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),

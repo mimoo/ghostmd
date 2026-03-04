@@ -93,10 +93,19 @@ impl FileTree {
         count_files(&self.nodes)
     }
 
-    /// Collapse all directories except those on the path to `target`.
-    /// Ancestor directories are expanded; all others are collapsed.
+    /// Expand ancestor directories on the path to `target` (without collapsing others).
     pub fn reveal_path(&mut self, target: &Path) {
-        reveal_in_nodes(&mut self.nodes, target);
+        expand_ancestors(&mut self.nodes, target);
+    }
+
+    /// Collapse all directories.
+    pub fn collapse_all(&mut self) {
+        set_all_expanded(&mut self.nodes, false);
+    }
+
+    /// Expand all directories.
+    pub fn expand_all(&mut self) {
+        set_all_expanded(&mut self.nodes, true);
     }
 }
 
@@ -211,15 +220,22 @@ fn flatten_nodes<'a>(nodes: &'a [TreeNode], depth: usize, result: &mut Vec<(usiz
     }
 }
 
-fn reveal_in_nodes(nodes: &mut [TreeNode], target: &Path) {
+fn expand_ancestors(nodes: &mut [TreeNode], target: &Path) {
     for node in nodes.iter_mut() {
-        if let TreeNode::Directory { path, children, expanded, .. } = node {
-            if target.starts_with(path) {
+        if let TreeNode::Directory { ref path, ref mut children, ref mut expanded, .. } = node {
+            if target.starts_with(path.as_path()) && target != path.as_path() {
                 *expanded = true;
-                reveal_in_nodes(children, target);
-            } else {
-                *expanded = false;
+                expand_ancestors(children, target);
             }
+        }
+    }
+}
+
+fn set_all_expanded(nodes: &mut [TreeNode], value: bool) {
+    for node in nodes.iter_mut() {
+        if let TreeNode::Directory { expanded, children, .. } = node {
+            *expanded = value;
+            set_all_expanded(children, value);
         }
     }
 }
@@ -421,26 +437,47 @@ mod tests {
     }
 
     #[test]
-    fn reveal_path_expands_ancestors_collapses_others() {
+    fn reveal_path_expands_ancestors_without_collapsing_others() {
         let tmp = TempDir::new().unwrap();
         create_test_structure(&tmp);
 
         let mut tree = FileTree::new(tmp.path().to_path_buf());
         tree.scan().unwrap();
 
+        // Collapse diary first
+        tree.toggle_dir(&tmp.path().join("diary"));
+        let diary = tree.find_node(&tmp.path().join("diary")).unwrap();
+        assert!(!diary.is_expanded(), "diary should be collapsed after toggle");
+
         let target = tmp.path().join("diary/2024/jan.md");
         tree.reveal_path(&target);
 
         // diary should be expanded (ancestor)
         let diary = tree.find_node(&tmp.path().join("diary")).unwrap();
-        if let TreeNode::Directory { expanded, .. } = diary {
-            assert!(*expanded, "diary should be expanded");
-        }
-        // notes should be collapsed (not ancestor)
+        assert!(diary.is_expanded(), "diary should be expanded");
+
+        // notes should still be expanded (not touched)
         let notes = tree.find_node(&tmp.path().join("notes")).unwrap();
-        if let TreeNode::Directory { expanded, .. } = notes {
-            assert!(!*expanded, "notes should be collapsed");
-        }
+        assert!(notes.is_expanded(), "notes should still be expanded");
+    }
+
+    #[test]
+    fn collapse_all_and_expand_all() {
+        let tmp = TempDir::new().unwrap();
+        create_test_structure(&tmp);
+
+        let mut tree = FileTree::new(tmp.path().to_path_buf());
+        tree.scan().unwrap();
+
+        tree.collapse_all();
+        let flat = tree.flatten();
+        // Only top-level nodes visible
+        assert!(flat.iter().all(|(depth, _)| *depth == 0));
+
+        tree.expand_all();
+        let flat = tree.flatten();
+        // Should have deeper nodes now
+        assert!(flat.iter().any(|(depth, _)| *depth > 0));
     }
 
     #[test]

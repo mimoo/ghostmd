@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use gpui::prelude::FluentBuilder as _;
@@ -33,8 +34,12 @@ pub struct ContextMenuRequested(pub PathBuf, pub Point<Pixels>);
 pub struct FileTreeView {
     panel: FileTreePanel,
     focus_handle: FocusHandle,
-    /// Currently selected path in the tree.
-    selected_path: Option<PathBuf>,
+    /// Currently selected paths in the tree (supports multi-select).
+    selected_paths: BTreeSet<PathBuf>,
+    /// The "anchor" path for shift-click range selection.
+    anchor_path: Option<PathBuf>,
+    /// The last-clicked path (primary selection for single operations).
+    last_clicked: Option<PathBuf>,
     /// Scroll handle for the tree list.
     scroll_handle: ScrollHandle,
     /// Active theme name.
@@ -84,7 +89,9 @@ impl FileTreeView {
         Self {
             panel,
             focus_handle,
-            selected_path: None,
+            selected_paths: BTreeSet::new(),
+            anchor_path: None,
+            last_clicked: None,
             scroll_handle: ScrollHandle::new(),
             active_theme: ThemeName::default(),
             rename_input,
@@ -100,24 +107,37 @@ impl FileTreeView {
         cx.notify();
     }
 
-    /// Programmatically select a file in the tree by path.
+    /// Programmatically select a file in the tree by path (single selection).
     pub fn select_file(&mut self, path: &Path, cx: &mut Context<Self>) {
-        self.selected_path = Some(path.to_path_buf());
+        self.selected_paths.clear();
+        self.selected_paths.insert(path.to_path_buf());
+        self.anchor_path = Some(path.to_path_buf());
+        self.last_clicked = Some(path.to_path_buf());
         self.scroll_to_path(path);
         cx.notify();
     }
 
-    /// Reveal a file in the tree: collapse non-ancestors, expand ancestors, scroll to file.
+    /// Reveal a file in the tree: expand ancestors, scroll to file.
     pub fn reveal_file(&mut self, path: &Path, cx: &mut Context<Self>) {
         self.panel.tree.reveal_path(path);
-        self.selected_path = Some(path.to_path_buf());
+        self.selected_paths.clear();
+        self.selected_paths.insert(path.to_path_buf());
+        self.anchor_path = Some(path.to_path_buf());
+        self.last_clicked = Some(path.to_path_buf());
         self.scroll_to_path(path);
         cx.notify();
     }
 
-    /// Get the currently selected path.
+    /// Get the currently selected path (primary/last-clicked, for single-file operations).
     pub fn selected_path(&self) -> Option<&PathBuf> {
-        self.selected_path.as_ref()
+        self.last_clicked.as_ref()
+            .filter(|p| self.selected_paths.contains(*p))
+            .or_else(|| self.selected_paths.iter().next())
+    }
+
+    /// Get all selected paths.
+    pub fn selected_paths(&self) -> &BTreeSet<PathBuf> {
+        &self.selected_paths
     }
 
     /// Whether the tree is currently in inline editing mode.
@@ -130,11 +150,65 @@ impl FileTreeView {
         self.active_theme = name;
     }
 
+    /// Collapse all directories.
+    pub fn collapse_all(&mut self, cx: &mut Context<Self>) {
+        self.panel.tree.collapse_all();
+        cx.notify();
+    }
+
+    /// Expand all directories.
+    pub fn expand_all(&mut self, cx: &mut Context<Self>) {
+        self.panel.tree.expand_all();
+        cx.notify();
+    }
+
     /// Scroll to the given path in the flat list.
     fn scroll_to_path(&self, path: &Path) {
         let flat = self.panel.tree.flatten();
         if let Some(idx) = flat.iter().position(|(_, node)| node.path() == path) {
             self.scroll_handle.scroll_to_item(idx);
+        }
+    }
+
+    /// Handle a click on a tree item, supporting multi-select with cmd/shift.
+    fn handle_click(&mut self, path: &Path, modifiers: &Modifiers) {
+        let flat = self.panel.tree.flatten();
+        let flat_paths: Vec<PathBuf> = flat.iter().map(|(_, n)| n.path().to_path_buf()).collect();
+
+        if modifiers.platform {
+            // Cmd-click: toggle individual item
+            let pb = path.to_path_buf();
+            if self.selected_paths.contains(&pb) {
+                self.selected_paths.remove(&pb);
+            } else {
+                self.selected_paths.insert(pb);
+            }
+            self.anchor_path = Some(path.to_path_buf());
+            self.last_clicked = Some(path.to_path_buf());
+        } else if modifiers.shift {
+            // Shift-click: select contiguous range from anchor
+            if let Some(anchor) = &self.anchor_path {
+                let anchor_idx = flat_paths.iter().position(|p| p == anchor);
+                let click_idx = flat_paths.iter().position(|p| p == path);
+                if let (Some(a), Some(c)) = (anchor_idx, click_idx) {
+                    let (start, end) = if a <= c { (a, c) } else { (c, a) };
+                    self.selected_paths.clear();
+                    for p in &flat_paths[start..=end] {
+                        self.selected_paths.insert(p.clone());
+                    }
+                }
+            } else {
+                self.selected_paths.clear();
+                self.selected_paths.insert(path.to_path_buf());
+                self.anchor_path = Some(path.to_path_buf());
+            }
+            self.last_clicked = Some(path.to_path_buf());
+        } else {
+            // Plain click: single selection
+            self.selected_paths.clear();
+            self.selected_paths.insert(path.to_path_buf());
+            self.anchor_path = Some(path.to_path_buf());
+            self.last_clicked = Some(path.to_path_buf());
         }
     }
 
@@ -148,7 +222,6 @@ impl FileTreeView {
         self.editing_path = Some(path.to_path_buf());
         self.editing_is_new = false;
         self.editing_is_note = path.is_file();
-        // Expand parent so the item is visible
         self.panel.tree.reveal_path(path);
         self.rename_input.update(cx, |state, cx| {
             state.set_value(&name, window, cx);
@@ -165,15 +238,17 @@ impl FileTreeView {
     pub fn start_new_note(&mut self, parent_dir: &Path, window: &mut Window, cx: &mut Context<Self>) {
         let name = "untitled";
         let temp_path = parent_dir.join(format!("{}.md", name));
-        // Create the file on disk
         std::fs::create_dir_all(parent_dir).ok();
         std::fs::write(&temp_path, "").ok();
         self.panel.refresh().ok();
+        // Expand the parent directory so the new file is visible
         self.panel.tree.reveal_path(&temp_path);
         self.editing_path = Some(temp_path.clone());
         self.editing_is_new = true;
         self.editing_is_note = true;
-        self.selected_path = Some(temp_path.clone());
+        self.selected_paths.clear();
+        self.selected_paths.insert(temp_path.clone());
+        self.last_clicked = Some(temp_path.clone());
         self.rename_input.update(cx, |state, cx| {
             state.set_value(name, window, cx);
             state.focus(window, cx);
@@ -195,7 +270,9 @@ impl FileTreeView {
         self.editing_path = Some(temp_path.clone());
         self.editing_is_new = true;
         self.editing_is_note = false;
-        self.selected_path = Some(temp_path.clone());
+        self.selected_paths.clear();
+        self.selected_paths.insert(temp_path.clone());
+        self.last_clicked = Some(temp_path.clone());
         self.rename_input.update(cx, |state, cx| {
             state.set_value(name, window, cx);
             state.focus(window, cx);
@@ -217,7 +294,6 @@ impl FileTreeView {
         self.editing_is_note = false;
 
         if new_name.is_empty() {
-            // Empty name: cancel (delete if new)
             if is_new {
                 if old_path.is_dir() {
                     std::fs::remove_dir_all(&old_path).ok();
@@ -243,7 +319,9 @@ impl FileTreeView {
             if std::fs::rename(&old_path, &new_path).is_ok() {
                 self.panel.refresh().ok();
                 self.panel.tree.reveal_path(&new_path);
-                self.selected_path = Some(new_path.clone());
+                self.selected_paths.clear();
+                self.selected_paths.insert(new_path.clone());
+                self.last_clicked = Some(new_path.clone());
                 self.scroll_to_path(&new_path);
                 if is_new {
                     cx.emit(NewItemCreated(new_path));
@@ -251,11 +329,9 @@ impl FileTreeView {
                     cx.emit(ItemRenamed { old_path, new_path });
                 }
             } else {
-                // Rename failed, refresh anyway
                 self.panel.refresh().ok();
             }
         } else {
-            // Name unchanged
             if is_new {
                 cx.emit(NewItemCreated(new_path));
             }
@@ -298,7 +374,7 @@ impl Render for FileTreeView {
         let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
 
         let flat = self.panel.tree.flatten();
-        let selected = self.selected_path.clone();
+        let selected = self.selected_paths.clone();
         let root_path = self.panel.tree.root.clone();
         let editing_path = self.editing_path.clone();
 
@@ -308,13 +384,12 @@ impl Render for FileTreeView {
             .overflow_y_scroll()
             .track_scroll(&self.scroll_handle)
             .on_mouse_down(MouseButton::Right, cx.listener(move |_this: &mut Self, event: &MouseDownEvent, _window, cx| {
-                // Right-click on empty area → context menu for root
                 cx.emit(ContextMenuRequested(root_path.clone(), event.position));
             }));
 
         for (i, (depth, node)) in flat.iter().enumerate() {
             let node_path = node.path().to_path_buf();
-            let is_selected = selected.as_ref() == Some(&node_path);
+            let is_selected = selected.contains(&node_path);
             let is_dir = node.is_dir();
             let is_expanded = node.is_expanded();
             let name = node.name().to_string();
@@ -334,7 +409,6 @@ impl Render for FileTreeView {
             let right_click_path = node_path.clone();
 
             let label_child: AnyElement = if is_editing {
-                // Inline rename input
                 Input::new(&self.rename_input)
                     .appearance(false)
                     .text_size(px(13.0))
@@ -355,7 +429,12 @@ impl Render for FileTreeView {
                 .items_center()
                 .bg(row_bg)
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
-                    this.selected_path = Some(right_click_path.clone());
+                    // If right-clicked item is not in selection, select only it
+                    if !this.selected_paths.contains(&right_click_path) {
+                        this.selected_paths.clear();
+                        this.selected_paths.insert(right_click_path.clone());
+                        this.last_clicked = Some(right_click_path.clone());
+                    }
                     cx.emit(ContextMenuRequested(right_click_path.clone(), event.position));
                     cx.stop_propagation();
                 }))
@@ -390,8 +469,14 @@ impl Render for FileTreeView {
                         .py(px(2.0))
                         .when(!is_editing, |d| {
                             d.on_click(cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
-                                this.selected_path = Some(label_path.clone());
+                                let was_selected = this.selected_paths.contains(&label_path);
+                                this.handle_click(&label_path, &event.modifiers());
+
                                 if is_dir {
+                                    // Toggle dir on click if already selected (plain click only)
+                                    if was_selected && !event.modifiers().platform && !event.modifiers().shift {
+                                        this.panel.tree.toggle_dir(&label_path);
+                                    }
                                     if event.click_count() >= 2 {
                                         this.start_rename(&label_path, window, cx);
                                     }
