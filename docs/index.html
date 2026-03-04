@@ -299,6 +299,32 @@ section h2 {
   user-select: none;
 }
 
+.install-cmd .copied {
+  position: absolute;
+  top: -2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.install-cmd .copied.show {
+  opacity: 1;
+}
+
+.install-hint {
+  margin-top: 0.75rem;
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  opacity: 0.5;
+}
+
 .install-or {
   margin: 1.5rem 0;
   color: var(--fg-muted);
@@ -431,9 +457,11 @@ See <span class="md-link">[the repo](https://github.com/...)</span> for more.
 <!-- install -->
 <div class="install">
   <h2>Install</h2>
-  <div class="install-cmd" onclick="navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/mimoo/ghostmd/main/scripts/install.sh | bash')" title="Click to copy">
+  <div class="install-cmd" onclick="navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/mimoo/ghostmd/main/scripts/install.sh | bash');var t=this.querySelector('.copied');t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1500)">
     <span class="prompt">$ </span>curl -fsSL https://raw.githubusercontent.com/mimoo/ghostmd/main/scripts/install.sh | bash
+    <span class="copied">copied!</span>
   </div>
+  <p class="install-hint">click to copy</p>
   <p class="install-or">or grab a release from</p>
   <a class="install-link" href="https://github.com/mimoo/ghostmd/releases">github.com/mimoo/ghostmd/releases</a>
 </div>
