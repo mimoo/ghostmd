@@ -408,23 +408,11 @@ impl Render for FileTreeView {
             let label_path = node_path.clone();
             let right_click_path = node_path.clone();
 
-            let input_bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
-            let accent_border = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
-
             let label_child: AnyElement = if is_editing {
-                div()
-                    .bg(input_bg)
-                    .border_1()
-                    .border_color(accent_border)
-                    .rounded(px(3.0))
-                    .px(px(4.0))
-                    .py(px(1.0))
-                    .child(
-                        Input::new(&self.rename_input)
-                            .appearance(false)
-                            .text_size(px(13.0))
-                            .w(px(180.0))
-                    )
+                Input::new(&self.rename_input)
+                    .appearance(true)
+                    .text_size(px(13.0))
+                    .w(px(200.0))
                     .into_any_element()
             } else {
                 div()
