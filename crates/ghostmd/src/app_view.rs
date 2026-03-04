@@ -66,6 +66,16 @@ fn random_note_name() -> String {
     format!("{}-{}", adj, noun)
 }
 
+/// Pick a name for a new note in `dir`: "notes" if it doesn't exist yet,
+/// otherwise a random adjective-noun name.
+fn pick_note_name(dir: &std::path::Path) -> String {
+    if !dir.join("notes.md").exists() {
+        "notes".into()
+    } else {
+        random_note_name()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Rename mode
 // ---------------------------------------------------------------------------
@@ -1002,7 +1012,7 @@ impl GhostAppView {
         if !self.app.sidebar_visible {
             self.app.toggle_sidebar();
         }
-        let name = random_note_name();
+        let name = pick_note_name(&parent_dir);
         self.file_tree.update(cx, |tree, cx| {
             tree.start_new_note(&parent_dir, &name, window, cx);
         });
@@ -1014,7 +1024,7 @@ impl GhostAppView {
         if !self.app.sidebar_visible {
             self.app.toggle_sidebar();
         }
-        let name = random_note_name();
+        let name = pick_note_name(&dir);
         self.file_tree.update(cx, |tree, cx| {
             tree.start_new_note(&dir, &name, window, cx);
         });
