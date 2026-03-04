@@ -799,6 +799,14 @@ impl GhostAppView {
         &mut self.workspaces[self.active_workspace]
     }
 
+    /// Ensure at least one workspace exists, creating one if needed.
+    fn ensure_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() {
+            let root = self.app.root.clone();
+            self.new_workspace(&root, window, cx);
+        }
+    }
+
     /// Create a new empty workspace with one pane.
     fn new_workspace(&mut self, _root: &std::path::Path, window: &mut Window, cx: &mut Context<Self>) {
         let ws_id = self.next_workspace_id;
@@ -826,6 +834,7 @@ impl GhostAppView {
 
     /// Open a file: create per-pane editor and set it as active in the focused pane.
     fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_workspace(window, cx);
         // Save current editor if switching files
         let save_editor = {
             let ws = &self.workspaces[self.active_workspace];
@@ -957,6 +966,10 @@ impl GhostAppView {
     /// Falls back to root focus handle when the pane has no editor,
     /// so keybindings (cmd-n, cmd-w, etc.) still work in empty panes.
     fn focus_pane_editor(&self, pane_id: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() {
+            window.focus(&self.focus_handle);
+            return;
+        }
         let ws = self.active_ws();
         if let Some(pane) = ws.panes.get(&pane_id) {
             if let Some(editor) = &pane.editor {
@@ -971,6 +984,9 @@ impl GhostAppView {
 
     /// Sync the file tree selection to the currently focused pane's file.
     fn sync_file_tree_selection(&self, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() {
+            return;
+        }
         if let Some(path) = self.focused_active_path() {
             self.file_tree.update(cx, |tree, cx| {
                 tree.select_file(&path, cx);
@@ -980,6 +996,9 @@ impl GhostAppView {
 
     /// Split the focused pane, creating a new pane showing the same file.
     fn split(&mut self, direction: SplitDirection, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() {
+            return;
+        }
         let new_id = self.next_pane_id;
         self.next_pane_id += 1;
 
@@ -994,6 +1013,10 @@ impl GhostAppView {
     /// Navigate focus to an adjacent pane using 2D-aware tree navigation.
     /// Stops at edges (no wrapping).
     fn focus_pane_direction(&mut self, dx: i32, dy: i32, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() {
+            return;
+        }
+        self.dismiss_overlays(window, cx);
         let ws = self.active_ws_mut();
         let from = ws.focused_pane;
         let target = if dx > 0 {
@@ -1037,9 +1060,11 @@ impl GhostAppView {
             self.closed_workspaces.push(removed);
 
             if self.workspaces.is_empty() {
-                // Create a fresh workspace
-                let root = self.app.root.clone();
-                self.new_workspace(&root, window, cx);
+                // No workspaces left — show welcome screen
+                self.active_workspace = 0;
+                window.focus(&self.focus_handle);
+                cx.notify();
+                return;
             } else if self.active_workspace >= self.workspaces.len() {
                 self.active_workspace = self.workspaces.len() - 1;
             }
@@ -1086,6 +1111,9 @@ impl GhostAppView {
 
     /// The path currently active in the focused pane of the active workspace.
     fn focused_active_path(&self) -> Option<PathBuf> {
+        if self.workspaces.is_empty() {
+            return None;
+        }
         let ws = self.active_ws();
         ws.panes.get(&ws.focused_pane)
             .and_then(|p| p.active_path.clone())
@@ -1098,6 +1126,7 @@ impl GhostAppView {
             "new_workspace" => self.new_workspace_tab(window, cx),
             "new_window" => self.new_window(window, cx),
             "save" => {
+                if self.workspaces.is_empty() { return; }
                 let editor = {
                     let ws = self.active_ws();
                     ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
@@ -1166,8 +1195,10 @@ impl GhostAppView {
             self.show_palette = false;
             self.palette.close();
             self.dispatch_palette_action(&action_id, window, cx);
-            let focused = self.active_ws().focused_pane;
-            self.focus_pane_editor(focused, window, cx);
+            if !self.workspaces.is_empty() {
+                let focused = self.active_ws().focused_pane;
+                self.focus_pane_editor(focused, window, cx);
+            }
             cx.notify();
         }
     }
@@ -1242,8 +1273,10 @@ impl GhostAppView {
     fn close_file_finder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_file_finder = false;
         self.file_finder.close();
-        let focused = self.active_ws().focused_pane;
-        self.focus_pane_editor(focused, window, cx);
+        if !self.workspaces.is_empty() {
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+        }
         cx.notify();
     }
 
@@ -1252,8 +1285,10 @@ impl GhostAppView {
         self.show_palette = false;
         self.rename_mode = None;
         self.palette.close();
-        let focused = self.active_ws().focused_pane;
-        self.focus_pane_editor(focused, window, cx);
+        if !self.workspaces.is_empty() {
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+        }
         cx.notify();
     }
 
@@ -1272,8 +1307,10 @@ impl GhostAppView {
     fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_search = false;
         self.search_match_count = 0;
-        let focused = self.active_ws().focused_pane;
-        self.focus_pane_editor(focused, window, cx);
+        if !self.workspaces.is_empty() {
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+        }
         cx.notify();
     }
 
@@ -1291,9 +1328,24 @@ impl GhostAppView {
     fn close_agentic_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_agentic_search = false;
         self.agentic_loading = false;
-        let focused = self.active_ws().focused_pane;
-        self.focus_pane_editor(focused, window, cx);
+        if !self.workspaces.is_empty() {
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+        }
         cx.notify();
+    }
+
+    /// Dismiss any open overlays (palette, finder, agentic search).
+    fn dismiss_overlays(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.show_file_finder {
+            self.close_file_finder(window, cx);
+        }
+        if self.show_agentic_search {
+            self.close_agentic_search(window, cx);
+        }
+        if self.show_palette {
+            self.close_palette(window, cx);
+        }
     }
 
     fn run_agentic_search(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1316,7 +1368,6 @@ impl GhostAppView {
                 std::process::Command::new("claude")
                     .arg("-p")
                     .arg(&prompt)
-                    .arg("--no-input")
                     .current_dir(&root)
                     .output()
             }).await;
@@ -1685,8 +1736,8 @@ impl GhostAppView {
                             .gap(px(8.0))
                             .bg(sidebar_bg)
                             .child(div().text_lg().text_color(hint_fg).child("No file open"))
-                            .child(div().text_sm().text_color(hint_fg).child("Cmd+P to search files"))
-                            .child(div().text_sm().text_color(hint_fg).child("Cmd+N to create a new note")),
+                            .child(div().text_sm().text_color(hint_fg).child("Cmd+N  Create a new note"))
+                            .child(div().text_sm().text_color(hint_fg).child("Cmd+P  Search files")),
                     );
                 }
 
@@ -2064,15 +2115,22 @@ impl Render for GhostAppView {
         let ghost = GhostTheme::from_name(self.active_theme);
         let bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
         let sidebar_visible = self.app.sidebar_visible;
-        let split_root = self.active_ws().split_root.clone();
-        let ws_clone = Workspace {
-            id: self.active_ws().id,
-            title: self.active_ws().title.clone(),
-            split_root: split_root.clone(),
-            panes: self.active_ws().panes.iter().map(|(&k, v)| {
-                (k, Pane { active_path: v.active_path.clone(), editor: v.editor.clone() })
-            }).collect(),
-            focused_pane: self.active_ws().focused_pane,
+        let has_workspaces = !self.workspaces.is_empty();
+
+        let (split_root, ws_clone) = if has_workspaces {
+            let sr = self.active_ws().split_root.clone();
+            let wsc = Workspace {
+                id: self.active_ws().id,
+                title: self.active_ws().title.clone(),
+                split_root: sr.clone(),
+                panes: self.active_ws().panes.iter().map(|(&k, v)| {
+                    (k, Pane { active_path: v.active_path.clone(), editor: v.editor.clone() })
+                }).collect(),
+                focused_pane: self.active_ws().focused_pane,
+            };
+            (Some(sr), Some(wsc))
+        } else {
+            (None, None)
         };
         let show_palette = self.show_palette;
         let show_file_finder = self.show_file_finder;
@@ -2099,6 +2157,7 @@ impl Render for GhostAppView {
                 this.new_window(window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Save, _window, cx| {
+                if this.workspaces.is_empty() { return; }
                 let editor = {
                     let ws = this.active_ws();
                     ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
@@ -2282,9 +2341,11 @@ impl Render for GhostAppView {
             .child(
                 // Titlebar spacer — prevents content from overlapping traffic lights
                 div().w_full().h(px(38.0)).flex_shrink_0()
-            )
-            .child(
-                // Main content area fills remaining vertical space
+            );
+
+        if let (Some(split_root), Some(ws_clone)) = (split_root, ws_clone) {
+            // Normal layout with workspaces
+            root = root.child(
                 div()
                     .flex_1()
                     .min_h_0()
@@ -2316,6 +2377,49 @@ impl Render for GhostAppView {
                             ),
                     ),
             );
+        } else {
+            // Welcome screen — no workspaces
+            let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
+            let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+            let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+            root = root.child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_row()
+                    .child(
+                        h_resizable("main-layout")
+                            .child(
+                                resizable_panel()
+                                    .size(px(240.0))
+                                    .size_range(px(150.)..px(500.))
+                                    .visible(sidebar_visible)
+                                    .child(self.file_tree.clone()),
+                            )
+                            .child(
+                                resizable_panel()
+                                    .child(
+                                        div()
+                                            .size_full()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .flex_col()
+                                            .gap(px(12.0))
+                                            .bg(sidebar_bg)
+                                            .child(div().text_lg().text_color(fg).child("ghostmd"))
+                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+N  Create a new note"))
+                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+P  Search files"))
+                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+T  New workspace"))
+                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+Shift+T  Restore last workspace"))
+                                            .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
+                                            .when(show_palette, |d| d.child(self.render_command_palette(cx))),
+                                    ),
+                            ),
+                    ),
+            );
+        }
 
         // Context menu overlay (rendered at root level for correct z-order and positioning)
         if let Some((ref path, position)) = ctx_menu {
