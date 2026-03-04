@@ -52,13 +52,38 @@ fn set_dock_icon() {
     }
 }
 
+fn open_main_window(root: std::path::PathBuf, cx: &mut App) {
+    let bounds = Bounds::centered(None, size(px(1200.), px(800.)), cx);
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            focus: true,
+            titlebar: Some(TitlebarOptions {
+                appears_transparent: true,
+                traffic_light_position: Some(point(px(9.0), px(9.0))),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        |window, cx| {
+            let app_view = cx.new(|cx| GhostAppView::new(root, window, cx));
+            cx.new(|cx| Root::new(app_view, window, cx))
+        },
+    )
+    .unwrap();
+}
+
 fn main() {
     let root = ghostmd_core::diary::ghostmd_root();
     std::fs::create_dir_all(&root).ok();
 
-    Application::new()
-        .with_assets(Assets)
-        .run(|cx: &mut App| {
+    let reopen_root = root.clone();
+    let app = Application::new().with_assets(Assets);
+    app.on_reopen(move |cx| {
+        open_main_window(reopen_root.clone(), cx);
+        cx.activate(true);
+    });
+    app.run(|cx: &mut App| {
             apply_ghost_theme(cx);
             register_keybindings(cx);
             set_dock_icon();
@@ -74,24 +99,7 @@ fn main() {
                 cx.text_system().add_fonts(vec![font]).ok();
             }
 
-            let bounds = Bounds::centered(None, size(px(1200.), px(800.)), cx);
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    focus: true,
-                    titlebar: Some(TitlebarOptions {
-                        appears_transparent: true,
-                        traffic_light_position: Some(point(px(9.0), px(9.0))),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                |window, cx| {
-                    let app_view = cx.new(|cx| GhostAppView::new(root, window, cx));
-                    cx.new(|cx| Root::new(app_view, window, cx))
-                },
-            )
-            .unwrap();
+            open_main_window(root, cx);
             cx.activate(true);
         });
 }
