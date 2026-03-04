@@ -14,6 +14,12 @@ Notes are plain `.md` files in `~/Documents/ghostmd/`. No database, no lock-in. 
 
 ## Install
 
+```
+curl -fsSL https://raw.githubusercontent.com/mimoo/ghostmd/main/scripts/install.sh | bash
+```
+
+This installs `GhostMD.app` to `/Applications/` and creates a `ghostmd` CLI command. Run `ghostmd update` to update.
+
 ### From source
 
 Requires Rust 1.75+ and Xcode with Metal on macOS.
