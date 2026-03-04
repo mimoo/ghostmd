@@ -11,14 +11,13 @@ use serde::{Serialize, Deserialize};
 
 use crate::app::GhostApp;
 use crate::editor_view::EditorView;
-use crate::file_tree_view::{FileSelected, FileTreeView, FileRenameRequested, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
+use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, NewItemCreated, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
 use crate::palette::{CommandPalette, PaletteCommand};
 use crate::search::FileFinder;
 use crate::theme::{rgb_to_hsla, GhostTheme, ThemeName};
 
 use ghostmd_core::diary;
-use ghostmd_core::note::Note;
 
 fn random_note_name() -> String {
     const ADJECTIVES: &[&str] = &[
@@ -46,7 +45,6 @@ fn random_note_name() -> String {
 
 #[derive(Clone, PartialEq)]
 enum RenameMode {
-    File,
     Tab,
 }
 
@@ -528,7 +526,7 @@ impl GhostAppView {
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let app = GhostApp::new(root.clone());
 
-        let file_tree = cx.new(|cx| FileTreeView::new(root.clone(), cx));
+        let file_tree = cx.new(|cx| FileTreeView::new(root.clone(), window, cx));
 
         // Subscribe to file selection events from the tree (with window access)
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &FileSelected, window, cx| {
@@ -536,19 +534,43 @@ impl GhostAppView {
         })
         .detach();
 
-        // Subscribe to rename requests from the tree
-        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &FileRenameRequested, window, cx| {
-            // Open the file first (so it's the focused file), then enter rename mode
-            this.open_file(event.0.clone(), window, cx);
-            this.enter_rename_mode(RenameMode::File, window, cx);
+        // Subscribe to inline rename events from the tree
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemRenamed, _window, cx| {
+            // Update any open editor paths if the file was renamed
+            let old = &event.old_path;
+            let new = &event.new_path;
+            let mut editors_to_update = Vec::new();
+            for ws in &mut this.workspaces {
+                for pane in ws.panes.values_mut() {
+                    if pane.active_path.as_ref() == Some(old) {
+                        pane.active_path = Some(new.clone());
+                        if let Some(editor) = &pane.editor {
+                            editors_to_update.push(editor.clone());
+                        }
+                    }
+                }
+            }
+            for editor in editors_to_update {
+                let np = new.clone();
+                editor.update(cx, |e, _cx| {
+                    e.path = np;
+                });
+            }
+            cx.notify();
+        })
+        .detach();
+
+        // Subscribe to new item creation from the tree
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &NewItemCreated, window, cx| {
+            if event.0.is_file() {
+                this.open_file(event.0.clone(), window, cx);
+            }
         })
         .detach();
 
         // Subscribe to open-in-finder requests from the tree
         cx.subscribe_in(&file_tree, window, |_this: &mut Self, _entity, event: &OpenInFinderRequested, _window, _cx| {
-            if let Some(parent) = event.0.parent() {
-                std::process::Command::new("open").arg(parent).spawn().ok();
-            }
+            std::process::Command::new("open").arg("-R").arg(&event.0).spawn().ok();
         })
         .detach();
 
@@ -878,9 +900,10 @@ impl GhostAppView {
         cx.notify();
     }
 
-    /// Create a new diary note and open it in the focused pane of the active workspace (cmd-n).
+    /// Create a new note with inline rename in the file tree (cmd-n).
     /// If a folder is selected in the file tree, creates the note there instead of diary path.
     fn new_note_in_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_workspace(window, cx);
         let root = self.app.root.clone();
         let selected_dir = self.file_tree.read(cx).selected_path()
             .and_then(|p| {
@@ -888,33 +911,37 @@ impl GhostAppView {
             })
             .filter(|d| d.starts_with(&root) && *d != root);
 
-        let path = if let Some(dir) = selected_dir {
-            dir.join(format!("{}.md", random_note_name()))
-        } else {
-            diary::new_diary_path(&root, &random_note_name())
-        };
-        let note = Note::new(path.clone());
-        note.ensure_dir().ok();
-        note.save("").ok();
-        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
-        self.open_file(path, window, cx);
+        let parent_dir = selected_dir.unwrap_or_else(|| diary::today_diary_dir(&root));
+        std::fs::create_dir_all(&parent_dir).ok();
+
+        if !self.app.sidebar_visible {
+            self.app.toggle_sidebar();
+        }
+        self.file_tree.update(cx, |tree, cx| {
+            tree.start_new_note(&parent_dir, window, cx);
+        });
+        cx.notify();
     }
 
-    /// Create a new note in a specific directory.
+    /// Create a new note in a specific directory with inline rename.
     fn new_note_in_dir(&mut self, dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        let path = dir.join(format!("{}.md", random_note_name()));
-        let note = Note::new(path.clone());
-        note.ensure_dir().ok();
-        note.save("").ok();
-        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
-        self.open_file(path, window, cx);
+        if !self.app.sidebar_visible {
+            self.app.toggle_sidebar();
+        }
+        self.file_tree.update(cx, |tree, cx| {
+            tree.start_new_note(&dir, window, cx);
+        });
+        cx.notify();
     }
 
-    /// Create a new folder inside a parent directory.
-    fn create_new_folder(&mut self, parent: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
-        let path = parent.join("new-folder");
-        std::fs::create_dir_all(&path).ok();
-        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+    /// Create a new folder inside a parent directory with inline rename.
+    fn create_new_folder(&mut self, parent: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.app.sidebar_visible {
+            self.app.toggle_sidebar();
+        }
+        self.file_tree.update(cx, |tree, cx| {
+            tree.start_new_folder(&parent, window, cx);
+        });
         cx.notify();
     }
 
@@ -1039,7 +1066,8 @@ impl GhostAppView {
         }
     }
 
-    /// Close the focused pane. If it's the last pane, close the workspace.
+    /// Close the focused pane. If it's the last pane with a file, clear to empty.
+    /// If last pane is already empty, close the workspace.
     fn close_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.workspaces.is_empty() {
             return;
@@ -1054,14 +1082,30 @@ impl GhostAppView {
             editor.update(cx, |e, cx| { e.save(cx).ok(); });
         }
 
-        let pane_count = self.workspaces[self.active_workspace].panes.len();
-        if pane_count <= 1 {
-            // Last pane — close the whole workspace
+        let ws = &self.workspaces[self.active_workspace];
+        let leaves = ws.split_root.leaves();
+
+        if leaves.len() == 1 {
+            let pane_id = leaves[0];
+            let has_file = ws.panes.get(&pane_id)
+                .map(|p| p.active_path.is_some())
+                .unwrap_or(false);
+
+            if has_file {
+                // Clear the pane to empty state instead of closing workspace
+                let pane = self.workspaces[self.active_workspace].panes.get_mut(&pane_id).unwrap();
+                pane.active_path = None;
+                pane.editor = None;
+                window.focus(&self.focus_handle);
+                cx.notify();
+                return;
+            }
+
+            // Already empty → close the whole workspace
             let removed = self.workspaces.remove(self.active_workspace);
             self.closed_workspaces.push(removed);
 
             if self.workspaces.is_empty() {
-                // No workspaces left — show welcome screen
                 self.active_workspace = 0;
                 window.focus(&self.focus_handle);
                 cx.notify();
@@ -1150,13 +1194,24 @@ impl GhostAppView {
             "split_right" => self.split(SplitDirection::Vertical, window, cx),
             "split_down" => self.split(SplitDirection::Horizontal, window, cx),
             "toggle_sidebar" => { self.app.toggle_sidebar(); cx.notify(); }
-            "rename_file" => self.enter_rename_mode(RenameMode::File, window, cx),
+            "rename_file" => {
+                if let Some(path) = self.focused_active_path() {
+                    if !self.app.sidebar_visible {
+                        self.app.toggle_sidebar();
+                    }
+                    let p = path.clone();
+                    self.file_tree.update(cx, |tree, cx| {
+                        tree.reveal_file(&p, cx);
+                    });
+                    self.file_tree.update(cx, |tree, cx| {
+                        tree.start_rename(&p, &mut *window, cx);
+                    });
+                }
+            }
             "rename_tab" => self.enter_rename_mode(RenameMode::Tab, window, cx),
             "open_in_finder" => {
                 if let Some(path) = self.focused_active_path() {
-                    if let Some(parent) = path.parent() {
-                        std::process::Command::new("open").arg(parent).spawn().ok();
-                    }
+                    std::process::Command::new("open").arg("-R").arg(&path).spawn().ok();
                 }
             }
             "theme_rose_pine" => self.switch_theme(ThemeName::RosePine, cx),
@@ -1210,19 +1265,10 @@ impl GhostAppView {
         }
     }
 
-    /// Enter rename mode for file or tab.
-    fn enter_rename_mode(&mut self, mode: RenameMode, window: &mut Window, cx: &mut Context<Self>) {
-        let current_value = match mode {
-            RenameMode::File => {
-                self.focused_active_path()
-                    .map(|p| p.file_stem().unwrap_or_default().to_string_lossy().to_string())
-                    .unwrap_or_default()
-            }
-            RenameMode::Tab => {
-                self.active_ws().title.clone()
-            }
-        };
-        self.rename_mode = Some(mode);
+    /// Enter rename mode for tab (via palette).
+    fn enter_rename_mode(&mut self, _mode: RenameMode, window: &mut Window, cx: &mut Context<Self>) {
+        let current_value = self.active_ws().title.clone();
+        self.rename_mode = Some(RenameMode::Tab);
         self.show_palette = true;
         self.palette_input.update(cx, |state, cx| {
             state.set_value(&current_value, window, cx);
@@ -1234,46 +1280,9 @@ impl GhostAppView {
         });
     }
 
-    /// Apply the rename.
-    fn apply_rename(&mut self, new_name: &str, mode: &RenameMode, _window: &mut Window, cx: &mut Context<Self>) {
-        match mode {
-            RenameMode::Tab => {
-                self.active_ws_mut().title = new_name.to_string();
-            }
-            RenameMode::File => {
-                if let Some(old_path) = self.focused_active_path() {
-                    // Build new path: same directory, new filename with .md extension
-                    let slug = ghostmd_core::diary::slugify(new_name);
-                    let new_filename = if slug.is_empty() { "untitled".to_string() } else { slug };
-                    let new_path = old_path.with_file_name(format!("{}.md", new_filename));
-                    if new_path != old_path {
-                        // Rename on disk
-                        if std::fs::rename(&old_path, &new_path).is_ok() {
-                            // Collect editors that need path updates
-                            let mut editors_to_update = Vec::new();
-                            for ws in &mut self.workspaces {
-                                for pane in ws.panes.values_mut() {
-                                    if pane.active_path.as_ref() == Some(&old_path) {
-                                        pane.active_path = Some(new_path.clone());
-                                        if let Some(editor) = &pane.editor {
-                                            editors_to_update.push(editor.clone());
-                                        }
-                                    }
-                                }
-                            }
-                            for editor in editors_to_update {
-                                let np = new_path.clone();
-                                editor.update(cx, |e, _cx| {
-                                    e.path = np;
-                                });
-                            }
-                            self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
-                            self.file_tree.update(cx, |tree, cx| tree.reveal_file(&new_path, cx));
-                        }
-                    }
-                }
-            }
-        }
+    /// Apply the rename (tab only — file rename is handled inline in the tree).
+    fn apply_rename(&mut self, new_name: &str, _mode: &RenameMode, _window: &mut Window, _cx: &mut Context<Self>) {
+        self.active_ws_mut().title = new_name.to_string();
     }
 
     /// Close the file finder and refocus the editor.
@@ -1993,7 +2002,6 @@ impl GhostAppView {
 
         let is_rename = self.rename_mode.is_some();
         let rename_label = match &self.rename_mode {
-            Some(RenameMode::File) => "Rename file:",
             Some(RenameMode::Tab) => "Rename tab:",
             None => "",
         };
@@ -2255,7 +2263,10 @@ impl Render for GhostAppView {
                 cx.notify();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
-                if this.show_search {
+                let editing = this.file_tree.read(cx).is_editing();
+                if editing {
+                    this.file_tree.update(cx, |tree, cx| tree.cancel_rename(window, cx));
+                } else if this.show_search {
                     this.close_search(window, cx);
                 } else if this.show_agentic_search {
                     this.close_agentic_search(window, cx);
@@ -2431,10 +2442,13 @@ impl Render for GhostAppView {
         // Context menu overlay (rendered at root level for correct z-order and positioning)
         if let Some((ref path, position)) = ctx_menu {
             let is_file = path.is_file();
+            let is_dir = path.is_dir();
             let is_root = *path == self.app.root;
+            let diary_dir = self.app.root.join("diary");
+            let is_diary_path = path.starts_with(&diary_dir);
 
             // Determine the directory for "New Note" / "New Folder"
-            let context_dir = if path.is_dir() {
+            let context_dir = if is_dir {
                 path.clone()
             } else {
                 path.parent().unwrap_or(&self.app.root).to_path_buf()
@@ -2465,8 +2479,15 @@ impl Render for GhostAppView {
                 .flex()
                 .flex_col();
 
-            // Rename (files only)
-            if is_file {
+            // Rename (files not in diary, and non-root/non-diary folders)
+            let show_rename = if is_file {
+                !is_diary_path
+            } else if is_dir {
+                !is_root && *path != diary_dir && !is_diary_path
+            } else {
+                false
+            };
+            if show_rename {
                 menu = menu.child(
                     div()
                         .id("ctx-rename")
@@ -2478,8 +2499,9 @@ impl Render for GhostAppView {
                         .hover(|s| s.bg(selection_bg))
                         .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                             this.tree_context_menu = None;
-                            this.open_file(rename_path.clone(), window, cx);
-                            this.enter_rename_mode(RenameMode::File, window, cx);
+                            this.file_tree.update(cx, |tree, cx| {
+                                tree.start_rename(&rename_path, window, cx);
+                            });
                         }))
                         .child("Rename"),
                 );
@@ -2531,12 +2553,7 @@ impl Render for GhostAppView {
                     .hover(|s| s.bg(selection_bg))
                     .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
                         this.tree_context_menu = None;
-                        let target = if finder_path.is_dir() {
-                            finder_path.clone()
-                        } else {
-                            finder_path.parent().unwrap_or(&finder_path).to_path_buf()
-                        };
-                        std::process::Command::new("open").arg(target).spawn().ok();
+                        std::process::Command::new("open").arg("-R").arg(&finder_path).spawn().ok();
                         cx.notify();
                     }))
                     .child("Open in Finder"),
