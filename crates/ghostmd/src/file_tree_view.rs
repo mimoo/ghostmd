@@ -229,7 +229,9 @@ impl FileTreeView {
         });
         self.scroll_to_path(path);
         cx.notify();
-        cx.defer_in(window, |_this: &mut Self, window, cx| {
+        let input = self.rename_input.clone();
+        cx.defer_in(window, move |_this: &mut Self, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
             window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
         });
     }
@@ -255,7 +257,9 @@ impl FileTreeView {
         });
         self.scroll_to_path(&temp_path);
         cx.notify();
-        cx.defer_in(window, |_this: &mut Self, window, cx| {
+        let input = self.rename_input.clone();
+        cx.defer_in(window, move |_this: &mut Self, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
             window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
         });
     }
@@ -279,7 +283,9 @@ impl FileTreeView {
         });
         self.scroll_to_path(&temp_path);
         cx.notify();
-        cx.defer_in(window, |_this: &mut Self, window, cx| {
+        let input = self.rename_input.clone();
+        cx.defer_in(window, move |_this: &mut Self, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
             window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
         });
     }
