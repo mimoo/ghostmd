@@ -136,7 +136,7 @@ impl Render for FileTreeView {
             let row_bg = if is_selected { selection_bg } else { sidebar_bg };
 
             let chevron_label = if is_dir {
-                if is_expanded { "\u{25be}" } else { "\u{25b8}" }
+                if is_expanded { "\u{25bc}" } else { "\u{25b6}" }
             } else {
                 ""
             };
@@ -163,7 +163,6 @@ impl Render for FileTreeView {
                         .id(ElementId::NamedInteger("tree-chevron".into(), i as u64))
                         .w(px(indent + 20.0))
                         .pl(px(indent + 4.0))
-                        .text_xs()
                         .text_color(hint_fg)
                         .flex_shrink_0()
                         .when(is_dir, |d| {

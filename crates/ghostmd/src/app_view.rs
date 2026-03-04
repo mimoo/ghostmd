@@ -787,6 +787,7 @@ impl GhostAppView {
             PaletteCommand { label: "Theme: Solarized".into(), shortcut_hint: None, action_id: "theme_solarized".into() },
             PaletteCommand { label: "Theme: Dracula".into(), shortcut_hint: None, action_id: "theme_dracula".into() },
             PaletteCommand { label: "Theme: Light".into(), shortcut_hint: None, action_id: "theme_light".into() },
+            PaletteCommand { label: "Delete Current File".into(), shortcut_hint: None, action_id: "delete_file".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
         ]
     }
@@ -1163,6 +1164,11 @@ impl GhostAppView {
             "theme_solarized" => self.switch_theme(ThemeName::Solarized, cx),
             "theme_dracula" => self.switch_theme(ThemeName::Dracula, cx),
             "theme_light" => self.switch_theme(ThemeName::Light, cx),
+            "delete_file" => {
+                if let Some(path) = self.focused_active_path() {
+                    self.move_to_trash(path, window, cx);
+                }
+            }
             "quit" => cx.quit(),
             _ => {}
         }
@@ -1195,7 +1201,8 @@ impl GhostAppView {
             self.show_palette = false;
             self.palette.close();
             self.dispatch_palette_action(&action_id, window, cx);
-            if !self.workspaces.is_empty() {
+            // Don't refocus editor if we entered rename mode (it needs palette focus)
+            if self.rename_mode.is_none() && !self.workspaces.is_empty() {
                 let focused = self.active_ws().focused_pane;
                 self.focus_pane_editor(focused, window, cx);
             }
@@ -1662,7 +1669,7 @@ impl GhostAppView {
                     if is_focused {
                         pane_div = pane_div.border_2().border_color(accent);
                     } else {
-                        pane_div = pane_div.border_1().border_color(border_color).opacity(0.5);
+                        pane_div = pane_div.border_2().border_color(hsla(0., 0., 0., 0.)).opacity(0.5);
                     }
                 }
 
@@ -1761,7 +1768,7 @@ impl GhostAppView {
         }
     }
 
-    fn render_file_finder(&self, cx: &mut Context<Self>) -> Div {
+    fn render_file_finder(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
@@ -1822,16 +1829,12 @@ impl GhostAppView {
         let count_text = format!("{} files", self.file_finder.result_count());
 
         div()
+            .id("finder-dismiss-bg")
             .absolute()
             .inset_0()
-            .child(
-                div()
-                    .id("finder-dismiss-bg")
-                    .size_full()
-                    .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                        this.close_file_finder(window, cx);
-                    })),
-            )
+            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                this.close_file_finder(window, cx);
+            }))
             .child(
                 div()
                     .absolute()
@@ -1842,6 +1845,10 @@ impl GhostAppView {
                     .justify_center()
                     .child(
                         div()
+                            .id("finder-card")
+                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
+                                cx.stop_propagation();
+                            }))
                             .w(px(500.0))
                             .bg(overlay_bg)
                             .border_1()
@@ -1875,7 +1882,7 @@ impl GhostAppView {
             )
     }
 
-    fn render_agentic_search(&self, cx: &mut Context<Self>) -> Div {
+    fn render_agentic_search(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
@@ -1923,16 +1930,12 @@ impl GhostAppView {
         };
 
         div()
+            .id("agentic-dismiss-bg")
             .absolute()
             .inset_0()
-            .child(
-                div()
-                    .id("agentic-dismiss-bg")
-                    .size_full()
-                    .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                        this.close_agentic_search(window, cx);
-                    })),
-            )
+            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                this.close_agentic_search(window, cx);
+            }))
             .child(
                 div()
                     .absolute()
@@ -1943,6 +1946,10 @@ impl GhostAppView {
                     .justify_center()
                     .child(
                         div()
+                            .id("agentic-card")
+                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
+                                cx.stop_propagation();
+                            }))
                             .w(px(600.0))
                             .bg(overlay_bg)
                             .border_1()
@@ -1976,7 +1983,7 @@ impl GhostAppView {
             )
     }
 
-    fn render_command_palette(&self, cx: &mut Context<Self>) -> Div {
+    fn render_command_palette(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
@@ -2056,18 +2063,14 @@ impl GhostAppView {
             body = body.child(list);
         }
 
-        // Overlay container — full-screen backdrop + centered card
+        // Overlay container — full-screen backdrop with nested card
         div()
+            .id("palette-dismiss-bg")
             .absolute()
             .inset_0()
-            .child(
-                div()
-                    .id("palette-dismiss-bg")
-                    .size_full()
-                    .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                        this.close_palette(window, cx);
-                    })),
-            )
+            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                this.close_palette(window, cx);
+            }))
             .child(
                 div()
                     .absolute()
@@ -2078,6 +2081,10 @@ impl GhostAppView {
                     .justify_center()
                     .child(
                         div()
+                            .id("palette-card")
+                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
+                                cx.stop_propagation();
+                            }))
                             .w(px(400.0))
                             .bg(overlay_bg)
                             .border_1()
@@ -2330,8 +2337,8 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FocusPaneUp, window, cx| {
                 this.focus_pane_direction(0, -1, window, cx);
             }))
-            // Dismiss context menu on click
-            .on_mouse_down(MouseButton::Left, cx.listener(|this: &mut Self, _event: &MouseDownEvent, _window, cx| {
+            // Dismiss context menu on click (using on_click so menu item handlers fire first)
+            .on_click(cx.listener(|this: &mut Self, _, _window, cx| {
                 if this.tree_context_menu.is_some() {
                     this.tree_context_menu = None;
                     cx.notify();
