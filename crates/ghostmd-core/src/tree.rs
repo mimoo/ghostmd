@@ -16,6 +16,37 @@ pub enum TreeNode {
     },
 }
 
+impl TreeNode {
+    /// Returns the path of this node.
+    pub fn path(&self) -> &Path {
+        match self {
+            TreeNode::Directory { path, .. } => path,
+            TreeNode::File { path, .. } => path,
+        }
+    }
+
+    /// Returns the display name of this node.
+    pub fn name(&self) -> &str {
+        match self {
+            TreeNode::Directory { name, .. } => name,
+            TreeNode::File { name, .. } => name,
+        }
+    }
+
+    /// Returns true if this node is a directory.
+    pub fn is_dir(&self) -> bool {
+        matches!(self, TreeNode::Directory { .. })
+    }
+
+    /// Returns true if this node is an expanded directory.
+    pub fn is_expanded(&self) -> bool {
+        match self {
+            TreeNode::Directory { expanded, .. } => *expanded,
+            TreeNode::File { .. } => false,
+        }
+    }
+}
+
 /// A file tree rooted at a given directory, supporting scan, expand/collapse, and search.
 pub struct FileTree {
     pub root: PathBuf,

@@ -1,7 +1,7 @@
 use gpui::{actions, KeyBinding as GpuiKeyBinding};
 use gpui_component::input::{
-    Backspace, DeleteToEndOfLine, MoveDown, MoveLeft, MoveRight, MoveToNextWord,
-    MoveToPreviousWord, MoveUp,
+    Backspace, Delete, DeleteToEndOfLine, MoveLeft, MoveRight, MoveToNextWord,
+    MoveToPreviousWord, Paste,
 };
 
 // GPUI unit-struct actions
@@ -86,10 +86,12 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),
-        GpuiKeyBinding::new("ctrl-p", MoveUp, Some("Input")),
-        GpuiKeyBinding::new("ctrl-n", MoveDown, Some("Input")),
+        GpuiKeyBinding::new("ctrl-p", PaletteUp, Some("Input")),
+        GpuiKeyBinding::new("ctrl-n", PaletteDown, Some("Input")),
         GpuiKeyBinding::new("ctrl-k", DeleteToEndOfLine, Some("Input")),
         GpuiKeyBinding::new("ctrl-h", Backspace, Some("Input")),
+        GpuiKeyBinding::new("ctrl-d", Delete, Some("Input")),
+        GpuiKeyBinding::new("ctrl-y", Paste, Some("Input")),
         // Word movement (alt-f/b produce special chars on macOS, bind explicitly)
         GpuiKeyBinding::new("alt-f", MoveToNextWord, Some("Input")),
         GpuiKeyBinding::new("alt-b", MoveToPreviousWord, Some("Input")),

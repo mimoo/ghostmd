@@ -1,12 +1,10 @@
 use std::path::{Path, PathBuf};
 
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::list::ListItem;
-use gpui_component::tree::{tree, TreeItem, TreeState};
 
 use crate::file_tree::FileTreePanel;
 use crate::theme::{rgb_to_hsla, GhostTheme, ThemeName};
-use ghostmd_core::tree::TreeNode;
 
 /// Event emitted when a file is selected in the tree.
 pub struct FileSelected(pub PathBuf);
@@ -24,15 +22,14 @@ pub struct MoveToTrashRequested(pub PathBuf);
 /// Contains the path and the window-relative position.
 pub struct ContextMenuRequested(pub PathBuf, pub Point<Pixels>);
 
-/// GPUI view wrapping the FileTreePanel state machine with a gpui-component Tree.
+/// GPUI view wrapping the FileTreePanel state machine with a custom flat list.
 pub struct FileTreeView {
     panel: FileTreePanel,
-    tree_state: Entity<TreeState>,
     focus_handle: FocusHandle,
-    /// Last known selected entry ID (to detect changes).
-    last_selected_id: Option<String>,
-    /// Flat list of tree item IDs in display order (for path→index lookups).
-    flat_ids: Vec<String>,
+    /// Currently selected path in the tree.
+    selected_path: Option<PathBuf>,
+    /// Scroll handle for the tree list.
+    scroll_handle: ScrollHandle,
     /// Active theme name.
     active_theme: ThemeName,
 }
@@ -48,33 +45,13 @@ impl FileTreeView {
         let mut panel = FileTreePanel::new(root);
         panel.refresh().ok();
 
-        let items = tree_items_from_panel(&panel);
-        let flat_ids = flatten_node_ids(&panel.tree.nodes);
-        let tree_state = cx.new(|cx| TreeState::new(cx).items(items));
-
-        // Observe tree state changes to detect selection
-        cx.observe(&tree_state, |this: &mut Self, tree_state: Entity<TreeState>, cx: &mut Context<Self>| {
-            let selected_id = tree_state.read(cx).selected_entry().map(|e| e.item().id.to_string());
-            if selected_id != this.last_selected_id {
-                this.last_selected_id = selected_id.clone();
-                if let Some(id) = selected_id {
-                    let path = PathBuf::from(&id);
-                    if path.is_file() {
-                        cx.emit(FileSelected(path));
-                    }
-                }
-            }
-        })
-        .detach();
-
         let focus_handle = cx.focus_handle();
 
         Self {
             panel,
-            tree_state,
             focus_handle,
-            last_selected_id: None,
-            flat_ids,
+            selected_path: None,
+            scroll_handle: ScrollHandle::new(),
             active_theme: ThemeName::default(),
         }
     }
@@ -82,97 +59,41 @@ impl FileTreeView {
     /// Refresh the file tree from disk.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         self.panel.refresh().ok();
-        let items = tree_items_from_panel(&self.panel);
-        self.flat_ids = flatten_node_ids(&self.panel.tree.nodes);
-        self.tree_state.update(cx, |state, cx| {
-            state.set_items(items, cx);
-        });
+        cx.notify();
     }
 
     /// Programmatically select a file in the tree by path.
-    /// Updates `last_selected_id` to prevent the observer from re-emitting FileSelected.
     pub fn select_file(&mut self, path: &Path, cx: &mut Context<Self>) {
-        let id = path.to_string_lossy().to_string();
-        self.last_selected_id = Some(id.clone());
-        if let Some(idx) = self.flat_ids.iter().position(|p| p == &id) {
-            self.tree_state.update(cx, |state, cx| {
-                state.set_selected_index(Some(idx), cx);
-            });
-        }
+        self.selected_path = Some(path.to_path_buf());
+        self.scroll_to_path(path);
+        cx.notify();
     }
 
     /// Reveal a file in the tree: collapse non-ancestors, expand ancestors, scroll to file.
     pub fn reveal_file(&mut self, path: &Path, cx: &mut Context<Self>) {
         self.panel.tree.reveal_path(path);
-        let items = tree_items_from_panel(&self.panel);
-        self.flat_ids = flatten_node_ids(&self.panel.tree.nodes);
-        self.tree_state.update(cx, |state, cx| {
-            state.set_items(items, cx);
-        });
-        let id = path.to_string_lossy().to_string();
-        self.last_selected_id = Some(id.clone());
-        if let Some(idx) = self.flat_ids.iter().position(|p| p == &id) {
-            self.tree_state.update(cx, |state, cx| {
-                state.set_selected_index(Some(idx), cx);
-            });
-        }
+        self.selected_path = Some(path.to_path_buf());
+        self.scroll_to_path(path);
+        cx.notify();
+    }
+
+    /// Get the currently selected path.
+    pub fn selected_path(&self) -> Option<&PathBuf> {
+        self.selected_path.as_ref()
     }
 
     /// Set the active theme.
     pub fn set_theme(&mut self, name: ThemeName) {
         self.active_theme = name;
     }
-}
 
-/// Convert FileTreePanel's visible items to gpui-component TreeItems.
-fn tree_items_from_panel(panel: &FileTreePanel) -> Vec<TreeItem> {
-    convert_nodes(&panel.tree.nodes)
-}
-
-fn convert_nodes(nodes: &[TreeNode]) -> Vec<TreeItem> {
-    nodes
-        .iter()
-        .map(|node| match node {
-            TreeNode::Directory {
-                path,
-                name,
-                children,
-                expanded,
-            } => {
-                TreeItem::new(
-                    path.to_string_lossy().to_string(),
-                    name.clone(),
-                )
-                .expanded(*expanded)
-                .children(convert_nodes(children))
-            }
-            TreeNode::File { path, name } => {
-                TreeItem::new(
-                    path.to_string_lossy().to_string(),
-                    name.clone(),
-                )
-            }
-        })
-        .collect()
-}
-
-/// Flatten tree nodes into a list of IDs in display order (expanded dirs recurse).
-fn flatten_node_ids(nodes: &[TreeNode]) -> Vec<String> {
-    let mut result = Vec::new();
-    for node in nodes {
-        match node {
-            TreeNode::Directory { path, children, expanded, .. } => {
-                result.push(path.to_string_lossy().to_string());
-                if *expanded {
-                    result.extend(flatten_node_ids(children));
-                }
-            }
-            TreeNode::File { path, .. } => {
-                result.push(path.to_string_lossy().to_string());
-            }
+    /// Scroll to the given path in the flat list.
+    fn scroll_to_path(&self, path: &Path) {
+        let flat = self.panel.tree.flatten();
+        if let Some(idx) = flat.iter().position(|(_, node)| node.path() == path) {
+            self.scroll_handle.scroll_to_item(idx);
         }
     }
-    result
 }
 
 impl Focusable for FileTreeView {
@@ -186,6 +107,103 @@ impl Render for FileTreeView {
         let ghost = GhostTheme::from_name(self.active_theme);
         let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
+        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
+        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+
+        let flat = self.panel.tree.flatten();
+        let selected = self.selected_path.clone();
+        let root_path = self.panel.tree.root.clone();
+
+        let mut list = div()
+            .id("file-tree-list")
+            .flex_1()
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll_handle)
+            .on_mouse_down(MouseButton::Right, cx.listener(move |_this: &mut Self, event: &MouseDownEvent, _window, cx| {
+                // Right-click on empty area → context menu for root
+                cx.emit(ContextMenuRequested(root_path.clone(), event.position));
+            }));
+
+        for (i, (depth, node)) in flat.iter().enumerate() {
+            let node_path = node.path().to_path_buf();
+            let is_selected = selected.as_ref() == Some(&node_path);
+            let is_dir = node.is_dir();
+            let is_expanded = node.is_expanded();
+            let name = node.name().to_string();
+            let indent = *depth as f32 * 16.0;
+
+            let row_bg = if is_selected { selection_bg } else { sidebar_bg };
+
+            let chevron_label = if is_dir {
+                if is_expanded { "\u{25be}" } else { "\u{25b8}" }
+            } else {
+                ""
+            };
+
+            let chevron_path = node_path.clone();
+            let label_path = node_path.clone();
+            let right_click_path = node_path.clone();
+
+            let row = div()
+                .id(ElementId::NamedInteger("tree-row".into(), i as u64))
+                .w_full()
+                .flex()
+                .flex_row()
+                .items_center()
+                .bg(row_bg)
+                .on_mouse_down(MouseButton::Right, cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
+                    this.selected_path = Some(right_click_path.clone());
+                    cx.emit(ContextMenuRequested(right_click_path.clone(), event.position));
+                    cx.stop_propagation();
+                }))
+                // Chevron area (for toggling dirs)
+                .child(
+                    div()
+                        .id(ElementId::NamedInteger("tree-chevron".into(), i as u64))
+                        .w(px(indent + 20.0))
+                        .pl(px(indent + 4.0))
+                        .text_xs()
+                        .text_color(hint_fg)
+                        .flex_shrink_0()
+                        .when(is_dir, |d| {
+                            d.cursor_pointer()
+                                .on_click(cx.listener(move |this: &mut Self, _event: &ClickEvent, _window, cx| {
+                                    this.panel.tree.toggle_dir(&chevron_path);
+                                    cx.notify();
+                                }))
+                        })
+                        .child(chevron_label),
+                )
+                // Label area
+                .child(
+                    div()
+                        .id(ElementId::NamedInteger("tree-label".into(), i as u64))
+                        .flex_1()
+                        .text_sm()
+                        .text_color(fg)
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .cursor_pointer()
+                        .py(px(2.0))
+                        .on_click(cx.listener(move |this: &mut Self, event: &ClickEvent, _window, cx| {
+                            this.selected_path = Some(label_path.clone());
+                            if is_dir {
+                                // Just select the dir, don't toggle
+                            } else {
+                                cx.emit(FileSelected(label_path.clone()));
+                                if event.click_count() >= 2 {
+                                    cx.emit(FileRenameRequested(label_path.clone()));
+                                }
+                            }
+                            cx.notify();
+                        }))
+                        .child(name),
+                );
+
+            list = list.child(row);
+        }
 
         div()
             .size_full()
@@ -201,56 +219,9 @@ impl Render for FileTreeView {
                     .p(px(8.0))
                     .text_sm()
                     .flex_shrink_0()
-                    .text_color(rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2))
+                    .text_color(hint_fg)
                     .child("ghostmd"),
             )
-            .child(
-                div()
-                    .id("file-tree-scroll")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .on_click(cx.listener(|this: &mut Self, event: &ClickEvent, _window, cx| {
-                        if event.click_count() >= 2 {
-                            if let Some(id) = &this.last_selected_id {
-                                let path = PathBuf::from(id);
-                                if path.is_file() {
-                                    cx.emit(FileRenameRequested(path));
-                                }
-                            }
-                        }
-                    }))
-                    .on_mouse_down(MouseButton::Right, cx.listener(|this: &mut Self, event: &MouseDownEvent, _window, cx| {
-                        if let Some(id) = &this.last_selected_id {
-                            let path = PathBuf::from(id);
-                            cx.emit(ContextMenuRequested(path, event.position));
-                        }
-                    }))
-                    .child(
-                        tree(&self.tree_state, |ix, entry, selected, _window, _cx| {
-                            let label = entry.item().label.clone();
-                            let is_folder = entry.is_folder();
-                            let is_expanded = entry.is_expanded();
-
-                            let prefix = if is_folder {
-                                if is_expanded { "\u{25be} " } else { "\u{25b8} " }
-                            } else {
-                                "  "
-                            };
-
-                            ListItem::new(ix)
-                                .selected(selected)
-                                .child(
-                                    div()
-                                        .pl(px(16.0 * entry.depth() as f32))
-                                        .text_sm()
-                                        .overflow_hidden()
-                                        .whitespace_nowrap()
-                                        .text_ellipsis()
-                                        .child(format!("{}{}", prefix, label)),
-                                )
-                        })
-                        .w_full(),
-                    ),
-            )
+            .child(list)
     }
 }

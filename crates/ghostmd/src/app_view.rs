@@ -519,6 +519,9 @@ pub struct GhostAppView {
     agentic_input: Entity<InputState>,
     agentic_results: Vec<String>,
     agentic_loading: bool,
+    // Scroll handles for overlays
+    palette_scroll: ScrollHandle,
+    finder_scroll: ScrollHandle,
 }
 
 impl GhostAppView {
@@ -652,13 +655,10 @@ impl GhostAppView {
         // Agentic search input (cmd-shift-f)
         let agentic_input = cx.new(|cx| InputState::new(window, cx).placeholder("Ask Claude about your notes..."));
         cx.subscribe_in(&agentic_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
-            match event {
-                InputEvent::PressEnter { .. } => {
-                    if this.show_agentic_search && !this.agentic_loading {
-                        this.run_agentic_search(window, cx);
-                    }
+            if let InputEvent::PressEnter { .. } = event {
+                if this.show_agentic_search && !this.agentic_loading {
+                    this.run_agentic_search(window, cx);
                 }
-                _ => {}
             }
         })
         .detach();
@@ -741,6 +741,8 @@ impl GhostAppView {
             agentic_input,
             agentic_results: Vec::new(),
             agentic_loading: false,
+            palette_scroll: ScrollHandle::new(),
+            finder_scroll: ScrollHandle::new(),
         };
 
         // If no session was loaded (or it was empty), create a default workspace
@@ -867,14 +869,43 @@ impl GhostAppView {
     }
 
     /// Create a new diary note and open it in the focused pane of the active workspace (cmd-n).
+    /// If a folder is selected in the file tree, creates the note there instead of diary path.
     fn new_note_in_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let root = self.app.root.clone();
-        let path = diary::new_diary_path(&root, &random_note_name());
+        let selected_dir = self.file_tree.read(cx).selected_path()
+            .and_then(|p| {
+                if p.is_dir() { Some(p.clone()) } else { p.parent().map(|pp| pp.to_path_buf()) }
+            })
+            .filter(|d| d.starts_with(&root) && *d != root);
+
+        let path = if let Some(dir) = selected_dir {
+            dir.join(format!("{}.md", random_note_name()))
+        } else {
+            diary::new_diary_path(&root, &random_note_name())
+        };
         let note = Note::new(path.clone());
         note.ensure_dir().ok();
         note.save("").ok();
         self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
         self.open_file(path, window, cx);
+    }
+
+    /// Create a new note in a specific directory.
+    fn new_note_in_dir(&mut self, dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let path = dir.join(format!("{}.md", random_note_name()));
+        let note = Note::new(path.clone());
+        note.ensure_dir().ok();
+        note.save("").ok();
+        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+        self.open_file(path, window, cx);
+    }
+
+    /// Create a new folder inside a parent directory.
+    fn create_new_folder(&mut self, parent: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
+        let path = parent.join("new-folder");
+        std::fs::create_dir_all(&path).ok();
+        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+        cx.notify();
     }
 
     /// Create a new workspace with a diary note (cmd-t).
@@ -1112,6 +1143,7 @@ impl GhostAppView {
     fn palette_move_up(&mut self, cx: &mut Context<Self>) {
         if self.palette.selected_index > 0 {
             self.palette.selected_index -= 1;
+            self.palette_scroll.scroll_to_item(self.palette.selected_index);
             cx.notify();
         }
     }
@@ -1121,6 +1153,7 @@ impl GhostAppView {
         let count = self.palette.filtered_commands().len();
         if count > 0 && self.palette.selected_index < count - 1 {
             self.palette.selected_index += 1;
+            self.palette_scroll.scroll_to_item(self.palette.selected_index);
             cx.notify();
         }
     }
@@ -1144,7 +1177,7 @@ impl GhostAppView {
         let current_value = match mode {
             RenameMode::File => {
                 self.focused_active_path()
-                    .map(|p| Note::title_from_path(&p))
+                    .map(|p| p.file_stem().unwrap_or_default().to_string_lossy().to_string())
                     .unwrap_or_default()
             }
             RenameMode::Tab => {
@@ -1158,6 +1191,9 @@ impl GhostAppView {
             state.focus(window, cx);
         });
         cx.notify();
+        cx.defer_in(window, |_this: &mut Self, window, cx| {
+            window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
+        });
     }
 
     /// Apply the rename.
@@ -1674,7 +1710,7 @@ impl GhostAppView {
         }
     }
 
-    fn render_file_finder(&self, _cx: &mut Context<Self>) -> Div {
+    fn render_file_finder(&self, cx: &mut Context<Self>) -> Div {
         let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
@@ -1689,7 +1725,8 @@ impl GhostAppView {
             .flex()
             .flex_col()
             .max_h(px(400.0))
-            .overflow_y_scroll();
+            .overflow_y_scroll()
+            .track_scroll(&self.finder_scroll);
 
         let max_display = 50.min(self.file_finder.results.len());
         for i in 0..max_display {
@@ -1735,46 +1772,59 @@ impl GhostAppView {
 
         div()
             .absolute()
-            .top(px(60.0))
-            .left_0()
-            .right_0()
-            .flex()
-            .justify_center()
+            .inset_0()
             .child(
                 div()
-                    .w(px(500.0))
-                    .bg(overlay_bg)
-                    .border_1()
-                    .border_color(border_color)
-                    .rounded(px(8.0))
-                    .shadow_lg()
+                    .id("finder-dismiss-bg")
+                    .size_full()
+                    .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                        this.close_file_finder(window, cx);
+                    })),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(px(60.0))
+                    .left_0()
+                    .right_0()
                     .flex()
-                    .flex_col()
+                    .justify_center()
                     .child(
                         div()
-                            .px(px(8.0))
-                            .py(px(6.0))
-                            .border_b_1()
+                            .w(px(500.0))
+                            .bg(overlay_bg)
+                            .border_1()
                             .border_color(border_color)
+                            .rounded(px(8.0))
+                            .shadow_lg()
+                            .flex()
+                            .flex_col()
                             .child(
-                                Input::new(&self.file_finder_input)
-                                    .appearance(false)
-                                    .w_full(),
+                                div()
+                                    .px(px(8.0))
+                                    .py(px(6.0))
+                                    .border_b_1()
+                                    .border_color(border_color)
+                                    .child(
+                                        Input::new(&self.file_finder_input)
+                                            .appearance(false)
+                                            .w_full(),
+                                    ),
+                            )
+                            .child(list)
+                            .child(
+                                div()
+                                    .px(px(12.0))
+                                    .py(px(4.0))
+                                    .text_xs()
+                                    .text_color(hint_fg)
+                                    .child(count_text),
                             ),
-                    )
-                    .child(list)
-                    .child(
-                        div()
-                            .px(px(12.0))
-                            .py(px(4.0))
-                            .text_xs()
-                            .text_color(hint_fg)
-                            .child(count_text),
                     ),
             )
     }
 
-    fn render_agentic_search(&self, _cx: &mut Context<Self>) -> Div {
+    fn render_agentic_search(&self, cx: &mut Context<Self>) -> Div {
         let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
@@ -1823,41 +1873,54 @@ impl GhostAppView {
 
         div()
             .absolute()
-            .top(px(60.0))
-            .left_0()
-            .right_0()
-            .flex()
-            .justify_center()
+            .inset_0()
             .child(
                 div()
-                    .w(px(600.0))
-                    .bg(overlay_bg)
-                    .border_1()
-                    .border_color(border_color)
-                    .rounded(px(8.0))
-                    .shadow_lg()
+                    .id("agentic-dismiss-bg")
+                    .size_full()
+                    .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                        this.close_agentic_search(window, cx);
+                    })),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(px(60.0))
+                    .left_0()
+                    .right_0()
                     .flex()
-                    .flex_col()
+                    .justify_center()
                     .child(
                         div()
-                            .px(px(8.0))
-                            .py(px(6.0))
-                            .border_b_1()
+                            .w(px(600.0))
+                            .bg(overlay_bg)
+                            .border_1()
                             .border_color(border_color)
+                            .rounded(px(8.0))
+                            .shadow_lg()
+                            .flex()
+                            .flex_col()
                             .child(
-                                Input::new(&self.agentic_input)
-                                    .appearance(false)
-                                    .w_full(),
+                                div()
+                                    .px(px(8.0))
+                                    .py(px(6.0))
+                                    .border_b_1()
+                                    .border_color(border_color)
+                                    .child(
+                                        Input::new(&self.agentic_input)
+                                            .appearance(false)
+                                            .w_full(),
+                                    ),
+                            )
+                            .child(results_div)
+                            .child(
+                                div()
+                                    .px(px(12.0))
+                                    .py(px(4.0))
+                                    .text_xs()
+                                    .text_color(hint_fg)
+                                    .child(status),
                             ),
-                    )
-                    .child(results_div)
-                    .child(
-                        div()
-                            .px(px(12.0))
-                            .py(px(4.0))
-                            .text_xs()
-                            .text_color(hint_fg)
-                            .child(status),
                     ),
             )
     }
@@ -1894,10 +1957,12 @@ impl GhostAppView {
             let filtered = self.palette.filtered_commands();
 
             let mut list = div()
+                .id("palette-list")
                 .flex()
                 .flex_col()
                 .max_h(px(300.0))
-                .overflow_y_hidden();
+                .overflow_y_scroll()
+                .track_scroll(&self.palette_scroll);
 
             for (i, cmd) in filtered.iter().enumerate() {
                 let is_selected = i == self.palette.selected_index;
@@ -1940,37 +2005,50 @@ impl GhostAppView {
             body = body.child(list);
         }
 
-        // Overlay container — absolutely positioned centered
+        // Overlay container — full-screen backdrop + centered card
         div()
             .absolute()
-            .top(px(60.0))
-            .left_0()
-            .right_0()
-            .flex()
-            .justify_center()
+            .inset_0()
             .child(
                 div()
-                    .w(px(400.0))
-                    .bg(overlay_bg)
-                    .border_1()
-                    .border_color(border_color)
-                    .rounded(px(8.0))
-                    .shadow_lg()
+                    .id("palette-dismiss-bg")
+                    .size_full()
+                    .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                        this.close_palette(window, cx);
+                    })),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(px(60.0))
+                    .left_0()
+                    .right_0()
                     .flex()
-                    .flex_col()
+                    .justify_center()
                     .child(
                         div()
-                            .px(px(8.0))
-                            .py(px(6.0))
-                            .border_b_1()
+                            .w(px(400.0))
+                            .bg(overlay_bg)
+                            .border_1()
                             .border_color(border_color)
+                            .rounded(px(8.0))
+                            .shadow_lg()
+                            .flex()
+                            .flex_col()
                             .child(
-                                Input::new(&self.palette_input)
-                                    .appearance(false)
-                                    .w_full(),
-                            ),
-                    )
-                    .child(body),
+                                div()
+                                    .px(px(8.0))
+                                    .py(px(6.0))
+                                    .border_b_1()
+                                    .border_color(border_color)
+                                    .child(
+                                        Input::new(&self.palette_input)
+                                            .appearance(false)
+                                            .w_full(),
+                                    ),
+                            )
+                            .child(body),
+                    ),
             )
     }
 }
@@ -2079,6 +2157,7 @@ impl Render for GhostAppView {
                 this.show_file_finder = !this.show_file_finder;
                 if this.show_file_finder {
                     this.file_finder.open().ok();
+                    this.finder_scroll = ScrollHandle::new();
                     this.file_finder_input.update(cx, |state, cx| {
                         state.set_value("", window, cx);
                         state.focus(window, cx);
@@ -2099,6 +2178,7 @@ impl Render for GhostAppView {
                 this.show_palette = !this.show_palette;
                 if this.show_palette {
                     this.palette.open();
+                    this.palette_scroll = ScrollHandle::new();
                     this.palette_input.update(cx, |state, cx| {
                         state.set_value("", window, cx);
                         state.focus(window, cx);
@@ -2122,20 +2202,31 @@ impl Render for GhostAppView {
                     cx.notify();
                 }
             }))
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, _window, cx| {
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, window, cx| {
                 if this.show_file_finder {
                     this.file_finder.select_prev();
+                    this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
+                    cx.notify();
+                } else if this.show_agentic_search {
+                    // No item selection for agentic search
                     cx.notify();
                 } else if this.show_palette {
                     this.palette_move_up(cx);
+                } else {
+                    window.dispatch_action(Box::new(gpui_component::input::MoveUp), cx);
                 }
             }))
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteDown, _window, cx| {
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteDown, window, cx| {
                 if this.show_file_finder {
                     this.file_finder.select_next();
+                    this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
+                    cx.notify();
+                } else if this.show_agentic_search {
                     cx.notify();
                 } else if this.show_palette {
                     this.palette_move_down(cx);
+                } else {
+                    window.dispatch_action(Box::new(gpui_component::input::MoveDown), cx);
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteConfirm, window, cx| {
@@ -2229,7 +2320,18 @@ impl Render for GhostAppView {
         // Context menu overlay (rendered at root level for correct z-order and positioning)
         if let Some((ref path, position)) = ctx_menu {
             let is_file = path.is_file();
+            let is_root = *path == self.app.root;
+
+            // Determine the directory for "New Note" / "New Folder"
+            let context_dir = if path.is_dir() {
+                path.clone()
+            } else {
+                path.parent().unwrap_or(&self.app.root).to_path_buf()
+            };
+
             let rename_path = path.clone();
+            let new_note_dir = context_dir.clone();
+            let new_folder_dir = context_dir;
             let finder_path = path.clone();
             let trash_path = path.clone();
 
@@ -2252,6 +2354,7 @@ impl Render for GhostAppView {
                 .flex()
                 .flex_col();
 
+            // Rename (files only)
             if is_file {
                 menu = menu.child(
                     div()
@@ -2271,6 +2374,41 @@ impl Render for GhostAppView {
                 );
             }
 
+            // New Note
+            menu = menu.child(
+                div()
+                    .id("ctx-new-note")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(selection_bg))
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.tree_context_menu = None;
+                        this.new_note_in_dir(new_note_dir.clone(), window, cx);
+                    }))
+                    .child("New Note"),
+            );
+
+            // New Folder
+            menu = menu.child(
+                div()
+                    .id("ctx-new-folder")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(selection_bg))
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.tree_context_menu = None;
+                        this.create_new_folder(new_folder_dir.clone(), window, cx);
+                    }))
+                    .child("New Folder"),
+            );
+
+            // Open in Finder
             menu = menu.child(
                 div()
                     .id("ctx-open-finder")
@@ -2282,29 +2420,35 @@ impl Render for GhostAppView {
                     .hover(|s| s.bg(selection_bg))
                     .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
                         this.tree_context_menu = None;
-                        if let Some(parent) = finder_path.parent() {
-                            std::process::Command::new("open").arg(parent).spawn().ok();
-                        }
+                        let target = if finder_path.is_dir() {
+                            finder_path.clone()
+                        } else {
+                            finder_path.parent().unwrap_or(&finder_path).to_path_buf()
+                        };
+                        std::process::Command::new("open").arg(target).spawn().ok();
                         cx.notify();
                     }))
                     .child("Open in Finder"),
             );
 
-            menu = menu.child(
-                div()
-                    .id("ctx-move-to-trash")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(error_fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(selection_bg))
-                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                        this.tree_context_menu = None;
-                        this.move_to_trash(trash_path.clone(), window, cx);
-                    }))
-                    .child("Move to Trash"),
-            );
+            // Move to Trash (not for root)
+            if !is_root {
+                menu = menu.child(
+                    div()
+                        .id("ctx-move-to-trash")
+                        .px(px(12.0))
+                        .py(px(6.0))
+                        .text_sm()
+                        .text_color(error_fg)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(selection_bg))
+                        .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                            this.tree_context_menu = None;
+                            this.move_to_trash(trash_path.clone(), window, cx);
+                        }))
+                        .child("Move to Trash"),
+                );
+            }
 
             root = root.child(menu);
         }
