@@ -76,9 +76,8 @@ impl EditorView {
     ) -> Self {
         let input_state = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
-                .code_editor("text")
-                .soft_wrap(true)
-                .line_number(false);
+                .multi_line(true)
+                .soft_wrap(true);
             state.lsp.definition_provider = Some(Rc::new(UrlDefinitionProvider));
             state
         });

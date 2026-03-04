@@ -477,7 +477,6 @@ impl Render for FileTreeView {
 
         let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
         let drop_bg = hsla(accent.h, accent.s, accent.l, 0.15);
-        let root_drop_dir = self.panel.tree.root.clone();
         let mut list = div()
             .id("file-tree-list")
             .flex_1()
@@ -485,10 +484,6 @@ impl Render for FileTreeView {
             .track_scroll(&self.scroll_handle)
             .on_mouse_down(MouseButton::Right, cx.listener(move |_this: &mut Self, event: &MouseDownEvent, _window, cx| {
                 cx.emit(ContextMenuRequested(root_path.clone(), event.position));
-            }))
-            .drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(drop_bg))
-            .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
-                this.handle_drop(payload.0.clone(), root_drop_dir.clone(), cx);
             }));
 
         for (i, (depth, node)) in flat.iter().enumerate() {
@@ -561,12 +556,10 @@ impl Render for FileTreeView {
                     cx.emit(ContextMenuRequested(right_click_path.clone(), event.position));
                     cx.stop_propagation();
                 }))
-                .when(is_dir, |d| {
-                    d.drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(row_drop_bg).border_t_1().border_b_1().border_color(accent))
-                     .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
-                         this.handle_drop(payload.0.clone(), drop_dir.clone(), cx);
-                     }))
-                })
+                .drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(row_drop_bg).border_t_1().border_b_1().border_color(accent))
+                .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
+                    this.handle_drop(payload.0.clone(), drop_dir.clone(), cx);
+                }))
                 // Chevron area (for toggling dirs)
                 .child(
                     div()
@@ -631,6 +624,19 @@ impl Render for FileTreeView {
 
             list = list.child(row);
         }
+
+        // Root drop zone: fills remaining space at the bottom of the tree
+        let root_drop_dir = self.panel.tree.root.clone();
+        list = list.child(
+            div()
+                .id("tree-root-drop-zone")
+                .flex_1()
+                .min_h(px(40.0))
+                .drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(drop_bg))
+                .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
+                    this.handle_drop(payload.0.clone(), root_drop_dir.clone(), cx);
+                })),
+        );
 
         div()
             .size_full()

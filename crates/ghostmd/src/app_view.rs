@@ -554,7 +554,7 @@ pub struct GhostAppView {
 }
 
 impl GhostAppView {
-    pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(root: PathBuf, load_session: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let app = GhostApp::new(root.clone());
 
         let file_tree = cx.new(|cx| FileTreeView::new(root.clone(), window, cx));
@@ -757,10 +757,14 @@ impl GhostAppView {
         .detach();
 
         // --- Load session if available ---
-        let session_path = root.join(".ghostmd").join("session.json");
-        let session: Option<SessionState> = std::fs::read_to_string(&session_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok());
+        let session: Option<SessionState> = if load_session {
+            let session_path = root.join(".ghostmd").join("session.json");
+            std::fs::read_to_string(&session_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+        } else {
+            None
+        };
 
         let mut next_pane_id = 0usize;
         let mut next_workspace_id = 0usize;
@@ -1052,7 +1056,7 @@ impl GhostAppView {
                         ..Default::default()
                     },
                     |window, cx| {
-                        let app_view = cx.new(|cx| GhostAppView::new(root, window, cx));
+                        let app_view = cx.new(|cx| GhostAppView::new(root, false, window, cx));
                         cx.new(|cx| Root::new(app_view, window, cx))
                     },
                 ).ok();
@@ -1191,9 +1195,8 @@ impl GhostAppView {
             self.closed_workspaces.push(removed);
 
             if self.workspaces.is_empty() {
-                self.active_workspace = 0;
-                window.focus(&self.focus_handle);
-                cx.notify();
+                self.save_session();
+                window.remove_window();
                 return;
             } else if self.active_workspace >= self.workspaces.len() {
                 self.active_workspace = self.workspaces.len() - 1;
@@ -1848,8 +1851,9 @@ impl GhostAppView {
         self.closed_workspaces.push(removed);
 
         if self.workspaces.is_empty() {
-            let root = self.app.root.clone();
-            self.new_workspace(&root, window, cx);
+            self.save_session();
+            window.remove_window();
+            return;
         } else if self.active_workspace >= self.workspaces.len() {
             self.active_workspace = self.workspaces.len() - 1;
         } else if idx < self.active_workspace {

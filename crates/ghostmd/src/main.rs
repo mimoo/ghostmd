@@ -66,7 +66,7 @@ fn open_main_window(root: std::path::PathBuf, cx: &mut App) {
             ..Default::default()
         },
         |window, cx| {
-            let app_view = cx.new(|cx| GhostAppView::new(root, window, cx));
+            let app_view = cx.new(|cx| GhostAppView::new(root, true, window, cx));
             cx.new(|cx| Root::new(app_view, window, cx))
         },
     )
