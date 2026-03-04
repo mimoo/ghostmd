@@ -82,6 +82,8 @@ pub struct FileTreeView {
     editing_is_new: bool,
     /// True if the new item is a note (vs folder).
     editing_is_note: bool,
+    /// Error message shown below the rename input (e.g. duplicate name).
+    editing_error: Option<String>,
 }
 
 impl EventEmitter<FileSelected> for FileTreeView {}
@@ -107,9 +109,21 @@ impl FileTreeView {
                 InputEvent::PressEnter { .. } => {
                     this.finish_rename(window, cx);
                 }
+                InputEvent::Change => {
+                    // Clear error when user edits the name
+                    if this.editing_error.is_some() {
+                        this.editing_error = None;
+                        cx.notify();
+                    }
+                }
                 InputEvent::Blur => {
                     if this.editing_path.is_some() {
-                        this.finish_rename(window, cx);
+                        if this.editing_error.is_some() {
+                            // If there's an error showing, cancel instead of retrying
+                            this.cancel_rename(window, cx);
+                        } else {
+                            this.finish_rename(window, cx);
+                        }
                     }
                 }
                 _ => {}
@@ -129,6 +143,7 @@ impl FileTreeView {
             editing_path: None,
             editing_is_new: false,
             editing_is_note: false,
+            editing_error: None,
         }
     }
 
@@ -321,14 +336,16 @@ impl FileTreeView {
 
     /// Finish inline rename: apply the new name on disk.
     fn finish_rename(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let Some(old_path) = self.editing_path.take() else { return };
+        let Some(old_path) = self.editing_path.clone() else { return };
         let new_name = self.rename_input.read(cx).value().to_string().trim().to_string();
         let is_new = self.editing_is_new;
         let is_note = self.editing_is_note;
-        self.editing_is_new = false;
-        self.editing_is_note = false;
 
         if new_name.is_empty() {
+            self.editing_path = None;
+            self.editing_is_new = false;
+            self.editing_is_note = false;
+            self.editing_error = None;
             if is_new {
                 if old_path.is_dir() {
                     std::fs::remove_dir_all(&old_path).ok();
@@ -353,11 +370,14 @@ impl FileTreeView {
         if new_path != old_path {
             // Prevent overwriting an existing file or folder
             if new_path.exists() {
-                // Revert: keep old path, stay in tree as-is
-                self.panel.refresh().ok();
+                self.editing_error = Some(format!("\"{}\" already exists", new_filename));
                 cx.notify();
                 return;
             }
+            self.editing_path = None;
+            self.editing_is_new = false;
+            self.editing_is_note = false;
+            self.editing_error = None;
             if std::fs::rename(&old_path, &new_path).is_ok() {
                 self.panel.refresh().ok();
                 self.panel.tree.reveal_path(&new_path);
@@ -374,6 +394,10 @@ impl FileTreeView {
                 self.panel.refresh().ok();
             }
         } else {
+            self.editing_path = None;
+            self.editing_is_new = false;
+            self.editing_is_note = false;
+            self.editing_error = None;
             if is_new {
                 cx.emit(NewItemCreated(new_path));
             }
@@ -426,6 +450,7 @@ impl FileTreeView {
         }
         self.editing_is_new = false;
         self.editing_is_note = false;
+        self.editing_error = None;
         cx.notify();
     }
 }
@@ -491,11 +516,26 @@ impl Render for FileTreeView {
             let drop_highlight = hsla(selection_bg.h, selection_bg.s, selection_bg.l + 0.05, 0.8);
 
             let label_child: AnyElement = if is_editing {
-                Input::new(&self.rename_input)
-                    .appearance(true)
-                    .text_size(px(13.0))
-                    .w(px(200.0))
-                    .into_any_element()
+                let error_color = rgb_to_hsla(220, 80, 80);
+                let mut col = div()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        Input::new(&self.rename_input)
+                            .appearance(true)
+                            .text_size(px(13.0))
+                            .w(px(200.0)),
+                    );
+                if let Some(err) = &self.editing_error {
+                    col = col.child(
+                        div()
+                            .text_xs()
+                            .text_color(error_color)
+                            .py(px(1.0))
+                            .child(err.clone()),
+                    );
+                }
+                col.into_any_element()
             } else {
                 div()
                     .text_color(fg)
@@ -568,14 +608,15 @@ impl Render for FileTreeView {
                             })
                             .on_click(cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
                                 let was_selected = this.selected_paths.contains(&label_path);
+                                let has_modifier = event.modifiers().platform || event.modifiers().shift;
                                 this.handle_click(&label_path, &event.modifiers());
 
                                 if is_dir {
                                     // Toggle dir on click if already selected (plain click only)
-                                    if was_selected && !event.modifiers().platform && !event.modifiers().shift {
+                                    if was_selected && !has_modifier {
                                         this.panel.tree.toggle_dir(&label_path);
                                     }
-                                } else {
+                                } else if !has_modifier {
                                     cx.emit(FileSelected(label_path.clone()));
                                     if event.click_count() >= 2 {
                                         this.start_rename(&label_path, window, cx);
