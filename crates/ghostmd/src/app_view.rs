@@ -508,6 +508,8 @@ struct Workspace {
     split_root: SplitNode,
     panes: HashMap<usize, Pane>,
     focused_pane: usize,
+    /// Stack of previously focused pane IDs (most recent last).
+    pane_focus_history: Vec<usize>,
 }
 
 // ---------------------------------------------------------------------------
@@ -778,6 +780,7 @@ impl GhostAppView {
                     split_root,
                     panes,
                     focused_pane,
+                    pane_focus_history: Vec::new(),
                 });
             }
         }
@@ -902,6 +905,7 @@ impl GhostAppView {
             split_root: SplitNode::Leaf(pane_id),
             panes,
             focused_pane: pane_id,
+            pane_focus_history: Vec::new(),
         };
 
         self.workspaces.push(ws);
@@ -972,8 +976,9 @@ impl GhostAppView {
         if !self.app.sidebar_visible {
             self.app.toggle_sidebar();
         }
+        let name = random_note_name();
         self.file_tree.update(cx, |tree, cx| {
-            tree.start_new_note(&parent_dir, window, cx);
+            tree.start_new_note(&parent_dir, &name, window, cx);
         });
         cx.notify();
     }
@@ -983,8 +988,9 @@ impl GhostAppView {
         if !self.app.sidebar_visible {
             self.app.toggle_sidebar();
         }
+        let name = random_note_name();
         self.file_tree.update(cx, |tree, cx| {
-            tree.start_new_note(&dir, window, cx);
+            tree.start_new_note(&dir, &name, window, cx);
         });
         cx.notify();
     }
@@ -1072,7 +1078,7 @@ impl GhostAppView {
         }
         if let Some(path) = self.focused_active_path() {
             self.file_tree.update(cx, |tree, cx| {
-                tree.select_file(&path, cx);
+                tree.reveal_file(&path, cx);
             });
         }
     }
@@ -1088,6 +1094,7 @@ impl GhostAppView {
         let ws = self.active_ws_mut();
         ws.panes.insert(new_id, Pane { active_path: None, editor: None });
         ws.split_root.split_leaf(ws.focused_pane, new_id, direction);
+        ws.pane_focus_history.push(ws.focused_pane);
         ws.focused_pane = new_id;
         self.focus_pane_editor(new_id, window, cx);
         cx.notify();
@@ -1114,6 +1121,7 @@ impl GhostAppView {
             None
         };
         if let Some(new_id) = target {
+            ws.pane_focus_history.push(ws.focused_pane);
             ws.focused_pane = new_id;
             self.focus_pane_editor(new_id, window, cx);
             self.sync_file_tree_selection(cx);
@@ -1180,11 +1188,21 @@ impl GhostAppView {
         let focused_id = ws.focused_pane;
         ws.panes.remove(&focused_id);
         ws.split_root.remove_leaf(focused_id);
+        // Remove closed pane from history
+        ws.pane_focus_history.retain(|&id| id != focused_id);
 
-        // Switch focus to the first remaining leaf
-        let leaves = ws.split_root.leaves();
-        if let Some(&first) = leaves.first() {
-            ws.focused_pane = first;
+        // Switch focus to the most recently focused pane, or first remaining leaf
+        let remaining: std::collections::HashSet<usize> = ws.panes.keys().copied().collect();
+        let prev = ws.pane_focus_history.iter().rev()
+            .find(|id| remaining.contains(id))
+            .copied();
+        if let Some(prev_id) = prev {
+            ws.focused_pane = prev_id;
+        } else {
+            let leaves = ws.split_root.leaves();
+            if let Some(&first) = leaves.first() {
+                ws.focused_pane = first;
+            }
         }
 
         let focused = self.active_ws().focused_pane;
@@ -1728,6 +1746,7 @@ impl GhostAppView {
                     .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                         let ws = this.active_ws_mut();
                         if ws.focused_pane != pid {
+                            ws.pane_focus_history.push(ws.focused_pane);
                             ws.focused_pane = pid;
                             this.focus_pane_editor(pid, window, cx);
                             this.sync_file_tree_selection(cx);
@@ -2203,6 +2222,7 @@ impl Render for GhostAppView {
                     (k, Pane { active_path: v.active_path.clone(), editor: v.editor.clone() })
                 }).collect(),
                 focused_pane: self.active_ws().focused_pane,
+                pane_focus_history: Vec::new(),
             };
             (Some(sr), Some(wsc))
         } else {

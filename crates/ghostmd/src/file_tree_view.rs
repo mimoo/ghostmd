@@ -138,16 +138,6 @@ impl FileTreeView {
         cx.notify();
     }
 
-    /// Programmatically select a file in the tree by path (single selection).
-    pub fn select_file(&mut self, path: &Path, cx: &mut Context<Self>) {
-        self.selected_paths.clear();
-        self.selected_paths.insert(path.to_path_buf());
-        self.anchor_path = Some(path.to_path_buf());
-        self.last_clicked = Some(path.to_path_buf());
-        self.scroll_to_path(path);
-        cx.notify();
-    }
-
     /// Reveal a file in the tree: expand ancestors, scroll to file.
     pub fn reveal_file(&mut self, path: &Path, cx: &mut Context<Self>) {
         self.panel.tree.reveal_path(path);
@@ -268,8 +258,11 @@ impl FileTreeView {
     }
 
     /// Start inline creation of a new note in the given directory.
-    pub fn start_new_note(&mut self, parent_dir: &Path, window: &mut Window, cx: &mut Context<Self>) {
-        let name = "untitled";
+    pub fn start_new_note(&mut self, parent_dir: &Path, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        // Commit any in-progress rename before starting a new one
+        if self.editing_path.is_some() {
+            self.finish_rename(window, cx);
+        }
         let temp_path = parent_dir.join(format!("{}.md", name));
         std::fs::create_dir_all(parent_dir).ok();
         std::fs::write(&temp_path, "").ok();
@@ -282,8 +275,9 @@ impl FileTreeView {
         self.selected_paths.clear();
         self.selected_paths.insert(temp_path.clone());
         self.last_clicked = Some(temp_path.clone());
+        let name_owned = name.to_string();
         self.rename_input.update(cx, |state, cx| {
-            state.set_value(name, window, cx);
+            state.set_value(&name_owned, window, cx);
             state.focus(window, cx);
         });
         self.scroll_to_path(&temp_path);
@@ -297,6 +291,10 @@ impl FileTreeView {
 
     /// Start inline creation of a new folder in the given directory.
     pub fn start_new_folder(&mut self, parent_dir: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        // Commit any in-progress rename before starting a new one
+        if self.editing_path.is_some() {
+            self.finish_rename(window, cx);
+        }
         let name = "new-folder";
         let temp_path = parent_dir.join(name);
         std::fs::create_dir_all(&temp_path).ok();
@@ -353,6 +351,13 @@ impl FileTreeView {
             .join(&new_filename);
 
         if new_path != old_path {
+            // Prevent overwriting an existing file or folder
+            if new_path.exists() {
+                // Revert: keep old path, stay in tree as-is
+                self.panel.refresh().ok();
+                cx.notify();
+                return;
+            }
             if std::fs::rename(&old_path, &new_path).is_ok() {
                 self.panel.refresh().ok();
                 self.panel.tree.reveal_path(&new_path);
@@ -391,6 +396,7 @@ impl FileTreeView {
         let file_name = source.file_name().unwrap_or_default();
         let new_path = target_dir.join(file_name);
         if new_path != source
+            && !new_path.exists()
             && std::fs::rename(&source, &new_path).is_ok()
         {
             self.panel.refresh().ok();
