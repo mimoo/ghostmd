@@ -11,7 +11,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::app::GhostApp;
 use crate::editor_view::EditorView;
-use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, NewItemCreated, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
+use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
 use crate::palette::{CommandPalette, PaletteCommand};
 use crate::search::FileFinder;
@@ -583,6 +583,32 @@ impl GhostAppView {
                     e.path = np;
                 });
             }
+            cx.notify();
+        })
+        .detach();
+
+        // Subscribe to drag-and-drop move events from the tree
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemMoved, _window, cx| {
+            let old = &event.old_path;
+            let new = &event.new_path;
+            let mut editors_to_update = Vec::new();
+            for ws in &mut this.workspaces {
+                for pane in ws.panes.values_mut() {
+                    if pane.active_path.as_ref() == Some(old) {
+                        pane.active_path = Some(new.clone());
+                        if let Some(editor) = &pane.editor {
+                            editors_to_update.push(editor.clone());
+                        }
+                    }
+                }
+            }
+            for editor in editors_to_update {
+                let np = new.clone();
+                editor.update(cx, |e, _cx| {
+                    e.path = np;
+                });
+            }
+            this.file_tree.update(cx, |tree, cx| tree.refresh(cx));
             cx.notify();
         })
         .detach();

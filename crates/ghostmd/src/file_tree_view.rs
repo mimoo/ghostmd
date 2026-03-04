@@ -30,6 +30,36 @@ pub struct MoveToTrashRequested(pub PathBuf);
 /// Contains the path and the window-relative position.
 pub struct ContextMenuRequested(pub PathBuf, pub Point<Pixels>);
 
+/// Event emitted when a file/folder has been moved via drag & drop.
+pub struct ItemMoved {
+    pub old_path: PathBuf,
+    pub new_path: PathBuf,
+}
+
+/// Drag payload containing the path being dragged.
+#[derive(Clone)]
+struct TreeDragPayload(PathBuf);
+
+/// Small label rendered under the cursor while dragging.
+struct DraggedLabel {
+    label: String,
+    fg: Hsla,
+    bg: Hsla,
+}
+
+impl Render for DraggedLabel {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(8.0))
+            .py(px(4.0))
+            .bg(self.bg)
+            .rounded(px(4.0))
+            .text_sm()
+            .text_color(self.fg)
+            .child(self.label.clone())
+    }
+}
+
 /// GPUI view wrapping the FileTreePanel state machine with a custom flat list.
 pub struct FileTreeView {
     panel: FileTreePanel,
@@ -60,6 +90,7 @@ impl EventEmitter<NewItemCreated> for FileTreeView {}
 impl EventEmitter<OpenInFinderRequested> for FileTreeView {}
 impl EventEmitter<MoveToTrashRequested> for FileTreeView {}
 impl EventEmitter<ContextMenuRequested> for FileTreeView {}
+impl EventEmitter<ItemMoved> for FileTreeView {}
 
 impl FileTreeView {
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -346,6 +377,35 @@ impl FileTreeView {
         cx.notify();
     }
 
+    /// Handle a drag & drop: move `source` into `target_dir`.
+    fn handle_drop(&mut self, source: PathBuf, target_dir: PathBuf, cx: &mut Context<Self>) {
+        // Don't drop onto same parent
+        if source.parent() == Some(target_dir.as_path()) {
+            return;
+        }
+        // Don't drop a directory into its own subtree
+        if target_dir.starts_with(&source) {
+            return;
+        }
+
+        let file_name = source.file_name().unwrap_or_default();
+        let new_path = target_dir.join(file_name);
+        if new_path != source
+            && std::fs::rename(&source, &new_path).is_ok()
+        {
+            self.panel.refresh().ok();
+            self.panel.tree.reveal_path(&new_path);
+            self.selected_paths.clear();
+            self.selected_paths.insert(new_path.clone());
+            self.last_clicked = Some(new_path.clone());
+            cx.emit(ItemMoved {
+                old_path: source,
+                new_path,
+            });
+        }
+        cx.notify();
+    }
+
     /// Cancel inline rename.
     pub fn cancel_rename(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(old_path) = self.editing_path.take() {
@@ -384,6 +444,8 @@ impl Render for FileTreeView {
         let root_path = self.panel.tree.root.clone();
         let editing_path = self.editing_path.clone();
 
+        let root_drop_dir = self.panel.tree.root.clone();
+        let root_drop_highlight = hsla(selection_bg.h, selection_bg.s, selection_bg.l + 0.05, 0.8);
         let mut list = div()
             .id("file-tree-list")
             .flex_1()
@@ -391,6 +453,10 @@ impl Render for FileTreeView {
             .track_scroll(&self.scroll_handle)
             .on_mouse_down(MouseButton::Right, cx.listener(move |_this: &mut Self, event: &MouseDownEvent, _window, cx| {
                 cx.emit(ContextMenuRequested(root_path.clone(), event.position));
+            }))
+            .drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(root_drop_highlight))
+            .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
+                this.handle_drop(payload.0.clone(), root_drop_dir.clone(), cx);
             }));
 
         for (i, (depth, node)) in flat.iter().enumerate() {
@@ -410,9 +476,13 @@ impl Render for FileTreeView {
                 ""
             };
 
+            let drag_name = name.clone();
             let chevron_path = node_path.clone();
             let label_path = node_path.clone();
             let right_click_path = node_path.clone();
+            let drag_path = node_path.clone();
+            let drop_dir = if is_dir { node_path.clone() } else { node_path.parent().unwrap_or(Path::new("")).to_path_buf() };
+            let drop_highlight = hsla(selection_bg.h, selection_bg.s, selection_bg.l + 0.05, 0.8);
 
             let label_child: AnyElement = if is_editing {
                 Input::new(&self.rename_input)
@@ -444,6 +514,12 @@ impl Render for FileTreeView {
                     cx.emit(ContextMenuRequested(right_click_path.clone(), event.position));
                     cx.stop_propagation();
                 }))
+                .when(is_dir, |d| {
+                    d.drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(drop_highlight))
+                     .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
+                         this.handle_drop(payload.0.clone(), drop_dir.clone(), cx);
+                     }))
+                })
                 // Chevron area (for toggling dirs)
                 .child(
                     div()
@@ -474,7 +550,17 @@ impl Render for FileTreeView {
                         .cursor_pointer()
                         .py(px(2.0))
                         .when(!is_editing, |d| {
-                            d.on_click(cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
+                            d.on_drag(TreeDragPayload(drag_path.clone()), {
+                                let drag_name = drag_name.clone();
+                                move |_payload, _offset, _window, cx| {
+                                    cx.new(|_| DraggedLabel {
+                                        label: drag_name.clone(),
+                                        fg,
+                                        bg: selection_bg,
+                                    })
+                                }
+                            })
+                            .on_click(cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
                                 let was_selected = this.selected_paths.contains(&label_path);
                                 this.handle_click(&label_path, &event.modifiers());
 

@@ -159,6 +159,11 @@ impl Render for EditorView {
         div()
             .size_full()
             .track_focus(&self.focus_handle)
+            .capture_any_mouse_down(|event: &MouseDownEvent, _window, cx| {
+                if event.button == MouseButton::Right {
+                    cx.stop_propagation();
+                }
+            })
             .child(
                 Input::new(&self.input_state)
                     .appearance(false)
