@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 #[cfg(test)]
 mod ai;
 mod app;
@@ -26,7 +28,6 @@ use keybindings::register_keybindings;
 use theme::apply_ghost_theme;
 
 /// Set the macOS dock icon from embedded PNG data.
-#[allow(unexpected_cfgs)]
 fn set_dock_icon() {
     let icon_data = include_bytes!("../../../assets/icon.png");
     unsafe {
