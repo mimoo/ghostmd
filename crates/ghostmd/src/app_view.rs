@@ -2525,14 +2525,17 @@ impl Render for GhostAppView {
                 .flex()
                 .flex_col();
 
-            // Rename (files not in diary, and non-root/non-diary folders)
-            let show_rename = if is_file {
+            // Rename: enabled for non-diary files and non-root/non-diary folders;
+            // shown disabled (grayed out) for diary folders so users understand it's not available.
+            let rename_enabled = if is_file {
                 !is_diary_path
             } else if is_dir {
                 !is_root && *path != diary_dir && !is_diary_path
             } else {
                 false
             };
+            let show_rename = rename_enabled || (is_dir && !is_root && (is_diary_path || *path == diary_dir));
+            let hint_fg_ctx = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
             if show_rename {
                 menu = menu.child(
                     div()
@@ -2540,15 +2543,17 @@ impl Render for GhostAppView {
                         .px(px(12.0))
                         .py(px(6.0))
                         .text_sm()
-                        .text_color(fg)
-                        .cursor_pointer()
-                        .hover(|s| s.bg(selection_bg))
-                        .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                            this.tree_context_menu = None;
-                            this.file_tree.update(cx, |tree, cx| {
-                                tree.start_rename(&rename_path, window, cx);
-                            });
-                        }))
+                        .text_color(if rename_enabled { fg } else { hint_fg_ctx })
+                        .when(rename_enabled, |d| {
+                            d.cursor_pointer()
+                                .hover(|s| s.bg(selection_bg))
+                                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                                    this.tree_context_menu = None;
+                                    this.file_tree.update(cx, |tree, cx| {
+                                        tree.start_rename(&rename_path, window, cx);
+                                    });
+                                }))
+                        })
                         .child("Rename"),
                 );
             }
@@ -2570,22 +2575,25 @@ impl Render for GhostAppView {
                     .child("New Note"),
             );
 
-            // New Folder
-            menu = menu.child(
-                div()
-                    .id("ctx-new-folder")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(selection_bg))
-                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                        this.tree_context_menu = None;
-                        this.create_new_folder(new_folder_dir.clone(), window, cx);
-                    }))
-                    .child("New Folder"),
-            );
+            // New Folder (not available inside diary tree)
+            let new_folder_in_diary = new_folder_dir.starts_with(&diary_dir);
+            if !new_folder_in_diary {
+                menu = menu.child(
+                    div()
+                        .id("ctx-new-folder")
+                        .px(px(12.0))
+                        .py(px(6.0))
+                        .text_sm()
+                        .text_color(fg)
+                        .cursor_pointer()
+                        .hover(|s| s.bg(selection_bg))
+                        .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                            this.tree_context_menu = None;
+                            this.create_new_folder(new_folder_dir.clone(), window, cx);
+                        }))
+                        .child("New Folder"),
+                );
+            }
 
             // Open in Finder
             menu = menu.child(

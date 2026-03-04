@@ -408,11 +408,23 @@ impl Render for FileTreeView {
             let label_path = node_path.clone();
             let right_click_path = node_path.clone();
 
+            let input_bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
+            let accent_border = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
+
             let label_child: AnyElement = if is_editing {
-                Input::new(&self.rename_input)
-                    .appearance(false)
-                    .text_size(px(13.0))
-                    .w(px(200.0))
+                div()
+                    .bg(input_bg)
+                    .border_1()
+                    .border_color(accent_border)
+                    .rounded(px(3.0))
+                    .px(px(4.0))
+                    .py(px(1.0))
+                    .child(
+                        Input::new(&self.rename_input)
+                            .appearance(false)
+                            .text_size(px(13.0))
+                            .w(px(180.0))
+                    )
                     .into_any_element()
             } else {
                 div()
@@ -476,9 +488,6 @@ impl Render for FileTreeView {
                                     // Toggle dir on click if already selected (plain click only)
                                     if was_selected && !event.modifiers().platform && !event.modifiers().shift {
                                         this.panel.tree.toggle_dir(&label_path);
-                                    }
-                                    if event.click_count() >= 2 {
-                                        this.start_rename(&label_path, window, cx);
                                     }
                                 } else {
                                     cx.emit(FileSelected(label_path.clone()));
