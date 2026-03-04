@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ghostmd — your notes are text files</title>
+<meta name="description" content="A native macOS note-taking app with opinions. Plain markdown, no rendering, no config, no nonsense. Free and open source.">
+<meta name="theme-color" content="#1a1a2e">
+<meta property="og:title" content="ghostmd">
+<meta property="og:description" content="Your notes are text files. That's it.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+
+:root {
+  --bg: #1a1a2e;
+  --bg-deep: #16162a;
+  --fg: #e0def4;
+  --fg-muted: #908caa;
+  --accent: #9ccef8;
+  --rose: #eb6f92;
+  --border: #2a2a4a;
+  --selection: #2a2a4a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--accent);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* --- hero --- */
+
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  text-align: center;
+  position: relative;
+}
+
+.hero-name {
+  font-size: 1rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.2em;
+  text-transform: lowercase;
+  margin-bottom: 3rem;
+}
+
+.hero h1 {
+  font-size: clamp(1.5rem, 4vw, 2.8rem);
+  font-weight: 700;
+  color: var(--fg);
+  max-width: 16ch;
+  line-height: 1.3;
+}
+
+.hero h1 .cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--rose);
+  margin-left: 4px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.hero-sub {
+  margin-top: 2rem;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+.scroll-hint {
+  position: absolute;
+  bottom: 2rem;
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+/* --- sections --- */
+
+section {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 6rem 2rem;
+}
+
+section h2 {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 2.5rem;
+}
+
+/* --- opinions --- */
+
+.opinions li {
+  list-style: none;
+  padding: 1.2rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+.opinions li:last-child {
+  border-bottom: none;
+}
+
+.opinions code {
+  background: var(--bg-deep);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  color: var(--accent);
+}
+
+/* --- anti-features --- */
+
+.anti-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 2rem;
+}
+
+.anti-grid span {
+  background: var(--bg);
+  padding: 0.8rem 1rem;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.anti-tagline {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+/* --- features --- */
+
+.features li {
+  list-style: none;
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--fg);
+}
+
+.features li::before {
+  content: "~ ";
+  color: var(--fg-muted);
+}
+
+/* --- screenshot --- */
+
+.screenshot-section {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.screenshot-section h2 {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 2.5rem;
+}
+
+.screenshot-wrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-deep);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.screenshot-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+}
+
+.screenshot-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.screenshot-content {
+  padding: 1.5rem 2rem;
+  text-align: left;
+  font-size: 0.8rem;
+  line-height: 1.9;
+  color: var(--fg);
+  min-height: 280px;
+}
+
+.screenshot-content .md-h1 { color: var(--rose); font-weight: 700; }
+.screenshot-content .md-h2 { color: var(--accent); font-weight: 700; }
+.screenshot-content .md-bullet { color: var(--fg-muted); }
+.screenshot-content .md-link { color: var(--accent); }
+.screenshot-content .md-em { color: var(--fg-muted); font-style: italic; }
+.screenshot-content .md-bold { color: var(--fg); font-weight: 700; }
+.screenshot-content .md-code { color: var(--accent); background: var(--bg); padding: 0.1em 0.3em; border-radius: 2px; }
+
+.screenshot-caption {
+  margin-top: 1.5rem;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+/* --- install --- */
+
+.install {
+  text-align: center;
+  padding: 6rem 2rem;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.install h2 {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 2.5rem;
+}
+
+.install-cmd {
+  display: inline-block;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 2rem;
+  font-size: 1rem;
+  color: var(--accent);
+  cursor: pointer;
+  transition: border-color 0.2s;
+  position: relative;
+}
+
+.install-cmd:hover {
+  border-color: var(--accent);
+}
+
+.install-cmd .prompt {
+  color: var(--fg-muted);
+  user-select: none;
+}
+
+.install-or {
+  margin: 1.5rem 0;
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+}
+
+.install-link {
+  font-size: 0.85rem;
+}
+
+/* --- footer --- */
+
+footer {
+  text-align: center;
+  padding: 4rem 2rem;
+  border-top: 1px solid var(--border);
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+footer p {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+/* --- responsive --- */
+
+@media (max-width: 500px) {
+  .anti-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .screenshot-content {
+    padding: 1rem;
+    font-size: 0.7rem;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- hero -->
+<div class="hero">
+  <div class="hero-name">ghostmd</div>
+  <h1>Your notes are text files. That's it.<span class="cursor"></span></h1>
+  <p class="hero-sub">native macOS &middot; free &middot; open source</p>
+  <div class="scroll-hint">&darr;</div>
+</div>
+
+<!-- opinions -->
+<section>
+  <h2>The opinions</h2>
+  <ul class="opinions">
+    <li>Notes are <code>~/Documents/ghostmd/*.md</code>. Not a database. Not synced to our servers. Files on your disk, forever yours.</li>
+    <li>Markdown is already beautiful. We don't render it. We don't preview it. You read it raw, the way it was meant to be.</li>
+    <li>No images. If you need images, you need a different tool. This is for words.</li>
+    <li>No config files. No themes. No plugins. We made the choices so you can focus on making the words.</li>
+    <li>Diary entries get a path: <code>diary/2026/march/03/</code>. You don't pick it. The date does.</li>
+    <li>AI helps you think, not format. Titles, search, suggestions &mdash; never decoration.</li>
+    <li>Native macOS, GPU-accelerated via Metal. Opens before your finger leaves the key. Quits without asking.</li>
+  </ul>
+</section>
+
+<!-- screenshot (simulated as styled text) -->
+<div class="screenshot-section">
+  <h2>This is the whole app</h2>
+  <div class="screenshot-wrap">
+    <div class="screenshot-titlebar">
+      <span class="screenshot-dot"></span>
+      <span class="screenshot-dot"></span>
+      <span class="screenshot-dot"></span>
+    </div>
+    <div class="screenshot-content">
+<span class="md-h1"># Building ghostmd</span>
+<br><br>
+<span class="md-em">*A note-taking app that gets out of the way.*</span>
+<br><br>
+<span class="md-h2">## Why plain markdown?</span>
+<br><br>
+Every note app eventually dies. When it does, your notes<br>
+should survive. Plain <span class="md-code">.md</span> files will outlive every app,<br>
+every company, every format war.
+<br><br>
+<span class="md-bullet">-</span> No database migrations<br>
+<span class="md-bullet">-</span> No export button needed<br>
+<span class="md-bullet">-</span> <span class="md-code">grep</span> works. <span class="md-code">git</span> works. Everything works.<br>
+<span class="md-bullet">-</span> <span class="md-bold">**Your files. Your disk. Your rules.**</span>
+<br><br>
+See <span class="md-link">[the repo](https://github.com/...)</span> for more.
+    </div>
+  </div>
+  <p class="screenshot-caption">Raw markdown. No preview pane. That's the point.</p>
+</div>
+
+<!-- anti-features -->
+<section>
+  <h2>What you'll never get</h2>
+  <div class="anti-grid">
+    <span>No config</span>
+    <span>No Electron</span>
+    <span>No cloud</span>
+    <span>No image support</span>
+    <span>No preview pane</span>
+    <span>No plugins</span>
+    <span>No themes</span>
+    <span>No mobile app</span>
+    <span>No export menu</span>
+    <span>No WYSIWYG</span>
+    <span>No telemetry</span>
+    <span>No account</span>
+  </div>
+  <p class="anti-tagline">Every feature we didn't build is time you spend writing.</p>
+</section>
+
+<!-- what you get -->
+<section>
+  <h2>What you get</h2>
+  <ul class="features">
+    <li>Workspaces &amp; split panes</li>
+    <li>Fuzzy file finder</li>
+    <li>Full-text search across all notes</li>
+    <li>Agentic AI search</li>
+    <li>Branching undo tree &mdash; not just ctrl-z</li>
+    <li>Auto-save on every keystroke</li>
+    <li>AI-generated titles</li>
+    <li>Session persistence &mdash; reopen exactly where you left off</li>
+    <li>Your files, forever readable, even if we disappear tomorrow</li>
+  </ul>
+</section>
+
+<!-- install -->
+<div class="install">
+  <h2>Install</h2>
+  <div class="install-cmd" onclick="navigator.clipboard.writeText('brew install ghostmd')" title="Click to copy">
+    <span class="prompt">$ </span>brew install ghostmd
+  </div>
+  <p class="install-or">or grab a release from</p>
+  <a class="install-link" href="https://github.com/mimoo/ghostmd/releases">github.com/mimoo/ghostmd/releases</a>
+</div>
+
+<!-- footer -->
+<footer>
+  <p>ghostmd is free, open source, and owes you nothing.</p>
+</footer>
+
+</body>
+</html>
