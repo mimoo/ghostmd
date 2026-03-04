@@ -46,6 +46,7 @@ jobs:
               <key>CFBundleShortVersionString</key><string>${GITHUB_REF_NAME#v}</string>
               <key>CFBundleExecutable</key><string>ghostmd</string>
               <key>CFBundlePackageType</key><string>APPL</string>
+              <key>CFBundleIconFile</key><string>AppIcon</string>
               <key>NSHighResolutionCapable</key><true/>
           </dict>
           </plist>
