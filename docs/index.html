@@ -265,7 +265,7 @@ section h2 {
 .install {
   text-align: center;
   padding: 6rem 2rem;
-  max-width: 680px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
@@ -282,12 +282,13 @@ section h2 {
   background: var(--bg-deep);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 1rem 2rem;
-  font-size: 1rem;
+  padding: 1rem 1.5rem;
+  font-size: 0.8rem;
   color: var(--accent);
   cursor: pointer;
   transition: border-color 0.2s;
   position: relative;
+  white-space: nowrap;
 }
 
 .install-cmd:hover {
@@ -359,6 +360,11 @@ footer p {
   .screenshot-content {
     padding: 1rem;
     font-size: 0.7rem;
+  }
+  .install-cmd {
+    white-space: normal;
+    font-size: 0.65rem;
+    word-break: break-all;
   }
 }
 </style>
