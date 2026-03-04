@@ -1,10 +1,61 @@
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Instant;
 
 use gpui::*;
-use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::input::{Input, InputEvent, InputState, DefinitionProvider, RopeExt as _};
+use ropey::Rope;
 
 use ghostmd_core::note::Note;
+
+/// Detects URLs in text and provides them as "definitions" for Cmd+click.
+struct UrlDefinitionProvider;
+
+impl DefinitionProvider for UrlDefinitionProvider {
+    fn definitions(
+        &self,
+        text: &Rope,
+        offset: usize,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Task<Result<Vec<lsp_types::LocationLink>>> {
+        let text_str = text.to_string();
+
+        // Find all URLs and check if offset falls within one
+        let mut search_start = 0;
+        while let Some(start) = text_str[search_start..].find("http://")
+            .or_else(|| text_str[search_start..].find("https://"))
+        {
+            let abs_start = search_start + start;
+            // Find end of URL (whitespace or certain delimiters)
+            let end = text_str[abs_start..]
+                .find(|c: char| c.is_whitespace() || matches!(c, '>' | ')' | ']' | '"' | '\'' | '`'))
+                .map(|e| abs_start + e)
+                .unwrap_or(text_str.len());
+
+            if offset >= abs_start && offset < end {
+                let url = &text_str[abs_start..end];
+                let start_pos = text.offset_to_position(abs_start);
+                let end_pos = text.offset_to_position(end);
+
+                if let Ok(uri) = url.parse::<lsp_types::Uri>() {
+                    return Task::ready(Ok(vec![lsp_types::LocationLink {
+                        origin_selection_range: Some(lsp_types::Range {
+                            start: start_pos,
+                            end: end_pos,
+                        }),
+                        target_uri: uri,
+                        target_range: lsp_types::Range::default(),
+                        target_selection_range: lsp_types::Range::default(),
+                    }]));
+                }
+                break;
+            }
+            search_start = end;
+        }
+        Task::ready(Ok(vec![]))
+    }
+}
 
 /// GPUI view wrapping an InputState for editing a single note file.
 /// InputState owns the text buffer (rope, undo, clipboard, IME, cursor, selection).
@@ -24,10 +75,12 @@ impl EditorView {
         cx: &mut Context<Self>,
     ) -> Self {
         let input_state = cx.new(|cx| {
-            InputState::new(window, cx)
+            let mut state = InputState::new(window, cx)
                 .code_editor("markdown")
                 .soft_wrap(true)
-                .line_number(false)
+                .line_number(false);
+            state.lsp.definition_provider = Some(Rc::new(UrlDefinitionProvider));
+            state
         });
 
         // Load existing file content if it exists
