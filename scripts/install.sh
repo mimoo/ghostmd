@@ -24,7 +24,8 @@ info "Detected: $TARGET"
 
 # fetch latest release tag
 info "Fetching latest release..."
-RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")
+RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) \
+  || error "No releases found. Check https://github.com/$REPO/releases"
 if command -v jq &>/dev/null; then
   TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
 else
