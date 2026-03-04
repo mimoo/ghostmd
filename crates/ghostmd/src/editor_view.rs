@@ -65,7 +65,7 @@ pub struct EditorView {
     pub dirty: bool,
     input_state: Entity<InputState>,
     focus_handle: FocusHandle,
-    last_edit: Option<Instant>,
+    pub last_edit: Option<Instant>,
 }
 
 impl EditorView {
@@ -76,7 +76,7 @@ impl EditorView {
     ) -> Self {
         let input_state = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
-                .code_editor("markdown")
+                .code_editor("text")
                 .soft_wrap(true)
                 .line_number(false);
             state.lsp.definition_provider = Some(Rc::new(UrlDefinitionProvider));

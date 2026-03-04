@@ -475,8 +475,9 @@ impl Render for FileTreeView {
         let root_path = self.panel.tree.root.clone();
         let editing_path = self.editing_path.clone();
 
+        let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
+        let drop_bg = hsla(accent.h, accent.s, accent.l, 0.15);
         let root_drop_dir = self.panel.tree.root.clone();
-        let root_drop_highlight = hsla(selection_bg.h, selection_bg.s, selection_bg.l + 0.05, 0.8);
         let mut list = div()
             .id("file-tree-list")
             .flex_1()
@@ -485,7 +486,7 @@ impl Render for FileTreeView {
             .on_mouse_down(MouseButton::Right, cx.listener(move |_this: &mut Self, event: &MouseDownEvent, _window, cx| {
                 cx.emit(ContextMenuRequested(root_path.clone(), event.position));
             }))
-            .drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(root_drop_highlight))
+            .drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(drop_bg))
             .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
                 this.handle_drop(payload.0.clone(), root_drop_dir.clone(), cx);
             }));
@@ -513,7 +514,7 @@ impl Render for FileTreeView {
             let right_click_path = node_path.clone();
             let drag_path = node_path.clone();
             let drop_dir = if is_dir { node_path.clone() } else { node_path.parent().unwrap_or(Path::new("")).to_path_buf() };
-            let drop_highlight = hsla(selection_bg.h, selection_bg.s, selection_bg.l + 0.05, 0.8);
+            let row_drop_bg = drop_bg;
 
             let label_child: AnyElement = if is_editing {
                 let error_color = rgb_to_hsla(220, 80, 80);
@@ -561,7 +562,7 @@ impl Render for FileTreeView {
                     cx.stop_propagation();
                 }))
                 .when(is_dir, |d| {
-                    d.drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(drop_highlight))
+                    d.drag_over::<TreeDragPayload>(move |style, _, _, _| style.bg(row_drop_bg).border_t_1().border_b_1().border_color(accent))
                      .on_drop(cx.listener(move |this: &mut Self, payload: &TreeDragPayload, _window, cx| {
                          this.handle_drop(payload.0.clone(), drop_dir.clone(), cx);
                      }))

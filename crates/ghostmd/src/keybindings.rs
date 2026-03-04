@@ -92,6 +92,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("ctrl-p", PaletteUp, Some("Input")),
         GpuiKeyBinding::new("ctrl-n", PaletteDown, Some("Input")),
         GpuiKeyBinding::new("ctrl-k", DeleteToEndOfLine, Some("Input")),
+        GpuiKeyBinding::new("shift-backspace", Backspace, Some("Input")),
         GpuiKeyBinding::new("ctrl-h", Backspace, Some("Input")),
         GpuiKeyBinding::new("ctrl-d", Delete, Some("Input")),
         GpuiKeyBinding::new("ctrl-y", Paste, Some("Input")),

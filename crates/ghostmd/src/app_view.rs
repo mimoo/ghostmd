@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
@@ -2322,6 +2322,28 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenFileFinder, window, cx| {
                 this.show_file_finder = !this.show_file_finder;
                 if this.show_file_finder {
+                    // Collect open files sorted by most recently edited
+                    let mut open_with_time: Vec<(PathBuf, Option<Instant>)> = Vec::new();
+                    let mut seen = HashSet::new();
+                    for ws in &this.workspaces {
+                        for pane in ws.panes.values() {
+                            if let (Some(path), Some(editor)) = (&pane.active_path, &pane.editor) {
+                                if seen.insert(path.clone()) {
+                                    let last_edit = editor.read(cx).last_edit;
+                                    open_with_time.push((path.clone(), last_edit));
+                                }
+                            }
+                        }
+                    }
+                    // Sort: most recently edited first, files never edited last
+                    open_with_time.sort_by(|a, b| match (&b.1, &a.1) {
+                        (Some(tb), Some(ta)) => tb.cmp(ta),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    });
+                    let open_files: Vec<PathBuf> = open_with_time.into_iter().map(|(p, _)| p).collect();
+                    this.file_finder.set_open_files(open_files);
                     this.file_finder.open().ok();
                     this.finder_scroll = ScrollHandle::new();
                     this.file_finder_input.update(cx, |state, cx| {

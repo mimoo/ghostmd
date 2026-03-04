@@ -47,6 +47,8 @@ pub struct FileFinder {
     fuzzy: FuzzySearch,
     /// Underlying content search engine.
     content: ContentSearch,
+    /// Open files to prioritize (most recently edited first).
+    open_files: Vec<PathBuf>,
 }
 
 impl FileFinder {
@@ -59,7 +61,13 @@ impl FileFinder {
             results: Vec::new(),
             fuzzy: FuzzySearch::new(root.clone()),
             content: ContentSearch::new(root),
+            open_files: Vec::new(),
         }
+    }
+
+    /// Set the list of open files (most recently edited first) for prioritization.
+    pub fn set_open_files(&mut self, files: Vec<PathBuf>) {
+        self.open_files = files;
     }
 
     /// Open the finder, reset query and results, refresh file cache.
@@ -68,10 +76,8 @@ impl FileFinder {
         self.query.clear();
         self.selected_index = 0;
         self.fuzzy.refresh_cache()?;
-        self.results = self.fuzzy.search_files("")
-            .into_iter()
-            .map(FinderResult::File)
-            .collect();
+        let all_files = self.fuzzy.search_files("");
+        self.results = self.prioritize(all_files.into_iter().map(FinderResult::File).collect());
         Ok(())
     }
 
@@ -109,7 +115,46 @@ impl FileFinder {
             }
         }
 
-        self.results = merged;
+        self.results = self.prioritize(merged);
+    }
+
+    /// Reorder results so open files come first (in open_files order), rest after.
+    fn prioritize(&self, results: Vec<FinderResult>) -> Vec<FinderResult> {
+        if self.open_files.is_empty() {
+            return results;
+        }
+        let open_set: HashSet<&PathBuf> = self.open_files.iter().collect();
+        let mut open_results: Vec<FinderResult> = Vec::new();
+        let mut rest: Vec<FinderResult> = Vec::new();
+        let mut seen_open: HashSet<PathBuf> = HashSet::new();
+
+        // First pass: pull out open file matches, preserving open_files order
+        for result in &results {
+            let p = result.path().to_path_buf();
+            if open_set.contains(&p) && !seen_open.contains(&p) {
+                seen_open.insert(p);
+            }
+        }
+
+        // Add open files in their priority order
+        for open_path in &self.open_files {
+            if seen_open.contains(open_path) {
+                // Find the matching result
+                if let Some(r) = results.iter().find(|r| r.path() == open_path.as_path()) {
+                    open_results.push(r.clone());
+                }
+            }
+        }
+
+        // Add remaining results
+        for result in results {
+            if !open_set.contains(&result.path().to_path_buf()) {
+                rest.push(result);
+            }
+        }
+
+        open_results.extend(rest);
+        open_results
     }
 
     /// Move selection down (wraps around).
