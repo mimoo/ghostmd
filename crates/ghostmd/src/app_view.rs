@@ -546,6 +546,8 @@ pub struct GhostAppView {
     agentic_input: Entity<InputState>,
     agentic_results: Vec<String>,
     agentic_loading: bool,
+    // Folder move mode (file finder shows folders instead of files)
+    folder_move_source: Option<PathBuf>,
     // Scroll handles for overlays
     palette_scroll: ScrollHandle,
     finder_scroll: ScrollHandle,
@@ -692,13 +694,27 @@ impl GhostAppView {
                 InputEvent::Change => {
                     if this.show_file_finder {
                         let value = this.file_finder_input.read(cx).value().to_string();
-                        this.file_finder.set_query(&value);
+                        if this.folder_move_source.is_some() {
+                            this.file_finder.set_folder_query(&value);
+                        } else {
+                            this.file_finder.set_query(&value);
+                        }
                         cx.notify();
                     }
                 }
                 InputEvent::PressEnter { .. } => {
                     if this.show_file_finder {
-                        if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                        if let Some(source) = this.folder_move_source.take() {
+                            // Folder move mode: move file to selected directory
+                            if let Some(target_dir) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                                this.show_file_finder = false;
+                                this.file_finder.close();
+                                this.move_file_to_dir(source, &target_dir, cx);
+                                let focused = this.active_ws().focused_pane;
+                                this.focus_pane_editor(focused, window, cx);
+                                cx.notify();
+                            }
+                        } else if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
                             this.show_file_finder = false;
                             this.file_finder.close();
                             this.open_file(path, window, cx);
@@ -819,6 +835,7 @@ impl GhostAppView {
             agentic_input,
             agentic_results: Vec::new(),
             agentic_loading: false,
+            folder_move_source: None,
             palette_scroll: ScrollHandle::new(),
             finder_scroll: ScrollHandle::new(),
         };
@@ -867,6 +884,11 @@ impl GhostAppView {
             PaletteCommand { label: "Theme: Solarized".into(), shortcut_hint: None, action_id: "theme_solarized".into() },
             PaletteCommand { label: "Theme: Dracula".into(), shortcut_hint: None, action_id: "theme_dracula".into() },
             PaletteCommand { label: "Theme: Light".into(), shortcut_hint: None, action_id: "theme_light".into() },
+            PaletteCommand { label: "AI: Rename Tab".into(), shortcut_hint: None, action_id: "ai_rename_tab".into() },
+            PaletteCommand { label: "AI: Rename All Tabs".into(), shortcut_hint: None, action_id: "ai_rename_all_tabs".into() },
+            PaletteCommand { label: "AI: Rename File".into(), shortcut_hint: None, action_id: "ai_rename_file".into() },
+            PaletteCommand { label: "AI: Suggest Folder".into(), shortcut_hint: None, action_id: "ai_suggest_folder".into() },
+            PaletteCommand { label: "Move to Folder...".into(), shortcut_hint: None, action_id: "move_to_folder".into() },
             PaletteCommand { label: "Delete Current File".into(), shortcut_hint: Some("Cmd+\u{232b}".into()), action_id: "delete_file".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
         ]
@@ -1298,6 +1320,11 @@ impl GhostAppView {
             "theme_solarized" => self.switch_theme(ThemeName::Solarized, cx),
             "theme_dracula" => self.switch_theme(ThemeName::Dracula, cx),
             "theme_light" => self.switch_theme(ThemeName::Light, cx),
+            "ai_rename_tab" => self.ai_rename_tab(cx),
+            "ai_rename_all_tabs" => self.ai_rename_all_tabs(cx),
+            "ai_rename_file" => self.ai_rename_file(cx),
+            "ai_suggest_folder" => self.ai_suggest_folder(cx),
+            "move_to_folder" => self.start_move_to_folder(window, cx),
             "delete_file" => {
                 if let Some(path) = self.focused_active_path() {
                     self.move_to_trash(path, window, cx);
@@ -1368,6 +1395,7 @@ impl GhostAppView {
     fn close_file_finder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_file_finder = false;
         self.file_finder.close();
+        self.folder_move_source = None;
         if !self.workspaces.is_empty() {
             let focused = self.active_ws().focused_pane;
             self.focus_pane_editor(focused, window, cx);
@@ -1441,6 +1469,281 @@ impl GhostAppView {
         if self.show_palette {
             self.close_palette(window, cx);
         }
+    }
+
+    /// Move a file to a target directory, updating editor paths and tree.
+    fn move_file_to_dir(&mut self, source: PathBuf, target_dir: &std::path::Path, cx: &mut Context<Self>) {
+        let file_name = source.file_name().unwrap_or_default();
+        let new_path = target_dir.join(file_name);
+        if new_path == source || new_path.exists() {
+            return;
+        }
+        if std::fs::rename(&source, &new_path).is_ok() {
+            let mut editors_to_update = Vec::new();
+            for ws in &mut self.workspaces {
+                for pane in ws.panes.values_mut() {
+                    if pane.active_path.as_ref() == Some(&source) {
+                        pane.active_path = Some(new_path.clone());
+                        if let Some(editor) = &pane.editor {
+                            editors_to_update.push(editor.clone());
+                        }
+                    }
+                }
+            }
+            for editor in editors_to_update {
+                let np = new_path.clone();
+                editor.update(cx, |e, _cx| { e.path = np; });
+            }
+            self.file_tree.update(cx, |tree, cx| {
+                tree.refresh(cx);
+                tree.reveal_file(&new_path, cx);
+            });
+        }
+    }
+
+    /// Open the file finder in folder-only mode for moving a file.
+    fn start_move_to_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let source = match self.focused_active_path() {
+            Some(p) => p,
+            None => return,
+        };
+        self.folder_move_source = Some(source);
+        self.show_file_finder = true;
+        self.file_finder.open_folders().ok();
+        self.finder_scroll = ScrollHandle::new();
+        self.file_finder_input.update(cx, |state, cx| {
+            state.set_value("", window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    /// AI: rename the active workspace tab based on open files.
+    fn ai_rename_tab(&mut self, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() { return; }
+        let ws = self.active_ws();
+        let file_names: Vec<String> = ws.panes.values()
+            .filter_map(|p| p.active_path.as_ref())
+            .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
+            .collect();
+        if file_names.is_empty() { return; }
+
+        let ws_idx = self.active_workspace;
+        cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            let output = cx.background_executor().spawn(async move {
+                let prompt = format!(
+                    "Based on these open files in a workspace: {}\n\
+                     Suggest a short (2-4 words) tab name.\n\
+                     Reply with ONLY the name, nothing else.",
+                    file_names.join(", ")
+                );
+                std::process::Command::new("claude")
+                    .arg("-p")
+                    .arg(&prompt)
+                    .output()
+            }).await;
+            if let Ok(out) = output {
+                let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !name.is_empty() {
+                    this.update(cx, |this, cx| {
+                        if ws_idx < this.workspaces.len() {
+                            this.workspaces[ws_idx].title = name;
+                            cx.notify();
+                        }
+                    }).ok();
+                }
+            }
+        }).detach();
+    }
+
+    /// AI: rename all workspace tabs based on their open files.
+    fn ai_rename_all_tabs(&mut self, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() { return; }
+
+        let descriptions: Vec<String> = self.workspaces.iter().enumerate()
+            .map(|(i, ws)| {
+                let files: Vec<String> = ws.panes.values()
+                    .filter_map(|p| p.active_path.as_ref())
+                    .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
+                    .collect();
+                if files.is_empty() {
+                    format!("Tab {}: (empty)", i + 1)
+                } else {
+                    format!("Tab {}: {}", i + 1, files.join(", "))
+                }
+            })
+            .collect();
+
+        let count = self.workspaces.len();
+        cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            let output = cx.background_executor().spawn(async move {
+                let prompt = format!(
+                    "I have {} tabs in a note-taking app. Each tab has these files:\n{}\n\n\
+                     For each tab, suggest a short (2-4 words) descriptive name.\n\
+                     Reply with exactly {} names, one per line, nothing else.",
+                    count,
+                    descriptions.join("\n"),
+                    count
+                );
+                std::process::Command::new("claude")
+                    .arg("-p")
+                    .arg(&prompt)
+                    .output()
+            }).await;
+            if let Ok(out) = output {
+                let text = String::from_utf8_lossy(&out.stdout).to_string();
+                let names: Vec<&str> = text.lines()
+                    .map(|l| l.trim())
+                    .filter(|l| !l.is_empty())
+                    .collect();
+                this.update(cx, |this, cx| {
+                    for (i, name) in names.iter().enumerate() {
+                        if i < this.workspaces.len() {
+                            this.workspaces[i].title = name.to_string();
+                        }
+                    }
+                    cx.notify();
+                }).ok();
+            }
+        }).detach();
+    }
+
+    /// AI: rename the current file based on its content.
+    fn ai_rename_file(&mut self, cx: &mut Context<Self>) {
+        let path = match self.focused_active_path() {
+            Some(p) => p,
+            None => return,
+        };
+        let editor = {
+            let ws = self.active_ws();
+            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+        };
+        let content: String = match &editor {
+            Some(e) => e.read(cx).text(cx).chars().take(500).collect(),
+            None => return,
+        };
+        if content.trim().is_empty() { return; }
+
+        let ext = path.extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_else(|| ".md".to_string());
+
+        cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            let output = cx.background_executor().spawn(async move {
+                let prompt = format!(
+                    "Based on this note content, suggest a short descriptive filename \
+                     (kebab-case, max 4 words, no extension):\n\n{}\n\n\
+                     Reply with ONLY the filename, nothing else.",
+                    content
+                );
+                std::process::Command::new("claude")
+                    .arg("-p")
+                    .arg(&prompt)
+                    .output()
+            }).await;
+            if let Ok(out) = output {
+                let suggested = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !suggested.is_empty() {
+                    let new_file_name = format!("{}{}", suggested, ext);
+                    this.update(cx, |this, cx| {
+                        let parent = path.parent().unwrap_or(&this.app.root).to_path_buf();
+                        let new_path = parent.join(&new_file_name);
+                        if new_path != path && !new_path.exists()
+                            && std::fs::rename(&path, &new_path).is_ok()
+                        {
+                            let mut editors_to_update = Vec::new();
+                            for ws in &mut this.workspaces {
+                                for pane in ws.panes.values_mut() {
+                                    if pane.active_path.as_ref() == Some(&path) {
+                                        pane.active_path = Some(new_path.clone());
+                                        if let Some(editor) = &pane.editor {
+                                            editors_to_update.push(editor.clone());
+                                        }
+                                    }
+                                }
+                            }
+                            for ed in editors_to_update {
+                                let np = new_path.clone();
+                                ed.update(cx, |e, _cx| { e.path = np; });
+                            }
+                            this.file_tree.update(cx, |tree, cx| {
+                                tree.refresh(cx);
+                                tree.reveal_file(&new_path, cx);
+                            });
+                        }
+                        cx.notify();
+                    }).ok();
+                }
+            }
+        }).detach();
+    }
+
+    /// AI: suggest a folder for the current file and move it there.
+    fn ai_suggest_folder(&mut self, cx: &mut Context<Self>) {
+        let source = match self.focused_active_path() {
+            Some(p) => p,
+            None => return,
+        };
+        let editor = {
+            let ws = self.active_ws();
+            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+        };
+        let content: String = match &editor {
+            Some(e) => e.read(cx).text(cx).chars().take(500).collect(),
+            None => return,
+        };
+        if content.trim().is_empty() { return; }
+
+        let root = self.app.root.clone();
+
+        // Collect existing folders (relative to root)
+        let mut folders = Vec::new();
+        fn walk_dirs(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        if !name.starts_with('.') {
+                            if let Ok(rel) = path.strip_prefix(root) {
+                                out.push(rel.to_string_lossy().to_string());
+                            }
+                            walk_dirs(&path, root, out);
+                        }
+                    }
+                }
+            }
+        }
+        walk_dirs(&root, &root, &mut folders);
+
+        cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            let output = cx.background_executor().spawn(async move {
+                let prompt = format!(
+                    "I have a note with this content:\n{}\n\n\
+                     Existing folders: {}\n\n\
+                     Suggest the best folder (relative path) to organize this note. \
+                     You may suggest a new subfolder if none fit.\n\
+                     Reply with ONLY the folder path, nothing else.",
+                    content,
+                    if folders.is_empty() { "(none)".to_string() } else { folders.join(", ") }
+                );
+                std::process::Command::new("claude")
+                    .arg("-p")
+                    .arg(&prompt)
+                    .output()
+            }).await;
+            if let Ok(out) = output {
+                let suggested = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !suggested.is_empty() {
+                    this.update(cx, |this, cx| {
+                        let target_dir = this.app.root.join(&suggested);
+                        std::fs::create_dir_all(&target_dir).ok();
+                        this.move_file_to_dir(source, &target_dir, cx);
+                        cx.notify();
+                    }).ok();
+                }
+            }
+        }).detach();
     }
 
     fn run_agentic_search(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1915,7 +2218,11 @@ impl GhostAppView {
             );
         }
 
-        let count_text = format!("{} files", self.file_finder.result_count());
+        let count_text = if self.folder_move_source.is_some() {
+            format!("{} folders", self.file_finder.result_count())
+        } else {
+            format!("{} files", self.file_finder.result_count())
+        };
 
         div()
             .id("finder-dismiss-bg")

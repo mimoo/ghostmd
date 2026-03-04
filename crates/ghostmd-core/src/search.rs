@@ -44,6 +44,19 @@ impl FuzzySearch {
         Ok(())
     }
 
+    /// Walks the root directory and rebuilds the file cache with directories only.
+    pub fn refresh_dir_cache(&mut self) -> Result<()> {
+        self.file_cache.clear();
+        let walker = ignore::WalkBuilder::new(&self.root).build();
+        for entry in walker {
+            let entry = entry?;
+            if entry.file_type().is_some_and(|ft| ft.is_dir()) && entry.path() != self.root.as_path() {
+                self.file_cache.push(entry.into_path());
+            }
+        }
+        Ok(())
+    }
+
     /// Searches cached file paths against the query using fuzzy matching.
     /// Results are sorted by score (best match first).
     pub fn search_files(&self, query: &str) -> Vec<SearchResult> {

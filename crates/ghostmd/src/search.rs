@@ -81,6 +81,24 @@ impl FileFinder {
         Ok(())
     }
 
+    /// Open the finder in folder-only mode, showing all directories.
+    pub fn open_folders(&mut self) -> anyhow::Result<()> {
+        self.visible = true;
+        self.query.clear();
+        self.selected_index = 0;
+        self.fuzzy.refresh_dir_cache()?;
+        self.results = self.fuzzy.search_files("").into_iter().map(FinderResult::File).collect();
+        Ok(())
+    }
+
+    /// Update the query for folder-only mode (no content search).
+    pub fn set_folder_query(&mut self, query: &str) {
+        self.query = query.to_string();
+        self.selected_index = 0;
+        let results = self.fuzzy.search_files(query);
+        self.results = results.into_iter().map(FinderResult::File).collect();
+    }
+
     /// Close the finder.
     pub fn close(&mut self) {
         self.visible = false;
