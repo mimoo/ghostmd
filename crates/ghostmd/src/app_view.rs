@@ -1580,27 +1580,33 @@ impl GhostAppView {
         cx.notify();
     }
 
-    /// AI: rename the active workspace tab based on open files.
+    /// AI: rename the active workspace tab based on note content.
     fn ai_rename_tab(&mut self, cx: &mut Context<Self>) {
         if self.workspaces.is_empty() { return; }
         let ws = self.active_ws();
-        let file_names: Vec<String> = ws.panes.values()
-            .filter_map(|p| p.active_path.as_ref())
-            .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
-            .collect();
-        if file_names.is_empty() { return; }
+        let mut snippets = Vec::new();
+        for pane in ws.panes.values() {
+            if let Some(editor) = &pane.editor {
+                let text: String = editor.read(cx).text(cx).chars().take(300).collect();
+                if !text.trim().is_empty() {
+                    snippets.push(text);
+                }
+            }
+        }
+        if snippets.is_empty() { return; }
 
         let ws_idx = self.active_workspace;
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
             let output = cx.background_executor().spawn(async move {
                 let prompt = format!(
-                    "Based on these open files in a workspace: {}\n\
+                    "Based on this note content from a workspace:\n{}\n\n\
                      Suggest a short (2-4 words) tab name.\n\
                      Reply with ONLY the name, nothing else.",
-                    file_names.join(", ")
+                    snippets.join("\n---\n")
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
+                    .arg("--model").arg("haiku")
                     .arg(&prompt)
                     .output()
             }).await;
@@ -1618,20 +1624,21 @@ impl GhostAppView {
         }).detach();
     }
 
-    /// AI: rename all workspace tabs based on their open files.
+    /// AI: rename all workspace tabs in a single Claude call.
     fn ai_rename_all_tabs(&mut self, cx: &mut Context<Self>) {
         if self.workspaces.is_empty() { return; }
 
         let descriptions: Vec<String> = self.workspaces.iter().enumerate()
             .map(|(i, ws)| {
-                let files: Vec<String> = ws.panes.values()
-                    .filter_map(|p| p.active_path.as_ref())
-                    .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
+                let snippets: Vec<String> = ws.panes.values()
+                    .filter_map(|p| p.editor.as_ref())
+                    .map(|e| e.read(cx).text(cx).chars().take(200).collect::<String>())
+                    .filter(|t| !t.trim().is_empty())
                     .collect();
-                if files.is_empty() {
+                if snippets.is_empty() {
                     format!("Tab {}: (empty)", i + 1)
                 } else {
-                    format!("Tab {}: {}", i + 1, files.join(", "))
+                    format!("Tab {}: {}", i + 1, snippets.join(" | "))
                 }
             })
             .collect();
@@ -1640,7 +1647,7 @@ impl GhostAppView {
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
             let output = cx.background_executor().spawn(async move {
                 let prompt = format!(
-                    "I have {} tabs in a note-taking app. Each tab has these files:\n{}\n\n\
+                    "I have {} tabs in a note-taking app. Here is the content of each tab:\n{}\n\n\
                      For each tab, suggest a short (2-4 words) descriptive name.\n\
                      Reply with exactly {} names, one per line, nothing else.",
                     count,
@@ -1649,6 +1656,7 @@ impl GhostAppView {
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
+                    .arg("--model").arg("haiku")
                     .arg(&prompt)
                     .output()
             }).await;
@@ -1700,6 +1708,7 @@ impl GhostAppView {
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
+                    .arg("--model").arg("haiku")
                     .arg(&prompt)
                     .output()
             }).await;
@@ -1800,6 +1809,7 @@ impl GhostAppView {
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
+                    .arg("--model").arg("haiku")
                     .arg(&prompt)
                     .output()
             }).await;
