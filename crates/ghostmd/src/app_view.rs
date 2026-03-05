@@ -561,6 +561,8 @@ pub struct GhostAppView {
     // Scroll handles for overlays
     palette_scroll: ScrollHandle,
     finder_scroll: ScrollHandle,
+    // Update check
+    update_available: Option<String>,
 }
 
 impl GhostAppView {
@@ -852,6 +854,7 @@ impl GhostAppView {
             folder_move_source: None,
             palette_scroll: ScrollHandle::new(),
             finder_scroll: ScrollHandle::new(),
+            update_available: None,
         };
 
         // If no session was loaded (or it was empty), create a default workspace
@@ -1487,10 +1490,26 @@ impl GhostAppView {
     /// Move a file to a target directory, updating editor paths and tree.
     fn move_file_to_dir(&mut self, source: PathBuf, target_dir: &std::path::Path, cx: &mut Context<Self>) {
         let file_name = source.file_name().unwrap_or_default();
-        let new_path = target_dir.join(file_name);
-        if new_path == source || new_path.exists() {
-            return;
+        let mut new_path = target_dir.join(file_name);
+        if new_path == source { return; }
+        // Avoid collision: append -2, -3, ... if target exists
+        if new_path.exists() {
+            let stem = source.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let ext = source.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+            let is_dir = source.is_dir();
+            for n in 2..100 {
+                let candidate = if is_dir {
+                    target_dir.join(format!("{}-{}", stem, n))
+                } else {
+                    target_dir.join(format!("{}-{}{}", stem, n, ext))
+                };
+                if !candidate.exists() {
+                    new_path = candidate;
+                    break;
+                }
+            }
         }
+        if new_path.exists() { return; }
         if std::fs::rename(&source, &new_path).is_ok() {
             let mut editors_to_update = Vec::new();
             for ws in &mut self.workspaces {
@@ -1657,10 +1676,19 @@ impl GhostAppView {
             if let Ok(out) = output {
                 let suggested = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !suggested.is_empty() {
-                    let new_file_name = format!("{}{}", suggested, ext);
                     this.update(cx, |this, cx| {
                         let parent = path.parent().unwrap_or(&this.app.root).to_path_buf();
-                        let new_path = parent.join(&new_file_name);
+                        // Find a non-colliding name: try "name.ext", then "name-2.ext", "name-3.ext", ...
+                        let mut new_path = parent.join(format!("{}{}", suggested, ext));
+                        if new_path.exists() {
+                            for n in 2..100 {
+                                let candidate = parent.join(format!("{}-{}{}", suggested, n, ext));
+                                if !candidate.exists() {
+                                    new_path = candidate;
+                                    break;
+                                }
+                            }
+                        }
                         if new_path != path && !new_path.exists()
                             && std::fs::rename(&path, &new_path).is_ok()
                         {

@@ -418,7 +418,24 @@ impl FileTreeView {
         }
 
         let file_name = source.file_name().unwrap_or_default();
-        let new_path = target_dir.join(file_name);
+        let mut new_path = target_dir.join(file_name);
+        // Avoid collision: append -2, -3, ... if target exists
+        if new_path.exists() && new_path != source {
+            let stem = source.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let ext = source.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+            let is_dir = source.is_dir();
+            for n in 2..100 {
+                let candidate = if is_dir {
+                    target_dir.join(format!("{}-{}", stem, n))
+                } else {
+                    target_dir.join(format!("{}-{}{}", stem, n, ext))
+                };
+                if !candidate.exists() {
+                    new_path = candidate;
+                    break;
+                }
+            }
+        }
         if new_path != source
             && !new_path.exists()
             && std::fs::rename(&source, &new_path).is_ok()
