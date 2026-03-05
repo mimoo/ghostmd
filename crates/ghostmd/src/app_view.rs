@@ -1606,7 +1606,7 @@ impl GhostAppView {
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
-                    .arg("--model").arg("haiku")
+                    .arg("--model").arg("haiku").arg("--effort").arg("low")
                     .arg(&prompt)
                     .output()
             }).await;
@@ -1656,7 +1656,7 @@ impl GhostAppView {
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
-                    .arg("--model").arg("haiku")
+                    .arg("--model").arg("haiku").arg("--effort").arg("low")
                     .arg(&prompt)
                     .output()
             }).await;
@@ -1708,7 +1708,7 @@ impl GhostAppView {
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
-                    .arg("--model").arg("haiku")
+                    .arg("--model").arg("haiku").arg("--effort").arg("low")
                     .arg(&prompt)
                     .output()
             }).await;
@@ -1809,7 +1809,7 @@ impl GhostAppView {
                 );
                 std::process::Command::new("claude")
                     .arg("-p")
-                    .arg("--model").arg("haiku")
+                    .arg("--model").arg("haiku").arg("--effort").arg("low")
                     .arg(&prompt)
                     .output()
             }).await;
