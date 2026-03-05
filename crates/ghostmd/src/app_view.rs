@@ -563,6 +563,9 @@ pub struct GhostAppView {
     finder_scroll: ScrollHandle,
     // Update check
     update_available: Option<String>,
+    // File watcher for external changes
+    _watcher: Option<notify::RecommendedWatcher>,
+    fs_events_rx: Option<std::sync::mpsc::Receiver<notify::Event>>,
 }
 
 impl GhostAppView {
@@ -855,7 +858,26 @@ impl GhostAppView {
             palette_scroll: ScrollHandle::new(),
             finder_scroll: ScrollHandle::new(),
             update_available: None,
+            _watcher: None,
+            fs_events_rx: None,
         };
+
+        // Set up file watcher for external changes
+        {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    tx.send(event).ok();
+                }
+            })
+            .ok();
+            if let Some(ref mut w) = watcher {
+                use notify::Watcher as _;
+                w.watch(root.as_ref(), notify::RecursiveMode::Recursive).ok();
+            }
+            view._watcher = watcher;
+            view.fs_events_rx = Some(rx);
+        }
 
         // If no session was loaded (or it was empty), create a default workspace
         if view.workspaces.is_empty() {
@@ -1280,6 +1302,8 @@ impl GhostAppView {
     }
 
     fn auto_save(&mut self, cx: &mut Context<Self>) {
+        self.process_fs_events(cx);
+
         for ws in &self.workspaces {
             for pane in ws.panes.values() {
                 if let Some(editor) = &pane.editor {
@@ -1293,6 +1317,71 @@ impl GhostAppView {
         }
         // Periodically save session state
         self.save_session();
+    }
+
+    fn process_fs_events(&mut self, cx: &mut Context<Self>) {
+        let Some(rx) = &self.fs_events_rx else { return };
+
+        let mut tree_changed = false;
+        let mut session_changed = false;
+        let mut changed_files: Vec<PathBuf> = Vec::new();
+
+        while let Ok(event) = rx.try_recv() {
+            for path in &event.paths {
+                if path.ends_with("session.json")
+                    && path.starts_with(self.app.root.join(".ghostmd"))
+                {
+                    session_changed = true;
+                } else if path.starts_with(&self.app.root) {
+                    tree_changed = true;
+                    if path.extension().is_some_and(|e| e == "md") {
+                        changed_files.push(path.clone());
+                    }
+                }
+            }
+        }
+
+        if tree_changed {
+            self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+        }
+        if session_changed {
+            self.reload_session_titles();
+        }
+
+        // Flag open editors whose file changed externally
+        for path in changed_files {
+            for ws in &self.workspaces {
+                for pane in ws.panes.values() {
+                    if pane.active_path.as_ref() == Some(&path) {
+                        if let Some(editor) = &pane.editor {
+                            editor.update(cx, |e, _cx| {
+                                if !e.dirty {
+                                    e.needs_reload = true;
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        if tree_changed || session_changed {
+            cx.notify();
+        }
+    }
+
+    fn reload_session_titles(&mut self) {
+        let path = self.app.root.join(".ghostmd").join("session.json");
+        let session: Option<SessionState> = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok());
+        if let Some(session) = session {
+            for (i, sws) in session.workspaces.iter().enumerate() {
+                if i < self.workspaces.len() {
+                    self.workspaces[i].title = sws.title.clone();
+                }
+            }
+        }
     }
 
     /// The path currently active in the focused pane of the active workspace.

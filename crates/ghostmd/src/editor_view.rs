@@ -63,6 +63,7 @@ impl DefinitionProvider for UrlDefinitionProvider {
 pub struct EditorView {
     pub path: PathBuf,
     pub dirty: bool,
+    pub needs_reload: bool,
     input_state: Entity<InputState>,
     focus_handle: FocusHandle,
     pub last_edit: Option<Instant>,
@@ -107,6 +108,7 @@ impl EditorView {
         Self {
             path,
             dirty: false,
+            needs_reload: false,
             input_state,
             focus_handle,
             last_edit: None,
@@ -154,7 +156,18 @@ impl Focusable for EditorView {
 }
 
 impl Render for EditorView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.needs_reload && !self.dirty {
+            self.needs_reload = false;
+            if let Ok((_note, content)) = Note::load(&self.path) {
+                self.input_state.update(cx, |state, cx| {
+                    state.set_value(content, window, cx);
+                });
+                // Clear dirty flag that set_value triggers via the Change subscription
+                self.dirty = false;
+                self.last_edit = None;
+            }
+        }
         div()
             .size_full()
             .track_focus(&self.focus_handle)
