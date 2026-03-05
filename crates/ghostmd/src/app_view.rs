@@ -877,6 +877,36 @@ impl GhostAppView {
         })
         .detach();
 
+        // Check for updates in the background
+        cx.spawn(async |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            let result = cx.background_executor().spawn(async {
+                let output = std::process::Command::new("curl")
+                    .args(["-fsSL", "--max-time", "5", "https://api.github.com/repos/mimoo/ghostmd/releases/latest"])
+                    .output()
+                    .ok()?;
+                if !output.status.success() { return None; }
+                let body = String::from_utf8(output.stdout).ok()?;
+                let tag = body.lines()
+                    .find(|l| l.contains("\"tag_name\""))?
+                    .split('"')
+                    .nth(3)?
+                    .to_string();
+                Some(tag)
+            }).await;
+
+            if let Some(latest_tag) = result {
+                let current = env!("CARGO_PKG_VERSION");
+                let latest_ver = latest_tag.trim_start_matches('v');
+                if latest_ver != current {
+                    let _ = this.update(cx, |this, cx| {
+                        this.update_available = Some(latest_tag);
+                        cx.notify();
+                    });
+                }
+            }
+        })
+        .detach();
+
         view
     }
 
@@ -2819,10 +2849,28 @@ impl Render for GhostAppView {
                 }
             }))
             // Layout: flex_col with titlebar spacer then main content
-            .child(
+            .child({
                 // Titlebar spacer — prevents content from overlapping traffic lights
-                div().w_full().h(px(38.0)).flex_shrink_0()
-            );
+                let mut bar = div()
+                    .w_full()
+                    .h(px(38.0))
+                    .flex_shrink_0()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_end();
+                if let Some(tag) = &self.update_available {
+                    let ghost = GhostTheme::from_name(self.active_theme);
+                    bar = bar.child(
+                        div()
+                            .pr(px(12.0))
+                            .text_xs()
+                            .text_color(rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2))
+                            .child(format!("update available ({tag}): run ghostmd update"))
+                    );
+                }
+                bar
+            });
 
         if let (Some(split_root), Some(ws_clone)) = (split_root, ws_clone) {
             // Normal layout with workspaces
