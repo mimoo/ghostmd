@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use gpui::*;
 use gpui_component::input::Input;
 use gpui_component::resizable::{h_resizable, v_resizable, resizable_panel};
@@ -631,5 +633,141 @@ impl GhostAppView {
                             .child(body),
                     ),
             )
+    }
+
+    pub(crate) fn render_context_menu(&self, path: &Path, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
+        let t = &self.theme;
+        let is_file = path.is_file();
+        let is_dir = path.is_dir();
+        let is_root = *path == self.root;
+        let diary_dir = self.root.join("diary");
+        let is_diary_path = path.starts_with(&diary_dir);
+
+        let context_dir = if is_dir {
+            path.to_path_buf()
+        } else {
+            path.parent().unwrap_or(&self.root).to_path_buf()
+        };
+
+        let rename_path = path.to_path_buf();
+        let new_note_dir = context_dir.clone();
+        let new_folder_dir = context_dir;
+        let finder_path = path.to_path_buf();
+        let trash_path = path.to_path_buf();
+
+        let mut menu = div()
+            .absolute()
+            .top(position.y)
+            .left(position.x)
+            .bg(t.sidebar_bg)
+            .border_1()
+            .border_color(t.border)
+            .rounded(px(4.0))
+            .shadow_lg()
+            .min_w(px(160.0))
+            .flex()
+            .flex_col();
+
+        let rename_enabled = if is_file {
+            !is_diary_path
+        } else if is_dir {
+            !is_root && *path != diary_dir && !is_diary_path
+        } else {
+            false
+        };
+        let show_rename = rename_enabled || (is_dir && !is_root && (is_diary_path || *path == diary_dir));
+        if show_rename {
+            menu = menu.child(
+                div()
+                    .id("ctx-rename")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(if rename_enabled { t.fg } else { t.hint })
+                    .when(rename_enabled, |d| {
+                        d.cursor_pointer()
+                            .hover(|s| s.bg(t.selection))
+                            .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                                this.tree_context_menu = None;
+                                this.file_tree.update(cx, |tree, cx| {
+                                    tree.start_rename(&rename_path, window, cx);
+                                });
+                            }))
+                    })
+                    .child("Rename"),
+            );
+        }
+
+        menu = menu.child(
+            div()
+                .id("ctx-new-note")
+                .px(px(12.0))
+                .py(px(6.0))
+                .text_sm()
+                .text_color(t.fg)
+                .cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                    this.tree_context_menu = None;
+                    this.new_note_in_dir(new_note_dir.clone(), window, cx);
+                }))
+                .child("New Note"),
+        );
+
+        let new_folder_in_diary = new_folder_dir.starts_with(&diary_dir);
+        if !new_folder_in_diary {
+            menu = menu.child(
+                div()
+                    .id("ctx-new-folder")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(t.fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.selection))
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.tree_context_menu = None;
+                        this.create_new_folder(new_folder_dir.clone(), window, cx);
+                    }))
+                    .child("New Folder"),
+            );
+        }
+
+        menu = menu.child(
+            div()
+                .id("ctx-open-finder")
+                .px(px(12.0))
+                .py(px(6.0))
+                .text_sm()
+                .text_color(t.fg)
+                .cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                    this.tree_context_menu = None;
+                    std::process::Command::new("open").arg("-R").arg(&finder_path).spawn().ok();
+                    cx.notify();
+                }))
+                .child("Open in Finder"),
+        );
+
+        if !is_root {
+            menu = menu.child(
+                div()
+                    .id("ctx-move-to-trash")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(t.error)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.selection))
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.tree_context_menu = None;
+                        this.move_to_trash(trash_path.clone(), window, cx);
+                    }))
+                    .child("Move to Trash"),
+            );
+        }
+
+        menu
     }
 }
