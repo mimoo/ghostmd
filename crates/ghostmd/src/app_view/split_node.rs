@@ -41,12 +41,15 @@ pub(crate) fn random_note_name() -> String {
         "summit", "thorn", "tide", "timber", "tower", "trail", "vale", "vine",
         "wave", "weald", "wheat", "wind", "wing", "wren", "yarrow",
     ];
-    let nanos = SystemTime::now()
+    // Use full timestamp mixed with a counter for better distribution
+    let t = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos() as usize;
-    let adj = ADJECTIVES[nanos % ADJECTIVES.len()];
-    let noun = NOUNS[(nanos / 7) % NOUNS.len()];
+        .unwrap_or_default();
+    let seed = t.as_nanos() as usize;
+    // Simple hash-like mixing to avoid clustering
+    let mixed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let adj = ADJECTIVES[mixed % ADJECTIVES.len()];
+    let noun = NOUNS[(mixed >> 16) % NOUNS.len()];
     format!("{}-{}", adj, noun)
 }
 
