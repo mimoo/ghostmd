@@ -41,6 +41,7 @@ impl GhostAppView {
             PaletteCommand { label: "AI: Rename All Tabs".into(), shortcut_hint: None, action_id: "ai_rename_all_tabs".into() },
             PaletteCommand { label: "AI: Rename File".into(), shortcut_hint: None, action_id: "ai_rename_file".into() },
             PaletteCommand { label: "AI: Suggest Folder".into(), shortcut_hint: None, action_id: "ai_suggest_folder".into() },
+            PaletteCommand { label: "Share as Gist".into(), shortcut_hint: None, action_id: "share_gist".into() },
             PaletteCommand { label: "Move to Folder...".into(), shortcut_hint: None, action_id: "move_to_folder".into() },
             PaletteCommand { label: "Delete Current File".into(), shortcut_hint: Some("Cmd+\u{232b}".into()), action_id: "delete_file".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
@@ -123,6 +124,7 @@ impl GhostAppView {
             "ai_rename_all_tabs" => self.ai_rename_all_tabs(cx),
             "ai_rename_file" => self.ai_rename_file(cx),
             "ai_suggest_folder" => self.ai_suggest_folder(cx),
+            "share_gist" => self.share_as_gist(cx),
             "move_to_folder" => self.start_move_to_folder(window, cx),
             "delete_file" => {
                 if let Some(path) = self.focused_active_path() {

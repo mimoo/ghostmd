@@ -239,6 +239,40 @@ impl GhostAppView {
         }
     }
 
+    /// Share the current note as a private GitHub Gist (requires `gh` CLI).
+    pub(crate) fn share_as_gist(&mut self, cx: &mut Context<Self>) {
+        let path = match self.focused_active_path() {
+            Some(p) => p,
+            None => return,
+        };
+        let editor = {
+            let ws = self.active_ws();
+            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+        };
+        if let Some(editor) = editor {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
+        }
+
+        cx.spawn(async move |_this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            let result = cx.background_executor().spawn(async move {
+                let output = Command::new("gh")
+                    .args(["gist", "create", "--public=false"])
+                    .arg(&path)
+                    .output();
+                match output {
+                    Ok(out) if out.status.success() => {
+                        let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                        if !url.is_empty() {
+                            Command::new("open").arg(&url).spawn().ok();
+                        }
+                    }
+                    _ => {}
+                }
+            }).await;
+            result
+        }).detach();
+    }
+
     /// Run the update script and restart the app.
     pub(crate) fn run_update(&mut self, cx: &mut Context<Self>) {
         // Save session before updating
