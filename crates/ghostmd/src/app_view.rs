@@ -1704,7 +1704,7 @@ impl GhostAppView {
                     .arg("-p")
                     .arg("--model").arg("sonnet")
                     .arg("--allowedTools").arg("Edit,Write")
-                    .arg(&prompt)
+                    .arg("--").arg(&prompt)
                     .status();
                 status.is_ok_and(|s| s.success())
             }).await;
@@ -1768,7 +1768,7 @@ impl GhostAppView {
                     .arg("-p")
                     .arg("--model").arg("sonnet")
                     .arg("--allowedTools").arg("Edit,Write")
-                    .arg(&prompt)
+                    .arg("--").arg(&prompt)
                     .status();
                 status.is_ok_and(|s| s.success())
             }).await;
@@ -1832,7 +1832,7 @@ impl GhostAppView {
                     .arg("-p")
                     .arg("--model").arg("sonnet")
                     .arg("--allowedTools").arg("Edit,Write")
-                    .arg(&prompt)
+                    .arg("--").arg(&prompt)
                     .status();
                 status.is_ok_and(|s| s.success())
             }).await;
