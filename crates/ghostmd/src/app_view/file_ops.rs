@@ -167,19 +167,30 @@ impl GhostAppView {
         }
         if new_path.exists() { return; }
         if std::fs::rename(&source, &new_path).is_ok() {
-            let mut editors_to_update = Vec::new();
+            let is_dir = new_path.is_dir();
+            let mut editors_to_update: Vec<(Entity<EditorView>, PathBuf)> = Vec::new();
             for ws in &mut self.workspaces {
                 for pane in ws.panes.values_mut() {
-                    if pane.active_path.as_ref() == Some(&source) {
-                        pane.active_path = Some(new_path.clone());
-                        if let Some(editor) = &pane.editor {
-                            editors_to_update.push(editor.clone());
+                    if let Some(old_p) = &pane.active_path {
+                        // Exact match (file) or child of moved directory
+                        let updated = if *old_p == source {
+                            Some(new_path.clone())
+                        } else if is_dir && old_p.starts_with(&source) {
+                            old_p.strip_prefix(&source).ok()
+                                .map(|rel| new_path.join(rel))
+                        } else {
+                            None
+                        };
+                        if let Some(np) = updated {
+                            pane.active_path = Some(np.clone());
+                            if let Some(editor) = &pane.editor {
+                                editors_to_update.push((editor.clone(), np));
+                            }
                         }
                     }
                 }
             }
-            for editor in editors_to_update {
-                let np = new_path.clone();
+            for (editor, np) in editors_to_update {
                 editor.update(cx, |e, _cx| { e.path = np; });
             }
             self.file_tree.update(cx, |tree, cx| {

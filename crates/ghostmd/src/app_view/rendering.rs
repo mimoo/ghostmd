@@ -34,7 +34,7 @@ impl GhostAppView {
                     .unwrap_or(false)
             });
 
-            let ai_busy = self.ai_loading.contains(&i);
+            let ai_busy = self.ai_loading.contains(&ws.id);
             let display = if ai_busy {
                 format!("{} …", ws.title)
             } else if dirty {
@@ -286,8 +286,9 @@ impl GhostAppView {
                 crate::search::FinderResult::File(_) => display_path,
                 crate::search::FinderResult::Content(m) => {
                     let line_preview = m.line_text.trim();
-                    let truncated = if line_preview.len() > 60 {
-                        format!("{}…", &line_preview[..60])
+                    let truncated = if line_preview.chars().count() > 60 {
+                        let end: String = line_preview.chars().take(60).collect();
+                        format!("{}…", end)
                     } else {
                         line_preview.to_string()
                     };

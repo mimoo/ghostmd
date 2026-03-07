@@ -18,8 +18,8 @@ impl GhostAppView {
         }
         if snippets.is_empty() { return; }
 
-        let ws_idx = self.active_workspace;
-        self.ai_loading.insert(ws_idx);
+        let ws_id = ws.id;
+        self.ai_loading.insert(ws_id);
         cx.notify();
         let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tab-{}.json", std::process::id()));
         let output_path_str = output_path.display().to_string();
@@ -46,15 +46,15 @@ impl GhostAppView {
                 status.is_ok_and(|s| s.success())
             }).await;
             this.update(cx, |this, cx| {
-                this.ai_loading.remove(&ws_idx);
+                this.ai_loading.remove(&ws_id);
                 if result {
                     if let Ok(json_str) = std::fs::read_to_string(&output_path) {
                         let _ = std::fs::remove_file(&output_path);
                         #[derive(serde::Deserialize)]
                         struct AiTab { title: String }
                         if let Ok(parsed) = serde_json::from_str::<AiTab>(&json_str) {
-                            if ws_idx < this.workspaces.len() {
-                                this.workspaces[ws_idx].title = parsed.title;
+                            if let Some(ws) = this.workspaces.iter_mut().find(|w| w.id == ws_id) {
+                                ws.title = parsed.title;
                             }
                         }
                     }
@@ -85,8 +85,8 @@ impl GhostAppView {
             .collect();
 
         let count = self.workspaces.len();
-        let all_indices: Vec<usize> = (0..count).collect();
-        for &i in &all_indices { self.ai_loading.insert(i); }
+        let ws_ids: Vec<usize> = self.workspaces.iter().map(|w| w.id).collect();
+        for &id in &ws_ids { self.ai_loading.insert(id); }
         cx.notify();
         let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tabs-{}.json", std::process::id()));
         let output_path_str = output_path.display().to_string();
@@ -115,7 +115,7 @@ impl GhostAppView {
                 status.is_ok_and(|s| s.success())
             }).await;
             this.update(cx, |this, cx| {
-                for i in &all_indices { this.ai_loading.remove(i); }
+                for &id in &ws_ids { this.ai_loading.remove(&id); }
                 if result {
                     if let Ok(json_str) = std::fs::read_to_string(&output_path) {
                         let _ = std::fs::remove_file(&output_path);
@@ -123,8 +123,10 @@ impl GhostAppView {
                         struct AiTabs { titles: Vec<String> }
                         if let Ok(parsed) = serde_json::from_str::<AiTabs>(&json_str) {
                             for (i, name) in parsed.titles.iter().enumerate() {
-                                if i < this.workspaces.len() {
-                                    this.workspaces[i].title = name.clone();
+                                if i < ws_ids.len() {
+                                    if let Some(ws) = this.workspaces.iter_mut().find(|w| w.id == ws_ids[i]) {
+                                        ws.title = name.clone();
+                                    }
                                 }
                             }
                         }
@@ -293,8 +295,16 @@ impl GhostAppView {
                 if !suggested.is_empty() {
                     this.update(cx, |this, cx| {
                         let target_dir = this.app.root.join(&suggested);
-                        std::fs::create_dir_all(&target_dir).ok();
-                        this.move_file_to_dir(source, &target_dir, cx);
+                        // Sanitize: ensure the target stays within the notes root
+                        if let Ok(canonical) = target_dir.canonicalize().or_else(|_| {
+                            // Dir may not exist yet — check parent
+                            std::fs::create_dir_all(&target_dir).ok();
+                            target_dir.canonicalize()
+                        }) {
+                            if canonical.starts_with(&this.app.root) {
+                                this.move_file_to_dir(source, &canonical, cx);
+                            }
+                        }
                         cx.notify();
                     }).ok();
                 }
@@ -360,7 +370,7 @@ impl GhostAppView {
     /// Update match count based on current search query and focused editor.
     pub(crate) fn update_search_matches(&mut self, cx: &mut Context<Self>) {
         let query = self.search_input.read(cx).value().to_string().to_lowercase();
-        if query.is_empty() {
+        if query.is_empty() || self.workspaces.is_empty() {
             self.search_match_count = 0;
             cx.notify();
             return;

@@ -151,6 +151,7 @@ impl GhostAppView {
 
     /// Enter rename mode for tab (via palette).
     pub(crate) fn enter_rename_mode(&mut self, _mode: RenameMode, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() { return; }
         let current_value = self.active_ws().title.clone();
         self.rename_mode = Some(RenameMode::Tab);
         self.show_palette = true;
@@ -166,6 +167,7 @@ impl GhostAppView {
 
     /// Apply the rename (tab only — file rename is handled inline in the tree).
     pub(crate) fn apply_rename(&mut self, new_name: &str, _mode: &RenameMode, _window: &mut Window, _cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() { return; }
         self.active_ws_mut().title = new_name.to_string();
     }
 }
