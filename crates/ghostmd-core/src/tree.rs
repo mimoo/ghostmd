@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// A node in the file tree, representing either a directory or a file.
@@ -65,7 +66,11 @@ impl FileTree {
     /// Recursively scans the root directory and populates the tree.
     /// Excludes `.ghostmd` directories.
     pub fn scan(&mut self) -> Result<()> {
+        // Preserve collapsed state across rescans
+        let mut collapsed = HashSet::new();
+        collect_collapsed(&self.nodes, &mut collapsed);
         self.nodes = scan_dir(&self.root)?;
+        apply_collapsed(&mut self.nodes, &collapsed);
         Ok(())
     }
 
@@ -146,6 +151,30 @@ fn scan_dir(dir: &Path) -> Result<Vec<TreeNode>> {
 
     dirs.extend(files);
     Ok(dirs)
+}
+
+/// Collect paths of all collapsed directories.
+fn collect_collapsed(nodes: &[TreeNode], out: &mut HashSet<PathBuf>) {
+    for node in nodes {
+        if let TreeNode::Directory { path, expanded, children, .. } = node {
+            if !expanded {
+                out.insert(path.clone());
+            }
+            collect_collapsed(children, out);
+        }
+    }
+}
+
+/// Re-collapse directories that were collapsed before a rescan.
+fn apply_collapsed(nodes: &mut [TreeNode], collapsed: &HashSet<PathBuf>) {
+    for node in nodes.iter_mut() {
+        if let TreeNode::Directory { path, expanded, children, .. } = node {
+            if collapsed.contains(path) {
+                *expanded = false;
+            }
+            apply_collapsed(children, collapsed);
+        }
+    }
 }
 
 fn node_name(node: &TreeNode) -> &str {
