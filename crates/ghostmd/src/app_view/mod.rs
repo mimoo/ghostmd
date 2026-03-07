@@ -443,11 +443,21 @@ impl GhostAppView {
             if let Some(latest_tag) = result {
                 let current = env!("CARGO_PKG_VERSION");
                 let latest_ver = latest_tag.trim_start_matches('v');
-                if latest_ver != current {
-                    let _ = this.update(cx, |this, cx| {
-                        this.update_available = Some(latest_tag);
-                        cx.notify();
-                    });
+                let parse_ver = |s: &str| -> Option<(u32, u32, u32)> {
+                    let mut parts = s.split('.');
+                    Some((
+                        parts.next()?.parse().ok()?,
+                        parts.next()?.parse().ok()?,
+                        parts.next()?.parse().ok()?,
+                    ))
+                };
+                if let (Some(latest), Some(cur)) = (parse_ver(latest_ver), parse_ver(current)) {
+                    if latest > cur {
+                        let _ = this.update(cx, |this, cx| {
+                            this.update_available = Some(latest_tag);
+                            cx.notify();
+                        });
+                    }
                 }
             }
         })
