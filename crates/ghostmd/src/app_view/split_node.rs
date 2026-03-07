@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
 
@@ -41,15 +40,11 @@ pub(crate) fn random_note_name() -> String {
         "summit", "thorn", "tide", "timber", "tower", "trail", "vale", "vine",
         "wave", "weald", "wheat", "wind", "wing", "wren", "yarrow",
     ];
-    // Use full timestamp mixed with a counter for better distribution
-    let t = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let seed = t.as_nanos() as usize;
-    // Simple hash-like mixing to avoid clustering
-    let mixed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-    let adj = ADJECTIVES[mixed % ADJECTIVES.len()];
-    let noun = NOUNS[(mixed >> 16) % NOUNS.len()];
+    // SAFETY: arc4random is always available on macOS, returns a uniform u32
+    let r1 = unsafe { libc::arc4random() } as usize;
+    let r2 = unsafe { libc::arc4random() } as usize;
+    let adj = ADJECTIVES[r1 % ADJECTIVES.len()];
+    let noun = NOUNS[r2 % NOUNS.len()];
     format!("{}-{}", adj, noun)
 }
 

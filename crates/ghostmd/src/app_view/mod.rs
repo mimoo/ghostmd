@@ -139,8 +139,12 @@ impl GhostAppView {
         .detach();
 
         // Subscribe to inline rename events from the tree
-        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemRenamed, _window, cx| {
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemRenamed, window, cx| {
             this.update_editor_paths(&event.old_path, &event.new_path, cx);
+            if !this.workspaces.is_empty() {
+                let focused = this.active_ws().focused_pane;
+                this.focus_pane_editor(focused, window, cx);
+            }
             cx.notify();
         })
         .detach();

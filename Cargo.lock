@@ -2166,6 +2166,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "gpui-component-assets",
+ "libc",
  "lsp-types",
  "notify",
  "nucleo-matcher",
