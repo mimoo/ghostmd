@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process::Command;
 
 use gpui::*;
 
@@ -53,19 +54,42 @@ impl GhostAppView {
     }
 
     /// Create a new note with inline rename in the file tree (cmd-n).
-    /// If a folder is selected in the file tree, creates the note there instead of diary path.
+    /// If a folder is selected, shows a location picker to choose between diary and selected folder.
     pub(crate) fn new_note_in_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.ensure_workspace(window, cx);
         let root = self.app.root.clone();
+        let diary_dir = diary::today_diary_dir(&root);
         let selected_dir = self.file_tree.read(cx).selected_path()
             .and_then(|p| {
                 if p.is_dir() { Some(p.clone()) } else { p.parent().map(|pp| pp.to_path_buf()) }
             })
             .filter(|d| d.starts_with(&root) && *d != root);
 
-        let parent_dir = selected_dir.unwrap_or_else(|| diary::today_diary_dir(&root));
-        std::fs::create_dir_all(&parent_dir).ok();
+        // If a non-diary folder is selected, show the location picker
+        if let Some(ref dir) = selected_dir {
+            if *dir != diary_dir {
+                let rel_path = dir.strip_prefix(&root)
+                    .unwrap_or(dir)
+                    .to_string_lossy()
+                    .to_string();
+                self.location_picker_options = vec![
+                    (format!("diary ({})", diary_dir.strip_prefix(&root).unwrap_or(&diary_dir).to_string_lossy()), diary_dir),
+                    (rel_path, dir.clone()),
+                ];
+                self.location_picker_selected = 0;
+                self.show_location_picker = true;
+                cx.notify();
+                return;
+            }
+        }
 
+        // No folder selected or already in diary — create directly
+        self.create_note_at(diary_dir, window, cx);
+    }
+
+    /// Actually create the note at the given directory.
+    pub(crate) fn create_note_at(&mut self, parent_dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        std::fs::create_dir_all(&parent_dir).ok();
         if !self.app.sidebar_visible {
             self.app.toggle_sidebar();
         }
@@ -74,6 +98,26 @@ impl GhostAppView {
             tree.start_new_note(&parent_dir, &name, window, cx);
         });
         cx.notify();
+    }
+
+    /// Close the location picker and refocus the editor.
+    pub(crate) fn close_location_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_location_picker = false;
+        self.location_picker_options.clear();
+        if !self.workspaces.is_empty() {
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+        }
+        cx.notify();
+    }
+
+    /// Confirm the location picker selection and create the note.
+    pub(crate) fn confirm_location_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((_, dir)) = self.location_picker_options.get(self.location_picker_selected).cloned() {
+            self.show_location_picker = false;
+            self.location_picker_options.clear();
+            self.create_note_at(dir, window, cx);
+        }
     }
 
     /// Create a new note in a specific directory with inline rename.
@@ -193,5 +237,28 @@ impl GhostAppView {
             self.focus_pane_editor(focused, window, cx);
             cx.notify();
         }
+    }
+
+    /// Run the update script and restart the app.
+    pub(crate) fn run_update(&mut self, cx: &mut Context<Self>) {
+        // Save session before updating
+        self.save_session();
+        cx.spawn(async |_this, cx: &mut AsyncApp| {
+            let result = cx.background_executor().spawn(async {
+                Command::new("bash")
+                    .args(["-c", "curl -fsSL https://raw.githubusercontent.com/mimoo/ghostmd/main/scripts/install.sh | bash"])
+                    .output()
+            }).await;
+            if let Ok(output) = result {
+                if output.status.success() {
+                    // Relaunch the app
+                    Command::new("open")
+                        .args(["-a", "/Applications/GhostMD.app"])
+                        .spawn()
+                        .ok();
+                    cx.update(|cx| cx.quit()).ok();
+                }
+            }
+        }).detach();
     }
 }

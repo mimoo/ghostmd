@@ -96,6 +96,10 @@ pub struct GhostAppView {
     pub(crate) agentic_loading: bool,
     // Folder move mode (file finder shows folders instead of files)
     pub(crate) folder_move_source: Option<PathBuf>,
+    // Location picker (shown when creating a new note with a folder selected)
+    pub(crate) show_location_picker: bool,
+    pub(crate) location_picker_options: Vec<(String, PathBuf)>,
+    pub(crate) location_picker_selected: usize,
     // Scroll handles for overlays
     pub(crate) palette_scroll: ScrollHandle,
     pub(crate) finder_scroll: ScrollHandle,
@@ -396,6 +400,9 @@ impl GhostAppView {
             agentic_results: Vec::new(),
             agentic_loading: false,
             folder_move_source: None,
+            show_location_picker: false,
+            location_picker_options: Vec::new(),
+            location_picker_selected: 0,
             palette_scroll: ScrollHandle::new(),
             finder_scroll: ScrollHandle::new(),
             update_available: None,
@@ -534,6 +541,7 @@ impl Render for GhostAppView {
         let show_palette = self.show_palette;
         let show_file_finder = self.show_file_finder;
         let show_agentic_search = self.show_agentic_search;
+        let show_location_picker = self.show_location_picker;
 
         // Context menu overlay data
         let ctx_menu = self.tree_context_menu.clone();
@@ -683,6 +691,8 @@ impl Render for GhostAppView {
                 let editing = this.file_tree.read(cx).is_editing();
                 if editing {
                     this.file_tree.update(cx, |tree, cx| tree.cancel_rename(window, cx));
+                } else if this.show_location_picker {
+                    this.close_location_picker(window, cx);
                 } else if this.show_search {
                     this.close_search(window, cx);
                 } else if this.show_agentic_search {
@@ -697,7 +707,12 @@ impl Render for GhostAppView {
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, window, cx| {
-                if this.show_file_finder {
+                if this.show_location_picker {
+                    if this.location_picker_selected > 0 {
+                        this.location_picker_selected -= 1;
+                    }
+                    cx.notify();
+                } else if this.show_file_finder {
                     this.file_finder.select_prev();
                     this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
                     cx.notify();
@@ -711,7 +726,12 @@ impl Render for GhostAppView {
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteDown, window, cx| {
-                if this.show_file_finder {
+                if this.show_location_picker {
+                    if this.location_picker_selected + 1 < this.location_picker_options.len() {
+                        this.location_picker_selected += 1;
+                    }
+                    cx.notify();
+                } else if this.show_file_finder {
                     this.file_finder.select_next();
                     this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
                     cx.notify();
@@ -724,7 +744,9 @@ impl Render for GhostAppView {
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteConfirm, window, cx| {
-                if this.show_palette {
+                if this.show_location_picker {
+                    this.confirm_location_picker(window, cx);
+                } else if this.show_palette {
                     this.palette_confirm(window, cx);
                 }
             }))
@@ -785,12 +807,38 @@ impl Render for GhostAppView {
                     .justify_end();
                 if let Some(tag) = &self.update_available {
                     let ghost = GhostTheme::from_name(self.active_theme);
+                    let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+                    let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
                     bar = bar.child(
                         div()
                             .pr(px(12.0))
-                            .text_xs()
-                            .text_color(rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2))
-                            .child(format!("update available ({tag}): run ghostmd update"))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(hint_fg)
+                                    .child(format!("update available ({tag})"))
+                            )
+                            .child(
+                                div()
+                                    .id("update-btn")
+                                    .text_xs()
+                                    .text_color(accent)
+                                    .cursor_pointer()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .border_1()
+                                    .border_color(accent)
+                                    .rounded(px(4.0))
+                                    .hover(|s| s.bg(accent).text_color(rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2)))
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.run_update(cx);
+                                    }))
+                                    .child("Update & restart")
+                            )
                     );
                 }
                 bar
@@ -825,6 +873,7 @@ impl Render for GhostAppView {
                                             .child(self.render_split_node(&split_root, &ws_clone, cx))
                                             .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
                                             .when(show_agentic_search, |d| d.child(self.render_agentic_search(cx)))
+                                            .when(show_location_picker, |d| d.child(self.render_location_picker(cx)))
                                             .when(show_palette, |d| d.child(self.render_command_palette(cx))),
                                     ),
                             ),

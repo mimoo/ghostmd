@@ -70,7 +70,7 @@ impl GhostAppView {
         cx.notify();
     }
 
-    /// Dismiss any open overlays (palette, finder, agentic search).
+    /// Dismiss any open overlays (palette, finder, agentic search, location picker).
     pub(crate) fn dismiss_overlays(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.show_file_finder {
             self.close_file_finder(window, cx);
@@ -80,6 +80,9 @@ impl GhostAppView {
         }
         if self.show_palette {
             self.close_palette(window, cx);
+        }
+        if self.show_location_picker {
+            self.close_location_picker(window, cx);
         }
     }
 }

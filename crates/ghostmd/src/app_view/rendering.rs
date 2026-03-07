@@ -469,6 +469,83 @@ impl GhostAppView {
             )
     }
 
+    pub(crate) fn render_location_picker(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let ghost = GhostTheme::from_name(self.active_theme);
+        let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
+        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
+        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
+        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+
+        let mut list = div().flex().flex_col();
+
+        for (i, (label, _)) in self.location_picker_options.iter().enumerate() {
+            let is_selected = i == self.location_picker_selected;
+            let bg = if is_selected { selection_bg } else { overlay_bg };
+            let idx = i;
+
+            list = list.child(
+                div()
+                    .id(ElementId::NamedInteger("loc-item".into(), i as u64))
+                    .w_full()
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .bg(bg)
+                    .text_color(fg)
+                    .text_sm()
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.location_picker_selected = idx;
+                        this.confirm_location_picker(window, cx);
+                    }))
+                    .child(label.clone()),
+            );
+        }
+
+        div()
+            .id("location-picker-dismiss-bg")
+            .absolute()
+            .inset_0()
+            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                this.close_location_picker(window, cx);
+            }))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(60.0))
+                    .left_0()
+                    .right_0()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .id("location-picker-card")
+                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
+                                cx.stop_propagation();
+                            }))
+                            .w(px(400.0))
+                            .bg(overlay_bg)
+                            .border_1()
+                            .border_color(border_color)
+                            .rounded(px(8.0))
+                            .shadow_lg()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .px(px(12.0))
+                                    .py(px(6.0))
+                                    .border_b_1()
+                                    .border_color(border_color)
+                                    .text_sm()
+                                    .text_color(hint_fg)
+                                    .child("Create note in:"),
+                            )
+                            .child(list),
+                    ),
+            )
+    }
+
     pub(crate) fn render_command_palette(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let ghost = GhostTheme::from_name(self.active_theme);
         let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
