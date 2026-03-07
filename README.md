@@ -4,7 +4,8 @@ A native macOS note-taking app that feels like [Ghostty](https://ghostty.org) â€
 
 Notes are plain `.md` files in `~/Documents/ghostmd/`. No database, no lock-in. Back up the folder however you want.
 
-![GhostMD screenshot](screenshot.png)
+![GhostMD dark theme](screenshot-dark.png)
+![GhostMD light theme](screenshot.png)
 
 ## Philosophy
 
