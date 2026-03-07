@@ -121,7 +121,7 @@ impl GhostAppView {
                     .flex_col()
                     .bg(t.bg)
                     .text_color(t.fg)
-                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                    .capture_any_mouse_down(cx.listener(move |this: &mut Self, _event: &MouseDownEvent, window, cx| {
                         let ws = this.active_ws_mut();
                         if ws.focused_pane != pid {
                             ws.pane_focus_history.push(ws.focused_pane);
