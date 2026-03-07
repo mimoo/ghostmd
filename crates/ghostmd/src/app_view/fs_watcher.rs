@@ -31,13 +31,21 @@ impl GhostAppView {
         let mut changed_files: Vec<PathBuf> = Vec::new();
 
         while let Ok(event) = rx.try_recv() {
+            let is_structural = matches!(
+                event.kind,
+                notify::EventKind::Create(_)
+                    | notify::EventKind::Remove(_)
+                    | notify::EventKind::Modify(notify::event::ModifyKind::Name(_))
+            );
             for path in &event.paths {
                 if path.ends_with("session.json")
                     && path.starts_with(self.root.join(".ghostmd"))
                 {
                     session_changed = true;
                 } else if path.starts_with(&self.root) {
-                    tree_changed = true;
+                    if is_structural {
+                        tree_changed = true;
+                    }
                     if path.extension().is_some_and(|e| e == "md") {
                         changed_files.push(path.clone());
                     }
