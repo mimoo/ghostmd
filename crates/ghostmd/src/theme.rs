@@ -24,6 +24,10 @@ pub enum ThemeName {
     AyuDark,
     Palenight,
     Vesper,
+    SolarizedLight,
+    CatppuccinLatte,
+    RosePineDawn,
+    GithubLight,
 }
 
 /// The GhostMD color theme.
@@ -67,6 +71,10 @@ impl GhostTheme {
             ThemeName::AyuDark => Self::ayu_dark(),
             ThemeName::Palenight => Self::palenight(),
             ThemeName::Vesper => Self::vesper(),
+            ThemeName::SolarizedLight => Self::solarized_light(),
+            ThemeName::CatppuccinLatte => Self::catppuccin_latte(),
+            ThemeName::RosePineDawn => Self::rose_pine_dawn(),
+            ThemeName::GithubLight => Self::github_light(),
         }
     }
 
@@ -339,6 +347,78 @@ impl GhostTheme {
             pane_title_fg: (0x40, 0x40, 0x40),
         }
     }
+
+    fn solarized_light() -> Self {
+        GhostTheme {
+            bg: (0xfd, 0xf6, 0xe3),         // #FDF6E3 base3
+            fg: (0x65, 0x7b, 0x83),         // #657B83 base00
+            selection: (0xee, 0xe8, 0xd5),   // #EEE8D5 base2
+            cursor: (0x26, 0x8b, 0xd2),     // #268BD2 blue
+            line_number: (0x93, 0xa1, 0xa1), // #93A1A1 base1
+            sidebar_bg: (0xee, 0xe8, 0xd5),  // base2
+            tab_active: (0xee, 0xe8, 0xd5),
+            tab_inactive: (0xfd, 0xf6, 0xe3),
+            accent: (0x26, 0x8b, 0xd2),     // blue
+            error: (0xdc, 0x32, 0x2f),      // #DC322F red
+            border: (0xe0, 0xdb, 0xc9),
+            pane_title_bg: (0xf3, 0xee, 0xdc),
+            pane_title_fg: (0x93, 0xa1, 0xa1),
+        }
+    }
+
+    fn catppuccin_latte() -> Self {
+        GhostTheme {
+            bg: (0xef, 0xf1, 0xf5),         // #EFF1F5 base
+            fg: (0x4c, 0x4f, 0x69),         // #4C4F69 text
+            selection: (0xcc, 0xd0, 0xda),   // #CCD0DA surface0
+            cursor: (0xfe, 0x64, 0x0b),     // #FE640B peach
+            line_number: (0x8c, 0x8f, 0xa1), // #8C8FA1 overlay0
+            sidebar_bg: (0xe6, 0xe9, 0xef),  // #E6E9EF mantle
+            tab_active: (0xcc, 0xd0, 0xda),
+            tab_inactive: (0xef, 0xf1, 0xf5),
+            accent: (0x12, 0x87, 0xa8),     // #1287A8 teal
+            error: (0xd2, 0x00, 0x42),      // #D20042 red (maroon)
+            border: (0xbc, 0xc0, 0xcc),      // #BCC0CC surface1
+            pane_title_bg: (0xdc, 0xe0, 0xe8), // #DCE0E8 crust
+            pane_title_fg: (0x8c, 0x8f, 0xa1),
+        }
+    }
+
+    fn rose_pine_dawn() -> Self {
+        GhostTheme {
+            bg: (0xfa, 0xf4, 0xed),         // #FAF4ED base
+            fg: (0x57, 0x52, 0x79),         // #575279 text
+            selection: (0xf2, 0xe9, 0xe1),   // #F2E9E1 highlight low
+            cursor: (0xb4, 0x63, 0x7a),     // #B4637A love
+            line_number: (0x9e, 0x93, 0x86), // #9E9386 muted (subtle)
+            sidebar_bg: (0xf2, 0xe9, 0xde),  // #F2E9DE surface
+            tab_active: (0xf2, 0xe9, 0xe1),
+            tab_inactive: (0xfa, 0xf4, 0xed),
+            accent: (0x90, 0x7a, 0xa9),     // #907AA9 iris
+            error: (0xb4, 0x63, 0x7a),      // love
+            border: (0xe4, 0xdf, 0xd7),
+            pane_title_bg: (0xf4, 0xed, 0xe5),
+            pane_title_fg: (0x9e, 0x93, 0x86),
+        }
+    }
+
+    fn github_light() -> Self {
+        GhostTheme {
+            bg: (0xff, 0xff, 0xff),         // #FFFFFF
+            fg: (0x1f, 0x23, 0x28),         // #1F2328 fg.default
+            selection: (0xd1, 0xd9, 0xe0),   // accent.muted
+            cursor: (0x03, 0x6f, 0xfc),     // #036FFC accent.fg
+            line_number: (0x8b, 0x94, 0x9e), // #8B949E fg.muted
+            sidebar_bg: (0xf6, 0xf8, 0xfa),  // #F6F8FA canvas.subtle
+            tab_active: (0xff, 0xff, 0xff),
+            tab_inactive: (0xf6, 0xf8, 0xfa),
+            accent: (0x03, 0x69, 0xd6),     // #0369D6 accent.fg
+            error: (0xcf, 0x22, 0x2e),      // #CF222E danger.fg
+            border: (0xd1, 0xd9, 0xe0),     // #D1D9E0 border.default
+            pane_title_bg: (0xf6, 0xf8, 0xfa),
+            pane_title_fg: (0x8b, 0x94, 0x9e),
+        }
+    }
 }
 
 /// Convert an RGB tuple to GPUI's Hsla color space.
@@ -466,7 +546,7 @@ pub fn apply_ghost_theme(cx: &mut gpui::App) {
 /// Switch to a named theme at runtime.
 pub fn apply_theme(name: ThemeName, cx: &mut gpui::App) {
     let ghost = GhostTheme::from_name(name);
-    let mode = if matches!(name, ThemeName::Light) { ThemeMode::Light } else { ThemeMode::Dark };
+    let mode = if matches!(name, ThemeName::Light | ThemeName::SolarizedLight | ThemeName::CatppuccinLatte | ThemeName::RosePineDawn | ThemeName::GithubLight) { ThemeMode::Light } else { ThemeMode::Dark };
     Theme::change(mode, None, cx);
     let theme = Theme::global_mut(cx);
     apply_theme_colors(&ghost, theme);
@@ -511,6 +591,8 @@ mod tests {
             ThemeName::Catppuccin, ThemeName::TokyoNight, ThemeName::Kanagawa,
             ThemeName::Everforest, ThemeName::OneDark, ThemeName::Moonlight,
             ThemeName::AyuDark, ThemeName::Palenight, ThemeName::Vesper,
+            ThemeName::SolarizedLight, ThemeName::CatppuccinLatte,
+            ThemeName::RosePineDawn, ThemeName::GithubLight,
         ].iter().map(|n| GhostTheme::from_name(*n).bg).collect();
         for i in 0..themes.len() {
             for j in (i+1)..themes.len() {
