@@ -127,51 +127,14 @@ impl GhostAppView {
 
         // Subscribe to inline rename events from the tree
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemRenamed, _window, cx| {
-            // Update any open editor paths if the file was renamed
-            let old = &event.old_path;
-            let new = &event.new_path;
-            let mut editors_to_update = Vec::new();
-            for ws in &mut this.workspaces {
-                for pane in ws.panes.values_mut() {
-                    if pane.active_path.as_ref() == Some(old) {
-                        pane.active_path = Some(new.clone());
-                        if let Some(editor) = &pane.editor {
-                            editors_to_update.push(editor.clone());
-                        }
-                    }
-                }
-            }
-            for editor in editors_to_update {
-                let np = new.clone();
-                editor.update(cx, |e, _cx| {
-                    e.path = np;
-                });
-            }
+            this.update_editor_paths(&event.old_path, &event.new_path, cx);
             cx.notify();
         })
         .detach();
 
         // Subscribe to drag-and-drop move events from the tree
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemMoved, _window, cx| {
-            let old = &event.old_path;
-            let new = &event.new_path;
-            let mut editors_to_update = Vec::new();
-            for ws in &mut this.workspaces {
-                for pane in ws.panes.values_mut() {
-                    if pane.active_path.as_ref() == Some(old) {
-                        pane.active_path = Some(new.clone());
-                        if let Some(editor) = &pane.editor {
-                            editors_to_update.push(editor.clone());
-                        }
-                    }
-                }
-            }
-            for editor in editors_to_update {
-                let np = new.clone();
-                editor.update(cx, |e, _cx| {
-                    e.path = np;
-                });
-            }
+            this.update_editor_paths(&event.old_path, &event.new_path, cx);
             this.file_tree.update(cx, |tree, cx| tree.refresh(cx));
             cx.notify();
         })

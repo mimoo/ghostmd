@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gpui::*;
@@ -8,6 +8,35 @@ use ghostmd_core::diary;
 use super::*;
 
 impl GhostAppView {
+    /// Update editor paths across all workspaces when a file or directory is renamed/moved.
+    /// Handles both exact path matches and child paths (for directory moves).
+    pub(crate) fn update_editor_paths(&mut self, old: &Path, new: &Path, cx: &mut Context<Self>) {
+        let is_dir = new.is_dir();
+        let mut editors_to_update: Vec<(Entity<EditorView>, PathBuf)> = Vec::new();
+        for ws in &mut self.workspaces {
+            for pane in ws.panes.values_mut() {
+                if let Some(old_p) = &pane.active_path {
+                    let updated = if *old_p == old {
+                        Some(new.to_path_buf())
+                    } else if is_dir && old_p.starts_with(old) {
+                        old_p.strip_prefix(old).ok().map(|rel| new.join(rel))
+                    } else {
+                        None
+                    };
+                    if let Some(np) = updated {
+                        pane.active_path = Some(np.clone());
+                        if let Some(editor) = &pane.editor {
+                            editors_to_update.push((editor.clone(), np));
+                        }
+                    }
+                }
+            }
+        }
+        for (editor, np) in editors_to_update {
+            editor.update(cx, |e, _cx| { e.path = np; });
+        }
+    }
+
     /// Open a file: create per-pane editor and set it as active in the focused pane.
     pub(crate) fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         self.ensure_workspace(window, cx);
@@ -167,32 +196,7 @@ impl GhostAppView {
         }
         if new_path.exists() { return; }
         if std::fs::rename(&source, &new_path).is_ok() {
-            let is_dir = new_path.is_dir();
-            let mut editors_to_update: Vec<(Entity<EditorView>, PathBuf)> = Vec::new();
-            for ws in &mut self.workspaces {
-                for pane in ws.panes.values_mut() {
-                    if let Some(old_p) = &pane.active_path {
-                        // Exact match (file) or child of moved directory
-                        let updated = if *old_p == source {
-                            Some(new_path.clone())
-                        } else if is_dir && old_p.starts_with(&source) {
-                            old_p.strip_prefix(&source).ok()
-                                .map(|rel| new_path.join(rel))
-                        } else {
-                            None
-                        };
-                        if let Some(np) = updated {
-                            pane.active_path = Some(np.clone());
-                            if let Some(editor) = &pane.editor {
-                                editors_to_update.push((editor.clone(), np));
-                            }
-                        }
-                    }
-                }
-            }
-            for (editor, np) in editors_to_update {
-                editor.update(cx, |e, _cx| { e.path = np; });
-            }
+            self.update_editor_paths(&source, &new_path, cx);
             self.file_tree.update(cx, |tree, cx| {
                 tree.refresh(cx);
                 tree.reveal_file(&new_path, cx);

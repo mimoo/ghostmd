@@ -205,21 +205,7 @@ impl GhostAppView {
                                 if new_path != path && !new_path.exists()
                                     && std::fs::rename(&path, &new_path).is_ok()
                                 {
-                                    let mut editors_to_update = Vec::new();
-                                    for ws in &mut this.workspaces {
-                                        for pane in ws.panes.values_mut() {
-                                            if pane.active_path.as_ref() == Some(&path) {
-                                                pane.active_path = Some(new_path.clone());
-                                                if let Some(editor) = &pane.editor {
-                                                    editors_to_update.push(editor.clone());
-                                                }
-                                            }
-                                        }
-                                    }
-                                    for ed in editors_to_update {
-                                        let np = new_path.clone();
-                                        ed.update(cx, |e, _cx| { e.path = np; });
-                                    }
+                                    this.update_editor_paths(&path, &new_path, cx);
                                     this.file_tree.update(cx, |tree, cx| {
                                         tree.refresh(cx);
                                         tree.reveal_file(&new_path, cx);
