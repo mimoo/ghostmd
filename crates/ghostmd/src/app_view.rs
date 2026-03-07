@@ -566,6 +566,9 @@ pub struct GhostAppView {
     // File watcher for external changes
     _watcher: Option<notify::RecommendedWatcher>,
     fs_events_rx: Option<std::sync::mpsc::Receiver<notify::Event>>,
+    last_session_write: Instant,
+    // AI loading indicator: set of workspace indices with pending AI operations
+    ai_loading: HashSet<usize>,
 }
 
 impl GhostAppView {
@@ -860,6 +863,8 @@ impl GhostAppView {
             update_available: None,
             _watcher: None,
             fs_events_rx: None,
+            last_session_write: Instant::now(),
+            ai_loading: HashSet::new(),
         };
 
         // Set up file watcher for external changes
@@ -1371,6 +1376,10 @@ impl GhostAppView {
     }
 
     fn reload_session_titles(&mut self) {
+        // Skip if we wrote session.json recently (avoid overwriting our own changes)
+        if self.last_session_write.elapsed().as_millis() < 2000 {
+            return;
+        }
         let path = self.app.root.join(".ghostmd").join("session.json");
         let session: Option<SessionState> = std::fs::read_to_string(&path)
             .ok()
@@ -1685,6 +1694,8 @@ impl GhostAppView {
         if snippets.is_empty() { return; }
 
         let ws_idx = self.active_workspace;
+        self.ai_loading.insert(ws_idx);
+        cx.notify();
         let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tab-{}.json", std::process::id()));
         let output_path_str = output_path.display().to_string();
 
@@ -1709,21 +1720,22 @@ impl GhostAppView {
                     .status();
                 status.is_ok_and(|s| s.success())
             }).await;
-            if result {
-                if let Ok(json_str) = std::fs::read_to_string(&output_path) {
-                    let _ = std::fs::remove_file(&output_path);
-                    #[derive(serde::Deserialize)]
-                    struct AiTab { title: String }
-                    if let Ok(parsed) = serde_json::from_str::<AiTab>(&json_str) {
-                        this.update(cx, |this, cx| {
+            this.update(cx, |this, cx| {
+                this.ai_loading.remove(&ws_idx);
+                if result {
+                    if let Ok(json_str) = std::fs::read_to_string(&output_path) {
+                        let _ = std::fs::remove_file(&output_path);
+                        #[derive(serde::Deserialize)]
+                        struct AiTab { title: String }
+                        if let Ok(parsed) = serde_json::from_str::<AiTab>(&json_str) {
                             if ws_idx < this.workspaces.len() {
                                 this.workspaces[ws_idx].title = parsed.title;
-                                cx.notify();
                             }
-                        }).ok();
+                        }
                     }
                 }
-            }
+                cx.notify();
+            }).ok();
             let _ = std::fs::remove_file(&output_path_str);
         }).detach();
     }
@@ -1748,6 +1760,9 @@ impl GhostAppView {
             .collect();
 
         let count = self.workspaces.len();
+        let all_indices: Vec<usize> = (0..count).collect();
+        for &i in &all_indices { self.ai_loading.insert(i); }
+        cx.notify();
         let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tabs-{}.json", std::process::id()));
         let output_path_str = output_path.display().to_string();
 
@@ -1774,23 +1789,24 @@ impl GhostAppView {
                     .status();
                 status.is_ok_and(|s| s.success())
             }).await;
-            if result {
-                if let Ok(json_str) = std::fs::read_to_string(&output_path) {
-                    let _ = std::fs::remove_file(&output_path);
-                    #[derive(serde::Deserialize)]
-                    struct AiTabs { titles: Vec<String> }
-                    if let Ok(parsed) = serde_json::from_str::<AiTabs>(&json_str) {
-                        this.update(cx, |this, cx| {
+            this.update(cx, |this, cx| {
+                for i in &all_indices { this.ai_loading.remove(i); }
+                if result {
+                    if let Ok(json_str) = std::fs::read_to_string(&output_path) {
+                        let _ = std::fs::remove_file(&output_path);
+                        #[derive(serde::Deserialize)]
+                        struct AiTabs { titles: Vec<String> }
+                        if let Ok(parsed) = serde_json::from_str::<AiTabs>(&json_str) {
                             for (i, name) in parsed.titles.iter().enumerate() {
                                 if i < this.workspaces.len() {
                                     this.workspaces[i].title = name.clone();
                                 }
                             }
-                            cx.notify();
-                        }).ok();
+                        }
                     }
                 }
-            }
+                cx.notify();
+            }).ok();
             let _ = std::fs::remove_file(&output_path_str);
         }).detach();
     }
@@ -2112,7 +2128,7 @@ impl GhostAppView {
     }
 
     /// Save session state to disk.
-    fn save_session(&self) {
+    fn save_session(&mut self) {
         let session = SessionState {
             workspaces: self.workspaces.iter().map(|ws| {
                 let leaves = ws.split_root.leaves();
@@ -2133,6 +2149,7 @@ impl GhostAppView {
         let path = dir.join("session.json");
         if let Ok(json) = serde_json::to_string_pretty(&session) {
             std::fs::write(path, json).ok();
+            self.last_session_write = Instant::now();
         }
     }
 
@@ -2163,7 +2180,10 @@ impl GhostAppView {
                     .unwrap_or(false)
             });
 
-            let display = if dirty {
+            let ai_busy = self.ai_loading.contains(&i);
+            let display = if ai_busy {
+                format!("{} …", ws.title)
+            } else if dirty {
                 format!("{} *", ws.title)
             } else {
                 ws.title.clone()
