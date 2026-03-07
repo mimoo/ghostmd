@@ -141,11 +141,17 @@ impl GhostAppView {
                 }
 
                 if has_editor {
-                    // Title bar + editor
-                    let title_text = pane
+                    // Title bar + editor — split path into dir (muted) + filename (bright)
+                    let (dir_part, file_part) = pane
                         .and_then(|p| p.active_path.as_ref())
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "untitled".to_string());
+                        .map(|p| {
+                            let full = p.display().to_string();
+                            match full.rfind('/') {
+                                Some(i) => (full[..=i].to_string(), full[i+1..].to_string()),
+                                None => (String::new(), full),
+                            }
+                        })
+                        .unwrap_or_else(|| (String::new(), "untitled".to_string()));
 
                     let title_bar = div()
                         .w_full()
@@ -154,9 +160,14 @@ impl GhostAppView {
                         .items_center()
                         .px(px(8.0))
                         .bg(t.pane_title_bg)
-                        .text_color(t.pane_title_fg)
                         .text_xs()
-                        .child(title_text);
+                        .child(
+                            div().flex().flex_row().child(
+                                div().text_color(t.pane_title_fg).child(dir_part)
+                            ).child(
+                                div().text_color(t.fg).child(file_part)
+                            )
+                        );
 
                     pane_div = pane_div.child(title_bar);
 

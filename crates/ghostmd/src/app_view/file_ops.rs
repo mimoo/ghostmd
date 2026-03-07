@@ -178,6 +178,8 @@ impl GhostAppView {
 
     /// Move a file to a target directory, updating editor paths and tree.
     pub(crate) fn move_file_to_dir(&mut self, source: PathBuf, target_dir: &std::path::Path, cx: &mut Context<Self>) {
+        // Skip if the file is already in the target directory
+        if source.parent() == Some(target_dir) { return; }
         let file_name = source.file_name().unwrap_or_default();
         let new_path = unique_path(&target_dir.join(file_name));
         if new_path == source || new_path.exists() { return; }
