@@ -128,6 +128,9 @@ impl GhostAppView {
                             ws.focused_pane = pid;
                             this.focus_pane_editor(pid, window, cx);
                             this.sync_file_tree_selection(cx);
+                            if this.overlay_is(OverlayKind::Search) {
+                                this.update_search_matches(cx);
+                            }
                             cx.notify();
                         }
                     }));
