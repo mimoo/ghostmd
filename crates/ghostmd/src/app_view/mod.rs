@@ -475,6 +475,20 @@ impl GhostAppView {
     pub(crate) fn overlay_is(&self, kind: OverlayKind) -> bool {
         self.active_overlay.as_ref() == Some(&kind)
     }
+
+    /// Clear pane editors that reference deleted files.
+    pub(crate) fn clear_deleted_panes(&mut self, ws_idx: usize) {
+        if ws_idx >= self.workspaces.len() { return; }
+        let ws = &mut self.workspaces[ws_idx];
+        for pane in ws.panes.values_mut() {
+            if let Some(path) = &pane.active_path {
+                if !path.exists() {
+                    pane.active_path = None;
+                    pane.editor = None;
+                }
+            }
+        }
+    }
 }
 
 impl Focusable for GhostAppView {
@@ -573,6 +587,7 @@ impl Render for GhostAppView {
                 if let Some(ws) = this.closed_workspaces.pop() {
                     this.workspaces.push(ws);
                     this.active_workspace = this.workspaces.len() - 1;
+                    this.clear_deleted_panes(this.active_workspace);
                     let focused = this.workspaces[this.active_workspace].focused_pane;
                     this.focus_pane_editor(focused, window, cx);
                     cx.notify();

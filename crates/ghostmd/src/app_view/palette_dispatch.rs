@@ -59,6 +59,7 @@ impl GhostAppView {
                 if let Some(ws) = self.closed_workspaces.pop() {
                     self.workspaces.push(ws);
                     self.active_workspace = self.workspaces.len() - 1;
+                    self.clear_deleted_panes(self.active_workspace);
                     let focused = self.workspaces[self.active_workspace].focused_pane;
                     self.focus_pane_editor(focused, window, cx);
                     cx.notify();

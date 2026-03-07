@@ -40,6 +40,16 @@ pub(crate) enum SessionSplitNode {
     },
 }
 
+impl SessionSplitNode {
+    /// Return the first leaf path (for workspace identity matching).
+    pub(crate) fn first_path(&self) -> Option<String> {
+        match self {
+            SessionSplitNode::Leaf { path } => path.clone(),
+            SessionSplitNode::Split { left, .. } => left.first_path(),
+        }
+    }
+}
+
 /// Reconstruct a SplitNode tree from a serialized session, creating EditorView entities for each pane.
 pub(crate) fn restore_split_node(
     session_node: &SessionSplitNode,
@@ -121,8 +131,16 @@ impl GhostAppView {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok());
         if let Some(session) = session {
+            // Only reload if workspace count matches (same window wrote this session)
+            if session.workspaces.len() != self.workspaces.len() {
+                return;
+            }
+            // Match by first pane path to avoid overwriting unrelated workspaces
             for (i, sws) in session.workspaces.iter().enumerate() {
-                if i < self.workspaces.len() {
+                let session_path = sws.split_root.first_path();
+                let local_path = self.workspaces[i].panes.values()
+                    .find_map(|p| p.active_path.as_ref().map(|ap| ap.to_string_lossy().to_string()));
+                if session_path == local_path {
                     self.workspaces[i].title = sws.title.clone();
                 }
             }
