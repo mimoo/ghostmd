@@ -14,6 +14,16 @@ pub enum ThemeName {
     Solarized,
     Dracula,
     Light,
+    Gruvbox,
+    Catppuccin,
+    TokyoNight,
+    Kanagawa,
+    Everforest,
+    OneDark,
+    Moonlight,
+    AyuDark,
+    Palenight,
+    Vesper,
 }
 
 /// The GhostMD color theme.
@@ -47,39 +57,49 @@ impl GhostTheme {
             ThemeName::Solarized => Self::solarized(),
             ThemeName::Dracula => Self::dracula(),
             ThemeName::Light => Self::light(),
+            ThemeName::Gruvbox => Self::gruvbox(),
+            ThemeName::Catppuccin => Self::catppuccin(),
+            ThemeName::TokyoNight => Self::tokyo_night(),
+            ThemeName::Kanagawa => Self::kanagawa(),
+            ThemeName::Everforest => Self::everforest(),
+            ThemeName::OneDark => Self::one_dark(),
+            ThemeName::Moonlight => Self::moonlight(),
+            ThemeName::AyuDark => Self::ayu_dark(),
+            ThemeName::Palenight => Self::palenight(),
+            ThemeName::Vesper => Self::vesper(),
         }
     }
 
     fn rose_pine() -> Self {
         GhostTheme {
-            bg: (0x1a, 0x1a, 0x2e),
-            fg: (0xe0, 0xde, 0xf4),
-            selection: (0x2a, 0x2a, 0x4a),
-            cursor: (0xeb, 0x6f, 0x92),
-            line_number: (0x6e, 0x6a, 0x86),
-            sidebar_bg: (0x16, 0x16, 0x2a),
-            tab_active: (0x2a, 0x2a, 0x4a),
-            tab_inactive: (0x1a, 0x1a, 0x2e),
-            accent: (0x9c, 0xce, 0xf8),
+            bg: (0x19, 0x17, 0x24),          // base
+            fg: (0xe0, 0xde, 0xf4),          // text
+            selection: (0x26, 0x23, 0x3a),    // highlight low
+            cursor: (0xeb, 0x6f, 0x92),      // love
+            line_number: (0x6e, 0x6a, 0x86),  // muted
+            sidebar_bg: (0x14, 0x12, 0x1f),
+            tab_active: (0x26, 0x23, 0x3a),
+            tab_inactive: (0x19, 0x17, 0x24),
+            accent: (0xc4, 0xa7, 0xe7),      // iris
             error: (0xeb, 0x6f, 0x92),
-            border: (0x2a, 0x2a, 0x4a),
-            pane_title_bg: (0x22, 0x22, 0x3a),
+            border: (0x26, 0x23, 0x3a),
+            pane_title_bg: (0x1f, 0x1d, 0x2e),  // surface
             pane_title_fg: (0x6e, 0x6a, 0x86),
         }
     }
 
     fn nord() -> Self {
         GhostTheme {
-            bg: (0x2e, 0x34, 0x40),         // #2E3440
-            fg: (0xec, 0xef, 0xf4),         // #ECEFF4
-            selection: (0x3b, 0x42, 0x52),   // #3B4252
-            cursor: (0x88, 0xc0, 0xd0),     // #88C0D0
-            line_number: (0x4c, 0x56, 0x6a), // #4C566A
-            sidebar_bg: (0x27, 0x2e, 0x3a),  // slightly darker
+            bg: (0x2e, 0x34, 0x40),         // polar night
+            fg: (0xec, 0xef, 0xf4),         // snow storm
+            selection: (0x3b, 0x42, 0x52),
+            cursor: (0x88, 0xc0, 0xd0),     // frost
+            line_number: (0x4c, 0x56, 0x6a),
+            sidebar_bg: (0x27, 0x2e, 0x3a),
             tab_active: (0x3b, 0x42, 0x52),
             tab_inactive: (0x2e, 0x34, 0x40),
-            accent: (0x88, 0xc0, 0xd0),     // #88C0D0
-            error: (0xbf, 0x61, 0x6a),      // #BF616A
+            accent: (0x81, 0xa1, 0xc1),     // frost blue
+            error: (0xbf, 0x61, 0x6a),      // aurora red
             border: (0x3b, 0x42, 0x52),
             pane_title_bg: (0x34, 0x3b, 0x48),
             pane_title_fg: (0x4c, 0x56, 0x6a),
@@ -124,19 +144,199 @@ impl GhostTheme {
 
     fn light() -> Self {
         GhostTheme {
-            bg: (0xfa, 0xfa, 0xfa),         // #FAFAFA
-            fg: (0x38, 0x3a, 0x42),         // #383A42
-            selection: (0xe5, 0xe5, 0xe6),   // #E5E5E6
-            cursor: (0x40, 0x78, 0xf2),     // #4078F2
-            line_number: (0x9d, 0xa5, 0xb4), // #9DA5B4
+            bg: (0xfa, 0xfa, 0xfa),
+            fg: (0x38, 0x3a, 0x42),
+            selection: (0xd7, 0xda, 0xe0),
+            cursor: (0x40, 0x78, 0xf2),
+            line_number: (0x9d, 0xa5, 0xb4),
             sidebar_bg: (0xf0, 0xf0, 0xf0),
             tab_active: (0xe5, 0xe5, 0xe6),
             tab_inactive: (0xfa, 0xfa, 0xfa),
-            accent: (0x40, 0x78, 0xf2),     // #4078F2
-            error: (0xe4, 0x56, 0x49),      // #E45649
+            accent: (0x40, 0x78, 0xf2),
+            error: (0xe4, 0x56, 0x49),
             border: (0xd3, 0xd3, 0xd4),
             pane_title_bg: (0xea, 0xea, 0xea),
             pane_title_fg: (0x9d, 0xa5, 0xb4),
+        }
+    }
+
+    fn gruvbox() -> Self {
+        GhostTheme {
+            bg: (0x28, 0x28, 0x28),         // #282828
+            fg: (0xeb, 0xdb, 0xb2),         // #EBDBB2
+            selection: (0x3c, 0x38, 0x36),   // #3C3836
+            cursor: (0xfe, 0x80, 0x19),     // #FE8019
+            line_number: (0x66, 0x5c, 0x54), // #665C54
+            sidebar_bg: (0x1d, 0x20, 0x21),  // #1D2021
+            tab_active: (0x3c, 0x38, 0x36),
+            tab_inactive: (0x28, 0x28, 0x28),
+            accent: (0xfa, 0xbd, 0x2f),     // #FABD2F
+            error: (0xfb, 0x49, 0x34),      // #FB4934
+            border: (0x3c, 0x38, 0x36),
+            pane_title_bg: (0x32, 0x30, 0x2f),
+            pane_title_fg: (0x66, 0x5c, 0x54),
+        }
+    }
+
+    fn catppuccin() -> Self {
+        GhostTheme {
+            bg: (0x1e, 0x1e, 0x2e),         // mocha base
+            fg: (0xcd, 0xd6, 0xf4),         // text
+            selection: (0x31, 0x32, 0x44),   // surface0
+            cursor: (0xf5, 0xc2, 0xe7),     // pink
+            line_number: (0x58, 0x5b, 0x70), // overlay0
+            sidebar_bg: (0x18, 0x18, 0x25),  // mantle
+            tab_active: (0x31, 0x32, 0x44),
+            tab_inactive: (0x1e, 0x1e, 0x2e),
+            accent: (0x89, 0xb4, 0xfa),     // blue
+            error: (0xf3, 0x8b, 0xa8),      // red
+            border: (0x31, 0x32, 0x44),
+            pane_title_bg: (0x24, 0x24, 0x38),
+            pane_title_fg: (0x58, 0x5b, 0x70),
+        }
+    }
+
+    fn tokyo_night() -> Self {
+        GhostTheme {
+            bg: (0x1a, 0x1b, 0x26),         // bg_dark
+            fg: (0xc0, 0xca, 0xf5),         // fg
+            selection: (0x28, 0x2d, 0x42),
+            cursor: (0x7a, 0xa2, 0xf7),     // blue
+            line_number: (0x3b, 0x40, 0x61), // comment
+            sidebar_bg: (0x16, 0x16, 0x1e),
+            tab_active: (0x28, 0x2d, 0x42),
+            tab_inactive: (0x1a, 0x1b, 0x26),
+            accent: (0x7d, 0xcf, 0xff),     // cyan
+            error: (0xf7, 0x76, 0x8e),      // red
+            border: (0x28, 0x2d, 0x42),
+            pane_title_bg: (0x20, 0x22, 0x34),
+            pane_title_fg: (0x3b, 0x40, 0x61),
+        }
+    }
+
+    fn kanagawa() -> Self {
+        GhostTheme {
+            bg: (0x1f, 0x1f, 0x28),         // sumiInk1
+            fg: (0xdc, 0xd7, 0xba),         // fujiWhite
+            selection: (0x2a, 0x2a, 0x37),   // sumiInk4
+            cursor: (0xe6, 0xc3, 0x84),     // carpYellow
+            line_number: (0x54, 0x54, 0x6d), // sumiInk6
+            sidebar_bg: (0x1a, 0x1a, 0x22),
+            tab_active: (0x2a, 0x2a, 0x37),
+            tab_inactive: (0x1f, 0x1f, 0x28),
+            accent: (0x7e, 0x9c, 0xd8),     // crystalBlue
+            error: (0xe8, 0x2a, 0x2a),      // samuraiRed
+            border: (0x2a, 0x2a, 0x37),
+            pane_title_bg: (0x25, 0x25, 0x30),
+            pane_title_fg: (0x54, 0x54, 0x6d),
+        }
+    }
+
+    fn everforest() -> Self {
+        GhostTheme {
+            bg: (0x2d, 0x35, 0x3b),         // bg_dim
+            fg: (0xd3, 0xc6, 0xaa),         // fg
+            selection: (0x3d, 0x48, 0x4d),   // bg3
+            cursor: (0xa7, 0xc0, 0x80),     // green
+            line_number: (0x60, 0x72, 0x6a), // grey1
+            sidebar_bg: (0x27, 0x2e, 0x33),  // bg0
+            tab_active: (0x3d, 0x48, 0x4d),
+            tab_inactive: (0x2d, 0x35, 0x3b),
+            accent: (0x83, 0xc0, 0x92),     // aqua
+            error: (0xe6, 0x7e, 0x80),      // red
+            border: (0x3d, 0x48, 0x4d),
+            pane_title_bg: (0x34, 0x3f, 0x44),  // bg1
+            pane_title_fg: (0x60, 0x72, 0x6a),
+        }
+    }
+
+    fn one_dark() -> Self {
+        GhostTheme {
+            bg: (0x28, 0x2c, 0x34),         // bg
+            fg: (0xab, 0xb2, 0xbf),         // fg
+            selection: (0x3e, 0x44, 0x51),
+            cursor: (0x61, 0xaf, 0xef),     // blue
+            line_number: (0x4b, 0x52, 0x63), // comment
+            sidebar_bg: (0x21, 0x25, 0x2b),
+            tab_active: (0x3e, 0x44, 0x51),
+            tab_inactive: (0x28, 0x2c, 0x34),
+            accent: (0x61, 0xaf, 0xef),     // blue
+            error: (0xe0, 0x6c, 0x75),      // red
+            border: (0x3e, 0x44, 0x51),
+            pane_title_bg: (0x2e, 0x33, 0x3e),
+            pane_title_fg: (0x4b, 0x52, 0x63),
+        }
+    }
+
+    fn moonlight() -> Self {
+        GhostTheme {
+            bg: (0x1e, 0x20, 0x30),
+            fg: (0xc8, 0xd3, 0xf5),
+            selection: (0x2f, 0x33, 0x4d),
+            cursor: (0xff, 0x75, 0x7f),     // red
+            line_number: (0x44, 0x49, 0x6d),
+            sidebar_bg: (0x19, 0x1a, 0x2a),
+            tab_active: (0x2f, 0x33, 0x4d),
+            tab_inactive: (0x1e, 0x20, 0x30),
+            accent: (0x82, 0xaa, 0xff),     // blue
+            error: (0xff, 0x75, 0x7f),
+            border: (0x2f, 0x33, 0x4d),
+            pane_title_bg: (0x26, 0x29, 0x3e),
+            pane_title_fg: (0x44, 0x49, 0x6d),
+        }
+    }
+
+    fn ayu_dark() -> Self {
+        GhostTheme {
+            bg: (0x0b, 0x0e, 0x14),         // bg
+            fg: (0xbf, 0xbd, 0xb6),         // fg
+            selection: (0x1a, 0x1e, 0x2b),
+            cursor: (0xe6, 0xb4, 0x50),     // accent
+            line_number: (0x46, 0x4d, 0x56),
+            sidebar_bg: (0x07, 0x0a, 0x0f),
+            tab_active: (0x1a, 0x1e, 0x2b),
+            tab_inactive: (0x0b, 0x0e, 0x14),
+            accent: (0xe6, 0xb4, 0x50),     // orange accent
+            error: (0xd9, 0x57, 0x57),
+            border: (0x1a, 0x1e, 0x2b),
+            pane_title_bg: (0x12, 0x15, 0x1e),
+            pane_title_fg: (0x46, 0x4d, 0x56),
+        }
+    }
+
+    fn palenight() -> Self {
+        GhostTheme {
+            bg: (0x29, 0x2d, 0x3e),
+            fg: (0xa6, 0xac, 0xcd),
+            selection: (0x3a, 0x3f, 0x58),
+            cursor: (0xff, 0xcb, 0x6b),     // yellow
+            line_number: (0x4e, 0x55, 0x79),
+            sidebar_bg: (0x22, 0x26, 0x36),
+            tab_active: (0x3a, 0x3f, 0x58),
+            tab_inactive: (0x29, 0x2d, 0x3e),
+            accent: (0xc7, 0x92, 0xea),     // purple
+            error: (0xf0, 0x71, 0x78),
+            border: (0x3a, 0x3f, 0x58),
+            pane_title_bg: (0x30, 0x35, 0x4a),
+            pane_title_fg: (0x4e, 0x55, 0x79),
+        }
+    }
+
+    fn vesper() -> Self {
+        GhostTheme {
+            bg: (0x10, 0x10, 0x10),         // deep black
+            fg: (0xb0, 0xb0, 0xb0),         // muted gray
+            selection: (0x22, 0x22, 0x22),
+            cursor: (0xff, 0xc7, 0x99),     // warm peach
+            line_number: (0x40, 0x40, 0x40),
+            sidebar_bg: (0x0a, 0x0a, 0x0a),
+            tab_active: (0x22, 0x22, 0x22),
+            tab_inactive: (0x10, 0x10, 0x10),
+            accent: (0xff, 0xc7, 0x99),     // warm peach
+            error: (0xf5, 0x6e, 0x6e),
+            border: (0x22, 0x22, 0x22),
+            pane_title_bg: (0x18, 0x18, 0x18),
+            pane_title_fg: (0x40, 0x40, 0x40),
         }
     }
 }
@@ -307,7 +507,10 @@ mod tests {
     fn all_themes_have_distinct_bg() {
         let themes: Vec<_> = [
             ThemeName::RosePine, ThemeName::Nord, ThemeName::Solarized,
-            ThemeName::Dracula, ThemeName::Light,
+            ThemeName::Dracula, ThemeName::Light, ThemeName::Gruvbox,
+            ThemeName::Catppuccin, ThemeName::TokyoNight, ThemeName::Kanagawa,
+            ThemeName::Everforest, ThemeName::OneDark, ThemeName::Moonlight,
+            ThemeName::AyuDark, ThemeName::Palenight, ThemeName::Vesper,
         ].iter().map(|n| GhostTheme::from_name(*n).bg).collect();
         for i in 0..themes.len() {
             for j in (i+1)..themes.len() {

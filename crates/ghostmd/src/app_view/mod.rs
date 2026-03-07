@@ -121,6 +121,9 @@ pub struct GhostAppView {
     pub(crate) last_session_write: Instant,
     // AI loading indicator: set of workspace indices with pending AI operations
     pub(crate) ai_loading: HashSet<usize>,
+    // Animation frame counter for AI loading spinner
+    pub(crate) ai_anim_frame: usize,
+    pub(crate) ai_anim_active: bool,
 }
 
 impl GhostAppView {
@@ -375,6 +378,8 @@ impl GhostAppView {
             fs_events_rx: None,
             last_session_write: Instant::now(),
             ai_loading: HashSet::new(),
+            ai_anim_frame: 0,
+            ai_anim_active: false,
         };
 
         // Set up file watcher for external changes
@@ -398,6 +403,10 @@ impl GhostAppView {
         if view.workspaces.is_empty() {
             let root_ref = view.root.clone();
             view.new_workspace(&root_ref, window, cx);
+        } else {
+            // Restore focus to the active workspace's focused pane
+            let focused_pane = view.workspaces[view.active_workspace].focused_pane;
+            view.focus_pane_editor(focused_pane, window, cx);
         }
 
         // Start auto-save timer
@@ -476,6 +485,35 @@ impl GhostAppView {
     /// Check if a specific overlay is active.
     pub(crate) fn overlay_is(&self, kind: OverlayKind) -> bool {
         self.active_overlay.as_ref() == Some(&kind)
+    }
+
+    /// Start the AI animation timer if not already running.
+    pub(crate) fn start_ai_animation(&mut self, cx: &mut Context<Self>) {
+        if self.ai_anim_active {
+            return;
+        }
+        self.ai_anim_active = true;
+        cx.spawn(async |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            loop {
+                cx.background_executor().timer(Duration::from_millis(80)).await;
+                let should_continue = this.update(cx, |this, cx| {
+                    if this.ai_loading.is_empty() {
+                        this.ai_anim_active = false;
+                        cx.notify();
+                        false
+                    } else {
+                        this.ai_anim_frame = this.ai_anim_frame.wrapping_add(1);
+                        cx.notify();
+                        true
+                    }
+                });
+                match should_continue {
+                    Ok(true) => {}
+                    _ => break,
+                }
+            }
+        })
+        .detach();
     }
 
     /// Clear pane editors that reference deleted files.
@@ -676,6 +714,11 @@ impl Render for GhostAppView {
                 let editing = this.file_tree.read(cx).is_editing();
                 if editing {
                     this.file_tree.update(cx, |tree, cx| tree.cancel_rename(window, cx));
+                    // Restore focus to editor after canceling inline rename
+                    if !this.workspaces.is_empty() {
+                        let focused = this.active_ws().focused_pane;
+                        this.focus_pane_editor(focused, window, cx);
+                    }
                 } else if this.active_overlay.is_some() {
                     this.dismiss_overlays(window, cx);
                 } else if this.tree_context_menu.is_some() {

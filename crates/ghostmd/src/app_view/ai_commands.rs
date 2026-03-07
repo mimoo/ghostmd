@@ -20,7 +20,7 @@ impl GhostAppView {
 
         let ws_id = ws.id;
         self.ai_loading.insert(ws_id);
-        cx.notify();
+        self.start_ai_animation(cx);
         let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tab-{}.json", std::process::id()));
         let output_path_str = output_path.display().to_string();
 
@@ -87,7 +87,7 @@ impl GhostAppView {
         let count = self.workspaces.len();
         let ws_ids: Vec<usize> = self.workspaces.iter().map(|w| w.id).collect();
         for &id in &ws_ids { self.ai_loading.insert(id); }
-        cx.notify();
+        self.start_ai_animation(cx);
         let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tabs-{}.json", std::process::id()));
         let output_path_str = output_path.display().to_string();
 

@@ -32,7 +32,9 @@ impl GhostAppView {
 
             let ai_busy = self.ai_loading.contains(&ws.id);
             let display = if ai_busy {
-                format!("{} …", ws.title)
+                const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                let frame = SPINNER[self.ai_anim_frame % SPINNER.len()];
+                format!("{} {}", ws.title, frame)
             } else if dirty {
                 format!("{} *", ws.title)
             } else {

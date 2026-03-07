@@ -1,7 +1,7 @@
 use gpui::{actions, KeyBinding as GpuiKeyBinding};
 use gpui_component::input::{
-    Backspace, Delete, DeleteToEndOfLine, MoveLeft, MoveRight, MoveToNextWord,
-    MoveToPreviousWord, Paste,
+    Backspace, Delete, DeleteToEndOfLine, MoveLeft, MoveRight, MovePageDown, MovePageUp,
+    MoveToNextWord, MoveToPreviousWord, Paste,
 };
 
 // GPUI unit-struct actions
@@ -99,6 +99,9 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         // Word movement (alt-f/b produce special chars on macOS, bind explicitly)
         GpuiKeyBinding::new("alt-f", MoveToNextWord, Some("Input")),
         GpuiKeyBinding::new("alt-b", MoveToPreviousWord, Some("Input")),
+        // Page up/down (Emacs C-v / M-v)
+        GpuiKeyBinding::new("ctrl-v", MovePageDown, Some("Input")),
+        GpuiKeyBinding::new("alt-v", MovePageUp, Some("Input")),
     ]);
 }
 
