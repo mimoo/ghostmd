@@ -288,9 +288,9 @@ impl GhostAppView {
             }).await;
             if let Ok(output) = result {
                 if output.status.success() {
-                    // Relaunch the app
-                    Command::new("open")
-                        .args(["-a", "/Applications/GhostMD.app"])
+                    // Spawn a detached shell that waits for us to quit, then reopens the app
+                    Command::new("bash")
+                        .args(["-c", "sleep 1 && open -a /Applications/GhostMD.app"])
                         .spawn()
                         .ok();
                     cx.update(|cx| cx.quit()).ok();
