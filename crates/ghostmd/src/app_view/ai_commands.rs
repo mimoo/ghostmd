@@ -1,6 +1,15 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use gpui::*;
 
 use super::*;
+
+static AI_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn ai_temp_path(prefix: &str) -> std::path::PathBuf {
+    let id = AI_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("ghostmd-{}-{}-{}.json", prefix, std::process::id(), id))
+}
 
 impl GhostAppView {
     /// AI: rename the active workspace tab based on note content.
@@ -21,7 +30,7 @@ impl GhostAppView {
         let ws_id = ws.id;
         self.ai_loading.insert(ws_id);
         self.start_ai_animation(cx);
-        let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tab-{}.json", std::process::id()));
+        let output_path = ai_temp_path("tab");
         let output_path_str = output_path.display().to_string();
 
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
@@ -88,7 +97,7 @@ impl GhostAppView {
         let ws_ids: Vec<usize> = self.workspaces.iter().map(|w| w.id).collect();
         for &id in &ws_ids { self.ai_loading.insert(id); }
         self.start_ai_animation(cx);
-        let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tabs-{}.json", std::process::id()));
+        let output_path = ai_temp_path("tabs");
         let output_path_str = output_path.display().to_string();
 
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
@@ -162,7 +171,7 @@ impl GhostAppView {
         self.ai_loading.insert(ws_id);
         self.start_ai_animation(cx);
 
-        let output_path = std::env::temp_dir().join(format!("ghostmd-ai-file-{}.json", std::process::id()));
+        let output_path = ai_temp_path("file");
         let output_path_str = output_path.display().to_string();
 
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
