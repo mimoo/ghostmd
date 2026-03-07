@@ -136,7 +136,7 @@ impl GhostAppView {
                     if is_focused {
                         pane_div = pane_div.border_2().border_color(t.accent);
                     } else {
-                        pane_div = pane_div.border_2().border_color(hsla(0., 0., 0., 0.)).opacity(0.5);
+                        pane_div = pane_div.border_2().border_color(hsla(0., 0., 0., 0.)).opacity(0.85);
                     }
                 }
 
