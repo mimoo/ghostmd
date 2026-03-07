@@ -1685,31 +1685,45 @@ impl GhostAppView {
         if snippets.is_empty() { return; }
 
         let ws_idx = self.active_workspace;
+        let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tab-{}.json", std::process::id()));
+        let output_path_str = output_path.display().to_string();
+
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
-            let output = cx.background_executor().spawn(async move {
+            let op = output_path.clone();
+            let result = cx.background_executor().spawn(async move {
                 let prompt = format!(
                     "Based on this note content from a workspace:\n{}\n\n\
                      Suggest a short (2-4 words) tab name.\n\
-                     Reply with ONLY the name, nothing else.",
-                    snippets.join("\n---\n")
+                     Write a JSON file to {} with this exact format:\n\
+                     {{\"title\": \"Your Suggested Name\"}}\n\
+                     Write ONLY valid JSON, nothing else.",
+                    snippets.join("\n---\n"),
+                    op.display()
                 );
-                std::process::Command::new("claude")
+                let status = std::process::Command::new("claude")
                     .arg("-p")
-                    .arg("--model").arg("haiku").arg("--effort").arg("low")
+                    .arg("--model").arg("sonnet")
+                    .arg("--allowedTools").arg("Edit,Write")
                     .arg(&prompt)
-                    .output()
+                    .status();
+                status.is_ok_and(|s| s.success())
             }).await;
-            if let Ok(out) = output {
-                let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !name.is_empty() {
-                    this.update(cx, |this, cx| {
-                        if ws_idx < this.workspaces.len() {
-                            this.workspaces[ws_idx].title = name;
-                            cx.notify();
-                        }
-                    }).ok();
+            if result {
+                if let Ok(json_str) = std::fs::read_to_string(&output_path) {
+                    let _ = std::fs::remove_file(&output_path);
+                    #[derive(serde::Deserialize)]
+                    struct AiTab { title: String }
+                    if let Ok(parsed) = serde_json::from_str::<AiTab>(&json_str) {
+                        this.update(cx, |this, cx| {
+                            if ws_idx < this.workspaces.len() {
+                                this.workspaces[ws_idx].title = parsed.title;
+                                cx.notify();
+                            }
+                        }).ok();
+                    }
                 }
             }
+            let _ = std::fs::remove_file(&output_path_str);
         }).detach();
     }
 
@@ -1733,37 +1747,49 @@ impl GhostAppView {
             .collect();
 
         let count = self.workspaces.len();
+        let output_path = std::env::temp_dir().join(format!("ghostmd-ai-tabs-{}.json", std::process::id()));
+        let output_path_str = output_path.display().to_string();
+
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
-            let output = cx.background_executor().spawn(async move {
+            let op = output_path.clone();
+            let result = cx.background_executor().spawn(async move {
                 let prompt = format!(
                     "I have {} tabs in a note-taking app. Here is the content of each tab:\n{}\n\n\
                      For each tab, suggest a short (2-4 words) descriptive name.\n\
-                     Reply with exactly {} names, one per line, nothing else.",
+                     Write a JSON file to {} with this exact format:\n\
+                     {{\"titles\": [\"Name 1\", \"Name 2\", ...]}}\n\
+                     Write ONLY valid JSON with exactly {} entries, nothing else.",
                     count,
                     descriptions.join("\n"),
+                    op.display(),
                     count
                 );
-                std::process::Command::new("claude")
+                let status = std::process::Command::new("claude")
                     .arg("-p")
-                    .arg("--model").arg("haiku").arg("--effort").arg("low")
+                    .arg("--model").arg("sonnet")
+                    .arg("--allowedTools").arg("Edit,Write")
                     .arg(&prompt)
-                    .output()
+                    .status();
+                status.is_ok_and(|s| s.success())
             }).await;
-            if let Ok(out) = output {
-                let text = String::from_utf8_lossy(&out.stdout).to_string();
-                let names: Vec<&str> = text.lines()
-                    .map(|l| l.trim())
-                    .filter(|l| !l.is_empty())
-                    .collect();
-                this.update(cx, |this, cx| {
-                    for (i, name) in names.iter().enumerate() {
-                        if i < this.workspaces.len() {
-                            this.workspaces[i].title = name.to_string();
-                        }
+            if result {
+                if let Ok(json_str) = std::fs::read_to_string(&output_path) {
+                    let _ = std::fs::remove_file(&output_path);
+                    #[derive(serde::Deserialize)]
+                    struct AiTabs { titles: Vec<String> }
+                    if let Ok(parsed) = serde_json::from_str::<AiTabs>(&json_str) {
+                        this.update(cx, |this, cx| {
+                            for (i, name) in parsed.titles.iter().enumerate() {
+                                if i < this.workspaces.len() {
+                                    this.workspaces[i].title = name.clone();
+                                }
+                            }
+                            cx.notify();
+                        }).ok();
                     }
-                    cx.notify();
-                }).ok();
+                }
             }
+            let _ = std::fs::remove_file(&output_path_str);
         }).detach();
     }
 
@@ -1787,63 +1813,79 @@ impl GhostAppView {
             .map(|e| format!(".{}", e.to_string_lossy()))
             .unwrap_or_else(|| ".md".to_string());
 
+        let output_path = std::env::temp_dir().join(format!("ghostmd-ai-file-{}.json", std::process::id()));
+        let output_path_str = output_path.display().to_string();
+
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
-            let output = cx.background_executor().spawn(async move {
+            let op = output_path.clone();
+            let result = cx.background_executor().spawn(async move {
                 let prompt = format!(
                     "Based on this note content, suggest a short descriptive filename \
                      (kebab-case, max 4 words, no extension):\n\n{}\n\n\
-                     Reply with ONLY the filename, nothing else.",
-                    content
+                     Write a JSON file to {} with this exact format:\n\
+                     {{\"filename\": \"suggested-name\"}}\n\
+                     Write ONLY valid JSON, nothing else.",
+                    content,
+                    op.display()
                 );
-                std::process::Command::new("claude")
+                let status = std::process::Command::new("claude")
                     .arg("-p")
-                    .arg("--model").arg("haiku").arg("--effort").arg("low")
+                    .arg("--model").arg("sonnet")
+                    .arg("--allowedTools").arg("Edit,Write")
                     .arg(&prompt)
-                    .output()
+                    .status();
+                status.is_ok_and(|s| s.success())
             }).await;
-            if let Ok(out) = output {
-                let suggested = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !suggested.is_empty() {
-                    this.update(cx, |this, cx| {
-                        let parent = path.parent().unwrap_or(&this.app.root).to_path_buf();
-                        // Find a non-colliding name: try "name.ext", then "name-2.ext", "name-3.ext", ...
-                        let mut new_path = parent.join(format!("{}{}", suggested, ext));
-                        if new_path.exists() {
-                            for n in 2..100 {
-                                let candidate = parent.join(format!("{}-{}{}", suggested, n, ext));
-                                if !candidate.exists() {
-                                    new_path = candidate;
-                                    break;
-                                }
-                            }
-                        }
-                        if new_path != path && !new_path.exists()
-                            && std::fs::rename(&path, &new_path).is_ok()
-                        {
-                            let mut editors_to_update = Vec::new();
-                            for ws in &mut this.workspaces {
-                                for pane in ws.panes.values_mut() {
-                                    if pane.active_path.as_ref() == Some(&path) {
-                                        pane.active_path = Some(new_path.clone());
-                                        if let Some(editor) = &pane.editor {
-                                            editors_to_update.push(editor.clone());
+            if result {
+                if let Ok(json_str) = std::fs::read_to_string(&output_path) {
+                    let _ = std::fs::remove_file(&output_path);
+                    #[derive(serde::Deserialize)]
+                    struct AiFile { filename: String }
+                    if let Ok(parsed) = serde_json::from_str::<AiFile>(&json_str) {
+                        let suggested = parsed.filename;
+                        if !suggested.is_empty() {
+                            this.update(cx, |this, cx| {
+                                let parent = path.parent().unwrap_or(&this.app.root).to_path_buf();
+                                let mut new_path = parent.join(format!("{}{}", suggested, ext));
+                                if new_path.exists() {
+                                    for n in 2..100 {
+                                        let candidate = parent.join(format!("{}-{}{}", suggested, n, ext));
+                                        if !candidate.exists() {
+                                            new_path = candidate;
+                                            break;
                                         }
                                     }
                                 }
-                            }
-                            for ed in editors_to_update {
-                                let np = new_path.clone();
-                                ed.update(cx, |e, _cx| { e.path = np; });
-                            }
-                            this.file_tree.update(cx, |tree, cx| {
-                                tree.refresh(cx);
-                                tree.reveal_file(&new_path, cx);
-                            });
+                                if new_path != path && !new_path.exists()
+                                    && std::fs::rename(&path, &new_path).is_ok()
+                                {
+                                    let mut editors_to_update = Vec::new();
+                                    for ws in &mut this.workspaces {
+                                        for pane in ws.panes.values_mut() {
+                                            if pane.active_path.as_ref() == Some(&path) {
+                                                pane.active_path = Some(new_path.clone());
+                                                if let Some(editor) = &pane.editor {
+                                                    editors_to_update.push(editor.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                    for ed in editors_to_update {
+                                        let np = new_path.clone();
+                                        ed.update(cx, |e, _cx| { e.path = np; });
+                                    }
+                                    this.file_tree.update(cx, |tree, cx| {
+                                        tree.refresh(cx);
+                                        tree.reveal_file(&new_path, cx);
+                                    });
+                                }
+                                cx.notify();
+                            }).ok();
                         }
-                        cx.notify();
-                    }).ok();
+                    }
                 }
             }
+            let _ = std::fs::remove_file(&output_path_str);
         }).detach();
     }
 
