@@ -98,11 +98,11 @@ impl GhostAppView {
                 }
             }).collect(),
             active_workspace: self.active_workspace,
-            sidebar_visible: self.app.sidebar_visible,
+            sidebar_visible: self.sidebar_visible,
             theme: Some(self.active_theme),
         };
 
-        let dir = self.app.root.join(".ghostmd");
+        let dir = self.root.join(".ghostmd");
         std::fs::create_dir_all(&dir).ok();
         let path = dir.join("session.json");
         if let Ok(json) = serde_json::to_string_pretty(&session) {
@@ -116,7 +116,7 @@ impl GhostAppView {
         if self.last_session_write.elapsed().as_millis() < 2000 {
             return;
         }
-        let path = self.app.root.join(".ghostmd").join("session.json");
+        let path = self.root.join(".ghostmd").join("session.json");
         let session: Option<SessionState> = std::fs::read_to_string(&path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok());

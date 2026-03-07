@@ -20,7 +20,6 @@ use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::resizable::{h_resizable, resizable_panel};
 
-use crate::app::GhostApp;
 use crate::editor_view::EditorView;
 use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
@@ -79,7 +78,8 @@ pub(crate) struct Workspace {
 
 /// Root GPUI view for the GhostMD application.
 pub struct GhostAppView {
-    pub(crate) app: GhostApp,
+    pub(crate) root: PathBuf,
+    pub(crate) sidebar_visible: bool,
     pub(crate) file_tree: Entity<FileTreeView>,
     pub(crate) workspaces: Vec<Workspace>,
     pub(crate) active_workspace: usize,
@@ -124,8 +124,6 @@ pub struct GhostAppView {
 
 impl GhostAppView {
     pub fn new(root: PathBuf, load_session: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let app = GhostApp::new(root.clone());
-
         let file_tree = cx.new(|cx| FileTreeView::new(root.clone(), window, cx));
 
         // Subscribe to file selection events from the tree (with window access)
@@ -343,11 +341,8 @@ impl GhostAppView {
         });
 
         let mut view = Self {
-            app: {
-                let mut a = app;
-                a.sidebar_visible = sidebar_visible;
-                a
-            },
+            root: root.clone(),
+            sidebar_visible,
             file_tree,
             workspaces,
             active_workspace,
@@ -399,7 +394,7 @@ impl GhostAppView {
 
         // If no session was loaded (or it was empty), create a default workspace
         if view.workspaces.is_empty() {
-            let root_ref = view.app.root.clone();
+            let root_ref = view.root.clone();
             view.new_workspace(&root_ref, window, cx);
         }
 
@@ -461,7 +456,7 @@ impl GhostAppView {
     /// Ensure at least one workspace exists, creating one if needed.
     pub(crate) fn ensure_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.workspaces.is_empty() {
-            let root = self.app.root.clone();
+            let root = self.root.clone();
             self.new_workspace(&root, window, cx);
         }
     }
@@ -492,7 +487,7 @@ impl Render for GhostAppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ghost = GhostTheme::from_name(self.active_theme);
         let bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
-        let sidebar_visible = self.app.sidebar_visible;
+        let sidebar_visible = self.sidebar_visible;
         let has_workspaces = !self.workspaces.is_empty();
 
         let (split_root, ws_clone) = if has_workspaces {
@@ -566,7 +561,7 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::MoveToTrash, window, cx| {
                 // If sidebar is focused with selection, delete those; otherwise delete focused file
                 let tree_paths: Vec<PathBuf> = this.file_tree.read(cx).selected_paths().iter().cloned().collect();
-                if !tree_paths.is_empty() && this.app.sidebar_visible {
+                if !tree_paths.is_empty() && this.sidebar_visible {
                     for path in tree_paths {
                         this.move_to_trash(path, window, cx);
                     }
@@ -600,7 +595,7 @@ impl Render for GhostAppView {
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::ToggleSidebar, _window, cx| {
-                this.app.toggle_sidebar();
+                this.sidebar_visible = !this.sidebar_visible;
                 cx.notify();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenFileFinder, window, cx| {
@@ -896,15 +891,15 @@ impl Render for GhostAppView {
         if let Some((ref path, position)) = ctx_menu {
             let is_file = path.is_file();
             let is_dir = path.is_dir();
-            let is_root = *path == self.app.root;
-            let diary_dir = self.app.root.join("diary");
+            let is_root = *path == self.root;
+            let diary_dir = self.root.join("diary");
             let is_diary_path = path.starts_with(&diary_dir);
 
             // Determine the directory for "New Note" / "New Folder"
             let context_dir = if is_dir {
                 path.clone()
             } else {
-                path.parent().unwrap_or(&self.app.root).to_path_buf()
+                path.parent().unwrap_or(&self.root).to_path_buf()
             };
 
             let rename_path = path.clone();

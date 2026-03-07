@@ -66,11 +66,11 @@ impl GhostAppView {
             }
             "split_right" => self.split(SplitDirection::Vertical, window, cx),
             "split_down" => self.split(SplitDirection::Horizontal, window, cx),
-            "toggle_sidebar" => { self.app.toggle_sidebar(); cx.notify(); }
+            "toggle_sidebar" => { self.sidebar_visible = !self.sidebar_visible; cx.notify(); }
             "rename_file" => {
                 if let Some(path) = self.focused_active_path() {
-                    if !self.app.sidebar_visible {
-                        self.app.toggle_sidebar();
+                    if !self.sidebar_visible {
+                        self.sidebar_visible = !self.sidebar_visible;
                     }
                     let p = path.clone();
                     self.file_tree.update(cx, |tree, cx| {

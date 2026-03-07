@@ -87,7 +87,7 @@ impl GhostAppView {
     /// If a folder is selected, shows a location picker to choose between diary and selected folder.
     pub(crate) fn new_note_in_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.ensure_workspace(window, cx);
-        let root = self.app.root.clone();
+        let root = self.root.clone();
         let diary_dir = diary::today_diary_dir(&root);
         let selected_dir = self.file_tree.read(cx).selected_path()
             .and_then(|p| {
@@ -120,8 +120,8 @@ impl GhostAppView {
     /// Actually create the note at the given directory.
     pub(crate) fn create_note_at(&mut self, parent_dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         std::fs::create_dir_all(&parent_dir).ok();
-        if !self.app.sidebar_visible {
-            self.app.toggle_sidebar();
+        if !self.sidebar_visible {
+            self.sidebar_visible = true;
         }
         let name = pick_note_name(&parent_dir);
         self.file_tree.update(cx, |tree, cx| {
@@ -152,8 +152,8 @@ impl GhostAppView {
 
     /// Create a new note in a specific directory with inline rename.
     pub(crate) fn new_note_in_dir(&mut self, dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.app.sidebar_visible {
-            self.app.toggle_sidebar();
+        if !self.sidebar_visible {
+            self.sidebar_visible = true;
         }
         let name = pick_note_name(&dir);
         self.file_tree.update(cx, |tree, cx| {
@@ -164,8 +164,8 @@ impl GhostAppView {
 
     /// Create a new folder inside a parent directory with inline rename.
     pub(crate) fn create_new_folder(&mut self, parent: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.app.sidebar_visible {
-            self.app.toggle_sidebar();
+        if !self.sidebar_visible {
+            self.sidebar_visible = true;
         }
         self.file_tree.update(cx, |tree, cx| {
             tree.start_new_folder(&parent, window, cx);

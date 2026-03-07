@@ -258,7 +258,7 @@ impl GhostAppView {
         let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
         let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
 
-        let root_prefix = self.app.root.to_string_lossy().to_string();
+        let root_prefix = self.root.to_string_lossy().to_string();
 
         let mut list = div()
             .id("finder-results")

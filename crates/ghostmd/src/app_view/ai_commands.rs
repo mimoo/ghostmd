@@ -191,7 +191,7 @@ impl GhostAppView {
                         let suggested = parsed.filename;
                         if !suggested.is_empty() {
                             this.update(cx, |this, cx| {
-                                let parent = path.parent().unwrap_or(&this.app.root).to_path_buf();
+                                let parent = path.parent().unwrap_or(&this.root).to_path_buf();
                                 let new_path = ghostmd_core::path_utils::unique_path(
                                     &parent.join(format!("{}{}", suggested, ext)),
                                 );
@@ -230,7 +230,7 @@ impl GhostAppView {
         };
         if content.trim().is_empty() { return; }
 
-        let root = self.app.root.clone();
+        let root = self.root.clone();
 
         // Collect existing folders (relative to root)
         let mut folders = Vec::new();
@@ -273,14 +273,14 @@ impl GhostAppView {
                 let suggested = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !suggested.is_empty() {
                     this.update(cx, |this, cx| {
-                        let target_dir = this.app.root.join(&suggested);
+                        let target_dir = this.root.join(&suggested);
                         // Sanitize: ensure the target stays within the notes root
                         if let Ok(canonical) = target_dir.canonicalize().or_else(|_| {
                             // Dir may not exist yet — check parent
                             std::fs::create_dir_all(&target_dir).ok();
                             target_dir.canonicalize()
                         }) {
-                            if canonical.starts_with(&this.app.root) {
+                            if canonical.starts_with(&this.root) {
                                 this.move_file_to_dir(source, &canonical, cx);
                             }
                         }
@@ -300,7 +300,7 @@ impl GhostAppView {
         self.agentic_results.clear();
         cx.notify();
 
-        let root = self.app.root.clone();
+        let root = self.root.clone();
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
             let output = cx.background_executor().spawn(async move {
                 let prompt = format!(

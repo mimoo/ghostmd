@@ -37,13 +37,13 @@ impl GhostAppView {
 
     /// Create a new workspace with a diary note (cmd-t).
     pub(crate) fn new_workspace_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let root = self.app.root.clone();
+        let root = self.root.clone();
         self.new_workspace(&root, window, cx);
     }
 
     /// Open a new OS window (cmd-shift-n).
     pub(crate) fn new_window(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let root = self.app.root.clone();
+        let root = self.root.clone();
         cx.spawn(async move |_this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
             cx.update(|cx: &mut App| {
                 let bounds = Bounds::centered(None, size(px(1200.), px(800.)), cx);
