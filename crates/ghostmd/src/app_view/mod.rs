@@ -341,10 +341,11 @@ impl GhostAppView {
             }
         }
 
-        // Apply saved theme to file tree
+        // Apply saved theme to file tree and global gpui-component theme
         file_tree.update(cx, |tree, _cx| {
             tree.set_theme(active_theme);
         });
+        crate::theme::apply_theme(active_theme, cx);
 
         let mut view = Self {
             root: root.clone(),
