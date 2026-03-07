@@ -59,7 +59,10 @@ impl GhostAppView {
                     if pane.active_path.as_ref() == Some(&path) {
                         if let Some(editor) = &pane.editor {
                             editor.update(cx, |e, _cx| {
-                                if !e.dirty {
+                                // Skip if we wrote this file recently (our own save)
+                                let own_save = e.last_save
+                                    .is_some_and(|t| t.elapsed().as_millis() < 2000);
+                                if !e.dirty && !own_save {
                                     e.needs_reload = true;
                                 }
                             });

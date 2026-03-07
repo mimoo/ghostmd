@@ -69,6 +69,8 @@ pub struct EditorView {
     input_state: Entity<InputState>,
     focus_handle: FocusHandle,
     pub last_edit: Option<Instant>,
+    /// Tracks when we last wrote to disk, so the file watcher can ignore our own saves.
+    pub last_save: Option<Instant>,
 }
 
 impl EditorView {
@@ -119,6 +121,7 @@ impl EditorView {
             input_state,
             focus_handle,
             last_edit: None,
+            last_save: None,
         }
     }
 
@@ -129,6 +132,7 @@ impl EditorView {
         note.ensure_dir()?;
         note.save(&text)?;
         self.dirty = false;
+        self.last_save = Some(Instant::now());
         Ok(())
     }
 
