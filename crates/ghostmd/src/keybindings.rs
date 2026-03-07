@@ -1,7 +1,7 @@
 use gpui::{actions, KeyBinding as GpuiKeyBinding};
 use gpui_component::input::{
     Backspace, Delete, DeleteToEndOfLine, MoveLeft, MoveRight, MovePageDown, MovePageUp,
-    MoveToNextWord, MoveToPreviousWord, Paste,
+    MoveToEnd, MoveToNextWord, MoveToPreviousWord, MoveToStart, Paste,
 };
 
 // GPUI unit-struct actions
@@ -102,6 +102,9 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         // Page up/down (Emacs C-v / M-v)
         GpuiKeyBinding::new("ctrl-v", MovePageDown, Some("Input")),
         GpuiKeyBinding::new("alt-v", MovePageUp, Some("Input")),
+        // Beginning/end of buffer (Emacs M-< / M->)
+        GpuiKeyBinding::new("alt-shift-,", MoveToStart, Some("Input")),
+        GpuiKeyBinding::new("alt-shift-.", MoveToEnd, Some("Input")),
     ]);
 }
 
