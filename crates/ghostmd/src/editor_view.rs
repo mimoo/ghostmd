@@ -178,7 +178,10 @@ impl Render for EditorView {
             }
         }
         div()
-            .size_full()
+            .w_full()
+            .flex_1()
+            .min_h(px(0.0))
+            .overflow_hidden()
             .track_focus(&self.focus_handle)
             .capture_any_mouse_down(|event: &MouseDownEvent, _window, cx| {
                 if event.button == MouseButton::Right {

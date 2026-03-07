@@ -482,6 +482,7 @@ impl Render for FileTreeView {
         let mut list = div()
             .id("file-tree-list")
             .flex_1()
+            .pl(px(4.0))
             .overflow_y_scroll()
             .track_scroll(&self.scroll_handle)
             .on_mouse_down(MouseButton::Right, cx.listener(move |_this: &mut Self, event: &MouseDownEvent, _window, cx| {
