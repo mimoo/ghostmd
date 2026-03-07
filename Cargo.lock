@@ -2156,7 +2156,7 @@ dependencies = [
 
 [[package]]
 name = "ghostmd"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2167,6 +2167,8 @@ dependencies = [
  "gpui-component",
  "gpui-component-assets",
  "lsp-types",
+ "notify",
+ "nucleo-matcher",
  "objc",
  "ropey",
  "rust-embed",

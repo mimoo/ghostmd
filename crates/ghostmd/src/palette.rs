@@ -1,3 +1,6 @@
+use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
+
 /// A single command that can appear in the command palette.
 #[derive(Debug, Clone)]
 pub struct PaletteCommand {
@@ -44,16 +47,35 @@ impl CommandPalette {
         self.visible = false;
     }
 
-    /// Returns the commands that match the current query (case-insensitive substring).
+    /// Returns the commands that match the current query via fuzzy matching, sorted by score.
     pub fn filtered_commands(&self) -> Vec<&PaletteCommand> {
         if self.query.is_empty() {
             return self.commands.iter().collect();
         }
-        let query_lower = self.query.to_lowercase();
-        self.commands
+
+        let mut matcher = Matcher::new(Config::DEFAULT);
+        let pattern = Pattern::new(
+            &self.query,
+            CaseMatching::Ignore,
+            Normalization::Smart,
+            AtomKind::Fuzzy,
+        );
+
+        let mut scored: Vec<(u32, usize)> = self
+            .commands
             .iter()
-            .filter(|cmd| cmd.label.to_lowercase().contains(&query_lower))
-            .collect()
+            .enumerate()
+            .filter_map(|(i, cmd)| {
+                let mut buf = Vec::new();
+                let haystack = Utf32Str::new(&cmd.label, &mut buf);
+                pattern
+                    .score(haystack, &mut matcher)
+                    .map(|score| (score, i))
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.iter().map(|&(_, i)| &self.commands[i]).collect()
     }
 }
 
@@ -77,6 +99,11 @@ mod tests {
                 label: "Split Right".into(),
                 shortcut_hint: None,
                 action_id: "split_right".into(),
+            },
+            PaletteCommand {
+                label: "Theme: Tokyo Night".into(),
+                shortcut_hint: None,
+                action_id: "theme_tokyo_night".into(),
             },
         ]
     }
@@ -103,16 +130,34 @@ mod tests {
     #[test]
     fn empty_query_returns_all() {
         let palette = CommandPalette::new(sample_commands());
-        assert_eq!(palette.filtered_commands().len(), 3);
+        assert_eq!(palette.filtered_commands().len(), 4);
     }
 
     #[test]
-    fn filter_narrows_results() {
+    fn fuzzy_match_works() {
         let mut palette = CommandPalette::new(sample_commands());
-        palette.query = "note".into();
+        palette.query = "nwnot".into();
         let results = palette.filtered_commands();
-        assert_eq!(results.len(), 1);
+        assert!(!results.is_empty());
         assert_eq!(results[0].label, "New Note");
+    }
+
+    #[test]
+    fn fuzzy_match_abbreviation() {
+        let mut palette = CommandPalette::new(sample_commands());
+        palette.query = "sr".into();
+        let results = palette.filtered_commands();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].label, "Split Right");
+    }
+
+    #[test]
+    fn fuzzy_match_theme() {
+        let mut palette = CommandPalette::new(sample_commands());
+        palette.query = "tkn".into();
+        let results = palette.filtered_commands();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].label, "Theme: Tokyo Night");
     }
 
     #[test]
@@ -121,26 +166,6 @@ mod tests {
         palette.query = "SAVE".into();
         let results = palette.filtered_commands();
         assert_eq!(results.len(), 1);
-    }
-
-    #[test]
-    fn filter_case_insensitive_mixed_case() {
-        let mut palette = CommandPalette::new(sample_commands());
-        palette.query = "nEw NoTe".into();
-        let results = palette.filtered_commands();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].label, "New Note");
-    }
-
-    #[test]
-    fn empty_filter_returns_all_commands() {
-        let mut palette = CommandPalette::new(sample_commands());
-        palette.query = String::new();
-        let results = palette.filtered_commands();
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[0].label, "New Note");
-        assert_eq!(results[1].label, "Save");
-        assert_eq!(results[2].label, "Split Right");
     }
 
     #[test]
@@ -154,13 +179,8 @@ mod tests {
     #[test]
     fn commands_include_keybinding_display() {
         let commands = sample_commands();
-        let new_note = &commands[0];
-        assert_eq!(new_note.shortcut_hint, Some("Cmd+N".to_string()));
-
-        let save = &commands[1];
-        assert_eq!(save.shortcut_hint, Some("Cmd+S".to_string()));
-
-        let split = &commands[2];
-        assert!(split.shortcut_hint.is_none());
+        assert_eq!(commands[0].shortcut_hint, Some("Cmd+N".to_string()));
+        assert_eq!(commands[1].shortcut_hint, Some("Cmd+S".to_string()));
+        assert!(commands[2].shortcut_hint.is_none());
     }
 }

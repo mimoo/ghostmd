@@ -20,6 +20,7 @@ lsp-types = "0.97"
 ropey = "2.0.0-beta.1"
 objc = "0.2"
 notify = "7"
+nucleo-matcher = "0.3"
 
 [dev-dependencies]
 tempfile = "3"
