@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use ghostmd_core::diary::today_diary_dir;
 use ghostmd_core::search::{ContentMatch, ContentSearch, FuzzySearch, SearchResult};
 
 /// Escape regex special characters for literal string matching.
@@ -43,6 +44,8 @@ pub struct FileFinder {
     pub selected_index: usize,
     /// Current search results (filename matches + content matches).
     pub results: Vec<FinderResult>,
+    /// Root directory for diary path computation.
+    root: PathBuf,
     /// Underlying fuzzy search engine.
     fuzzy: FuzzySearch,
     /// Underlying content search engine.
@@ -59,6 +62,7 @@ impl FileFinder {
             query: String::new(),
             selected_index: 0,
             results: Vec::new(),
+            root: root.clone(),
             fuzzy: FuzzySearch::new(root.clone()),
             content: ContentSearch::new(root),
             open_files: Vec::new(),
@@ -136,37 +140,40 @@ impl FileFinder {
         self.results = self.prioritize(merged);
     }
 
-    /// Reorder results so open files come first (in open_files order), rest after.
-    /// Preserves all results including content matches for open files.
+    /// Reorder results: open files first, then today's diary notes, then rest.
     fn prioritize(&self, results: Vec<FinderResult>) -> Vec<FinderResult> {
-        if self.open_files.is_empty() {
-            return results;
-        }
         let open_set: HashSet<&PathBuf> = self.open_files.iter().collect();
-        let mut open_results: Vec<FinderResult> = Vec::new();
+        let today_dir = today_diary_dir(&self.root);
+
+        let mut open_bucket: Vec<FinderResult> = Vec::new();
+        let mut today_bucket: Vec<FinderResult> = Vec::new();
         let mut rest: Vec<FinderResult> = Vec::new();
 
-        // Partition: open file results vs rest
-        let mut open_bucket: Vec<FinderResult> = Vec::new();
         for result in results {
-            if open_set.contains(&result.path().to_path_buf()) {
+            let path = result.path().to_path_buf();
+            if open_set.contains(&path) {
                 open_bucket.push(result);
+            } else if path.starts_with(&today_dir) {
+                today_bucket.push(result);
             } else {
                 rest.push(result);
             }
         }
 
-        // Add open file results in priority order (by open_files ordering)
+        let mut out: Vec<FinderResult> = Vec::new();
+
+        // Open files in priority order
         for open_path in &self.open_files {
             for r in &open_bucket {
                 if r.path() == open_path.as_path() {
-                    open_results.push(r.clone());
+                    out.push(r.clone());
                 }
             }
         }
 
-        open_results.extend(rest);
-        open_results
+        out.extend(today_bucket);
+        out.extend(rest);
+        out
     }
 
     /// Move selection down (wraps around).
@@ -451,6 +458,29 @@ mod tests {
 
         finder.set_query("meeting");
         assert_eq!(finder.result_count(), finder.results.len());
+    }
+
+    #[test]
+    fn file_finder_today_diary_notes_appear_before_other_files() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+
+        // Create today's diary directory and a note in it
+        let today = today_diary_dir(root);
+        fs::create_dir_all(&today).unwrap();
+        fs::write(today.join("notes.md"), "today's note").unwrap();
+
+        // Create a regular note
+        fs::write(root.join("other.md"), "some other note").unwrap();
+
+        let mut finder = FileFinder::new(root.to_path_buf());
+        finder.open().unwrap();
+
+        // Today's diary note should appear before regular files
+        let paths: Vec<_> = finder.results.iter().map(|r| r.path().to_path_buf()).collect();
+        let today_idx = paths.iter().position(|p| p.starts_with(&today)).unwrap();
+        let other_idx = paths.iter().position(|p| p.file_name().unwrap() == "other.md").unwrap();
+        assert!(today_idx < other_idx, "today's diary note should come before other files");
     }
 
     // ── ContentSearchPanel tests ──────────────────────────────────────
