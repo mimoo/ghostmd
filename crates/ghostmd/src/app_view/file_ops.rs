@@ -120,16 +120,17 @@ impl GhostAppView {
     }
 
     /// Actually create the note at the given directory.
+    /// Creates the file on disk and opens it directly in the editor.
     pub(crate) fn create_note_at(&mut self, parent_dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         std::fs::create_dir_all(&parent_dir).ok();
-        if !self.sidebar_visible {
-            self.sidebar_visible = true;
-        }
         let name = pick_note_name(&parent_dir);
+        let path = parent_dir.join(format!("{}.md", name));
+        std::fs::write(&path, "").ok();
         self.file_tree.update(cx, |tree, cx| {
-            tree.start_new_note(&parent_dir, &name, window, cx);
+            tree.refresh(cx);
+            tree.reveal_file(&path, cx);
         });
-        cx.notify();
+        self.open_file(path, window, cx);
     }
 
     /// Close the location picker and refocus the editor.
