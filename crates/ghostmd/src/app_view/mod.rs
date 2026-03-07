@@ -780,7 +780,9 @@ impl Render for GhostAppView {
                 match &this.active_overlay {
                     Some(OverlayKind::LocationPicker) => this.confirm_location_picker(window, cx),
                     Some(OverlayKind::Palette) => this.palette_confirm(window, cx),
-                    _ => {}
+                    _ => {
+                        window.dispatch_action(Box::new(gpui_component::input::Enter { secondary: false }), cx);
+                    }
                 }
             }))
             // Find in file
