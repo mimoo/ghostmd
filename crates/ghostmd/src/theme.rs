@@ -177,6 +177,46 @@ pub fn rgb_to_hsla(r: u8, g: u8, b: u8) -> Hsla {
     gpui::hsla(h, s, l, 1.0)
 }
 
+/// Pre-converted HSLA colors for use in rendering (avoids 50+ rgb_to_hsla calls per frame).
+pub struct ResolvedTheme {
+    pub bg: Hsla,
+    pub fg: Hsla,
+    pub selection: Hsla,
+    #[allow(dead_code)]
+    pub cursor: Hsla,
+    pub hint: Hsla,
+    pub sidebar_bg: Hsla,
+    pub tab_active: Hsla,
+    pub tab_inactive: Hsla,
+    pub accent: Hsla,
+    pub error: Hsla,
+    pub border: Hsla,
+    pub pane_title_bg: Hsla,
+    pub pane_title_fg: Hsla,
+}
+
+impl ResolvedTheme {
+    pub fn from_name(name: ThemeName) -> Self {
+        let g = GhostTheme::from_name(name);
+        let c = |rgb: Rgb| rgb_to_hsla(rgb.0, rgb.1, rgb.2);
+        Self {
+            bg: c(g.bg),
+            fg: c(g.fg),
+            selection: c(g.selection),
+            cursor: c(g.cursor),
+            hint: c(g.line_number),
+            sidebar_bg: c(g.sidebar_bg),
+            tab_active: c(g.tab_active),
+            tab_inactive: c(g.tab_inactive),
+            accent: c(g.accent),
+            error: c(g.error),
+            border: c(g.border),
+            pane_title_bg: c(g.pane_title_bg),
+            pane_title_fg: c(g.pane_title_fg),
+        }
+    }
+}
+
 /// Apply GhostTheme colors to the gpui-component Theme global.
 fn apply_theme_colors(ghost: &GhostTheme, theme: &mut Theme) {
     theme.colors.background = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);

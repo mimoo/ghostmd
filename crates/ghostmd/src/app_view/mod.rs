@@ -25,7 +25,7 @@ use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, 
 use crate::keybindings;
 use crate::palette::CommandPalette;
 use crate::search::FileFinder;
-use crate::theme::{rgb_to_hsla, GhostTheme, ThemeName};
+use crate::theme::{ResolvedTheme, ThemeName};
 
 // ---------------------------------------------------------------------------
 // Rename mode
@@ -98,6 +98,7 @@ pub struct GhostAppView {
     pub(crate) search_match_count: usize,
     // Theme
     pub(crate) active_theme: ThemeName,
+    pub(crate) theme: ResolvedTheme,
     // Context menu (from file tree right-click)
     pub(crate) tree_context_menu: Option<(PathBuf, Point<Pixels>)>,
     // Agentic search (cmd-shift-f)
@@ -359,6 +360,7 @@ impl GhostAppView {
             search_input,
             search_match_count: 0,
             active_theme,
+            theme: ResolvedTheme::from_name(active_theme),
             tree_context_menu: None,
             agentic_input,
             agentic_results: Vec::new(),
@@ -499,8 +501,7 @@ impl Focusable for GhostAppView {
 
 impl Render for GhostAppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let ghost = GhostTheme::from_name(self.active_theme);
-        let bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
+        let t = &self.theme;
         let sidebar_visible = self.sidebar_visible;
         let has_workspaces = !self.workspaces.is_empty();
 
@@ -533,7 +534,7 @@ impl Render for GhostAppView {
             .size_full()
             .flex()
             .flex_col()
-            .bg(bg)
+            .bg(t.bg)
             .track_focus(&self.focus_handle)
             // Action handlers
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NewNote, window, cx| {
@@ -785,9 +786,8 @@ impl Render for GhostAppView {
                     .items_center()
                     .justify_end();
                 if let Some(tag) = &self.update_available {
-                    let ghost = GhostTheme::from_name(self.active_theme);
-                    let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
-                    let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
+                    let accent = t.accent;
+                    let bg_color = t.bg;
                     bar = bar.child(
                         div()
                             .pr(px(12.0))
@@ -798,7 +798,7 @@ impl Render for GhostAppView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(hint_fg)
+                                    .text_color(t.hint)
                                     .child(format!("update available ({tag})"))
                             )
                             .child(
@@ -812,7 +812,7 @@ impl Render for GhostAppView {
                                     .border_1()
                                     .border_color(accent)
                                     .rounded(px(4.0))
-                                    .hover(|s| s.bg(accent).text_color(rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2)))
+                                    .hover(move |s| s.bg(accent).text_color(bg_color))
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.run_update(cx);
                                     }))
@@ -860,9 +860,6 @@ impl Render for GhostAppView {
             );
         } else {
             // Welcome screen — no workspaces
-            let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
-            let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
-            let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
             root = root.child(
                 div()
                     .flex_1()
@@ -888,12 +885,12 @@ impl Render for GhostAppView {
                                             .justify_center()
                                             .flex_col()
                                             .gap(px(12.0))
-                                            .bg(sidebar_bg)
-                                            .child(div().text_lg().text_color(fg).child("ghostmd"))
-                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+N  Create a new note"))
-                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+P  Search files"))
-                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+T  New workspace"))
-                                            .child(div().text_sm().text_color(hint_fg).child("Cmd+Shift+T  Restore last workspace"))
+                                            .bg(t.sidebar_bg)
+                                            .child(div().text_lg().text_color(t.fg).child("ghostmd"))
+                                            .child(div().text_sm().text_color(t.hint).child("Cmd+N  Create a new note"))
+                                            .child(div().text_sm().text_color(t.hint).child("Cmd+P  Search files"))
+                                            .child(div().text_sm().text_color(t.hint).child("Cmd+T  New workspace"))
+                                            .child(div().text_sm().text_color(t.hint).child("Cmd+Shift+T  Restore last workspace"))
                                             .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
                                             .when(show_palette, |d| d.child(self.render_command_palette(cx))),
                                     ),
@@ -923,19 +920,13 @@ impl Render for GhostAppView {
             let finder_path = path.clone();
             let trash_path = path.clone();
 
-            let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
-            let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-            let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
-            let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
-            let error_fg = rgb_to_hsla(ghost.error.0, ghost.error.1, ghost.error.2);
-
             let mut menu = div()
                 .absolute()
                 .top(position.y)
                 .left(position.x)
-                .bg(sidebar_bg)
+                .bg(t.sidebar_bg)
                 .border_1()
-                .border_color(border_color)
+                .border_color(t.border)
                 .rounded(px(4.0))
                 .shadow_lg()
                 .min_w(px(160.0))
@@ -952,7 +943,6 @@ impl Render for GhostAppView {
                 false
             };
             let show_rename = rename_enabled || (is_dir && !is_root && (is_diary_path || *path == diary_dir));
-            let hint_fg_ctx = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
             if show_rename {
                 menu = menu.child(
                     div()
@@ -960,10 +950,10 @@ impl Render for GhostAppView {
                         .px(px(12.0))
                         .py(px(6.0))
                         .text_sm()
-                        .text_color(if rename_enabled { fg } else { hint_fg_ctx })
+                        .text_color(if rename_enabled { t.fg } else { t.hint })
                         .when(rename_enabled, |d| {
                             d.cursor_pointer()
-                                .hover(|s| s.bg(selection_bg))
+                                .hover(|s| s.bg(t.selection))
                                 .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                                     this.tree_context_menu = None;
                                     this.file_tree.update(cx, |tree, cx| {
@@ -982,9 +972,9 @@ impl Render for GhostAppView {
                     .px(px(12.0))
                     .py(px(6.0))
                     .text_sm()
-                    .text_color(fg)
+                    .text_color(t.fg)
                     .cursor_pointer()
-                    .hover(|s| s.bg(selection_bg))
+                    .hover(|s| s.bg(t.selection))
                     .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                         this.tree_context_menu = None;
                         this.new_note_in_dir(new_note_dir.clone(), window, cx);
@@ -1001,9 +991,9 @@ impl Render for GhostAppView {
                         .px(px(12.0))
                         .py(px(6.0))
                         .text_sm()
-                        .text_color(fg)
+                        .text_color(t.fg)
                         .cursor_pointer()
-                        .hover(|s| s.bg(selection_bg))
+                        .hover(|s| s.bg(t.selection))
                         .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                             this.tree_context_menu = None;
                             this.create_new_folder(new_folder_dir.clone(), window, cx);
@@ -1019,9 +1009,9 @@ impl Render for GhostAppView {
                     .px(px(12.0))
                     .py(px(6.0))
                     .text_sm()
-                    .text_color(fg)
+                    .text_color(t.fg)
                     .cursor_pointer()
-                    .hover(|s| s.bg(selection_bg))
+                    .hover(|s| s.bg(t.selection))
                     .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
                         this.tree_context_menu = None;
                         std::process::Command::new("open").arg("-R").arg(&finder_path).spawn().ok();
@@ -1038,9 +1028,9 @@ impl Render for GhostAppView {
                         .px(px(12.0))
                         .py(px(6.0))
                         .text_sm()
-                        .text_color(error_fg)
+                        .text_color(t.error)
                         .cursor_pointer()
-                        .hover(|s| s.bg(selection_bg))
+                        .hover(|s| s.bg(t.selection))
                         .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                             this.tree_context_menu = None;
                             this.move_to_trash(trash_path.clone(), window, cx);

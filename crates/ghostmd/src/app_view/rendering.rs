@@ -2,17 +2,11 @@ use gpui::*;
 use gpui_component::input::Input;
 use gpui_component::resizable::{h_resizable, v_resizable, resizable_panel};
 
-use crate::theme::{rgb_to_hsla, GhostTheme};
-
 use super::*;
 
 impl GhostAppView {
     pub(crate) fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let ghost = GhostTheme::from_name(self.active_theme);
-        let tab_bar_bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
-        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-        let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
-        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+        let t = &self.theme;
 
         let mut tabs = div()
             .w_full()
@@ -20,9 +14,9 @@ impl GhostAppView {
             .flex()
             .flex_row()
             .items_center()
-            .bg(tab_bar_bg)
+            .bg(t.bg)
             .border_b_1()
-            .border_color(border_color)
+            .border_color(t.border)
             .overflow_x_hidden();
 
         for (i, ws) in self.workspaces.iter().enumerate() {
@@ -43,12 +37,7 @@ impl GhostAppView {
                 ws.title.clone()
             };
 
-            let tab_bg = if is_active {
-                rgb_to_hsla(ghost.tab_active.0, ghost.tab_active.1, ghost.tab_active.2)
-            } else {
-                rgb_to_hsla(ghost.tab_inactive.0, ghost.tab_inactive.1, ghost.tab_inactive.2)
-            };
-            let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
+            let tab_bg = if is_active { t.tab_active } else { t.tab_inactive };
 
             let ws_idx = i;
             let close_idx = i;
@@ -63,7 +52,7 @@ impl GhostAppView {
                 .gap(px(6.0))
                 .text_sm()
                 .bg(tab_bg)
-                .text_color(fg)
+                .text_color(t.fg)
                 .cursor_pointer()
                 .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                     this.switch_workspace(ws_idx, window, cx);
@@ -73,7 +62,7 @@ impl GhostAppView {
                     div()
                         .id(ElementId::NamedInteger("ws-close".into(), i as u64))
                         .text_xs()
-                        .text_color(hint_fg)
+                        .text_color(t.hint)
                         .opacity(0.0)
                         .group_hover(SharedString::from(format!("tab-{}", i)), |s| s.opacity(1.0))
                         .cursor_pointer()
@@ -84,7 +73,7 @@ impl GhostAppView {
                 );
 
             if is_active {
-                tab_div = tab_div.border_b_2().border_color(accent);
+                tab_div = tab_div.border_b_2().border_color(t.accent);
             }
 
             tabs = tabs.child(tab_div);
@@ -97,7 +86,7 @@ impl GhostAppView {
                 .px(px(8.0))
                 .py(px(6.0))
                 .text_sm()
-                .text_color(hint_fg)
+                .text_color(t.hint)
                 .cursor_pointer()
                 .on_click(cx.listener(|this: &mut Self, _event, window, cx| {
                     this.new_workspace_tab(window, cx);
@@ -109,15 +98,7 @@ impl GhostAppView {
     }
 
     pub(crate) fn render_split_node(&self, node: &SplitNode, ws: &Workspace, cx: &mut Context<Self>) -> AnyElement {
-        let ghost = GhostTheme::from_name(self.active_theme);
-        let bg = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
-        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
-        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-        let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
-        let pane_title_bg = rgb_to_hsla(ghost.pane_title_bg.0, ghost.pane_title_bg.1, ghost.pane_title_bg.2);
-        let pane_title_fg = rgb_to_hsla(ghost.pane_title_fg.0, ghost.pane_title_fg.1, ghost.pane_title_fg.2);
-        let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
-        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+        let t = &self.theme;
         let multi_pane = ws.panes.len() > 1;
 
         match node {
@@ -134,8 +115,8 @@ impl GhostAppView {
                     .min_h(px(100.0))
                     .flex()
                     .flex_col()
-                    .bg(bg)
-                    .text_color(fg)
+                    .bg(t.bg)
+                    .text_color(t.fg)
                     .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                         let ws = this.active_ws_mut();
                         if ws.focused_pane != pid {
@@ -149,7 +130,7 @@ impl GhostAppView {
 
                 if multi_pane {
                     if is_focused {
-                        pane_div = pane_div.border_2().border_color(accent);
+                        pane_div = pane_div.border_2().border_color(t.accent);
                     } else {
                         pane_div = pane_div.border_2().border_color(hsla(0., 0., 0., 0.)).opacity(0.5);
                     }
@@ -168,8 +149,8 @@ impl GhostAppView {
                         .flex()
                         .items_center()
                         .px(px(8.0))
-                        .bg(pane_title_bg)
-                        .text_color(pane_title_fg)
+                        .bg(t.pane_title_bg)
+                        .text_color(t.pane_title_fg)
                         .text_xs()
                         .child(title_text);
 
@@ -191,9 +172,9 @@ impl GhostAppView {
                             .items_center()
                             .gap(px(8.0))
                             .px(px(8.0))
-                            .bg(pane_title_bg)
+                            .bg(t.pane_title_bg)
                             .border_b_1()
-                            .border_color(border_color)
+                            .border_color(t.border)
                             .child(
                                 Input::new(&self.search_input)
                                     .appearance(false)
@@ -202,7 +183,7 @@ impl GhostAppView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(hint_fg)
+                                    .text_color(t.hint)
                                     .child(match_text),
                             );
                         pane_div = pane_div.child(search_bar);
@@ -223,10 +204,10 @@ impl GhostAppView {
                             .justify_center()
                             .flex_col()
                             .gap(px(8.0))
-                            .bg(sidebar_bg)
-                            .child(div().text_lg().text_color(hint_fg).child("No file open"))
-                            .child(div().text_sm().text_color(hint_fg).child("Cmd+N  Create a new note"))
-                            .child(div().text_sm().text_color(hint_fg).child("Cmd+P  Search files")),
+                            .bg(t.sidebar_bg)
+                            .child(div().text_lg().text_color(t.hint).child("No file open"))
+                            .child(div().text_sm().text_color(t.hint).child("Cmd+N  Create a new note"))
+                            .child(div().text_sm().text_color(t.hint).child("Cmd+P  Search files")),
                     );
                 }
 
@@ -251,13 +232,7 @@ impl GhostAppView {
     }
 
     pub(crate) fn render_file_finder(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let ghost = GhostTheme::from_name(self.active_theme);
-        let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
-        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
-        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
-        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
-
+        let t = &self.theme;
         let root_prefix = self.root.to_string_lossy().to_string();
 
         let mut list = div()
@@ -272,7 +247,7 @@ impl GhostAppView {
         for i in 0..max_display {
             let result = &self.file_finder.results[i];
             let is_selected = i == self.file_finder.selected_index;
-            let bg = if is_selected { selection_bg } else { overlay_bg };
+            let bg = if is_selected { t.selection } else { t.sidebar_bg };
 
             // Strip root prefix for display
             let full_path = result.path().to_string_lossy().to_string();
@@ -303,7 +278,7 @@ impl GhostAppView {
                     .px(px(12.0))
                     .py(px(4.0))
                     .bg(bg)
-                    .text_color(fg)
+                    .text_color(t.fg)
                     .text_sm()
                     .child(display),
             );
@@ -337,9 +312,9 @@ impl GhostAppView {
                                 cx.stop_propagation();
                             }))
                             .w(px(500.0))
-                            .bg(overlay_bg)
+                            .bg(t.sidebar_bg)
                             .border_1()
-                            .border_color(border_color)
+                            .border_color(t.border)
                             .rounded(px(8.0))
                             .shadow_lg()
                             .flex()
@@ -349,7 +324,7 @@ impl GhostAppView {
                                     .px(px(8.0))
                                     .py(px(6.0))
                                     .border_b_1()
-                                    .border_color(border_color)
+                                    .border_color(t.border)
                                     .child(
                                         Input::new(&self.file_finder_input)
                                             .appearance(false)
@@ -362,7 +337,7 @@ impl GhostAppView {
                                     .px(px(12.0))
                                     .py(px(4.0))
                                     .text_xs()
-                                    .text_color(hint_fg)
+                                    .text_color(t.hint)
                                     .child(count_text),
                             ),
                     ),
@@ -370,12 +345,7 @@ impl GhostAppView {
     }
 
     pub(crate) fn render_agentic_search(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let ghost = GhostTheme::from_name(self.active_theme);
-        let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
-        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
-        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
-        let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
+        let t = &self.theme;
 
         let mut results_div = div()
             .id("agentic-results")
@@ -390,7 +360,7 @@ impl GhostAppView {
                     .px(px(12.0))
                     .py(px(8.0))
                     .text_sm()
-                    .text_color(accent)
+                    .text_color(t.accent)
                     .child("Searching with Claude..."),
             );
         } else {
@@ -401,7 +371,7 @@ impl GhostAppView {
                         .w_full()
                         .px(px(12.0))
                         .py(px(2.0))
-                        .text_color(fg)
+                        .text_color(t.fg)
                         .text_sm()
                         .child(line.clone()),
                 );
@@ -438,9 +408,9 @@ impl GhostAppView {
                                 cx.stop_propagation();
                             }))
                             .w(px(600.0))
-                            .bg(overlay_bg)
+                            .bg(t.sidebar_bg)
                             .border_1()
-                            .border_color(border_color)
+                            .border_color(t.border)
                             .rounded(px(8.0))
                             .shadow_lg()
                             .flex()
@@ -450,7 +420,7 @@ impl GhostAppView {
                                     .px(px(8.0))
                                     .py(px(6.0))
                                     .border_b_1()
-                                    .border_color(border_color)
+                                    .border_color(t.border)
                                     .child(
                                         Input::new(&self.agentic_input)
                                             .appearance(false)
@@ -463,7 +433,7 @@ impl GhostAppView {
                                     .px(px(12.0))
                                     .py(px(4.0))
                                     .text_xs()
-                                    .text_color(hint_fg)
+                                    .text_color(t.hint)
                                     .child(status),
                             ),
                     ),
@@ -471,18 +441,13 @@ impl GhostAppView {
     }
 
     pub(crate) fn render_location_picker(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let ghost = GhostTheme::from_name(self.active_theme);
-        let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
-        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
-        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
-        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+        let t = &self.theme;
 
         let mut list = div().flex().flex_col();
 
         for (i, (label, _)) in self.location_picker_options.iter().enumerate() {
             let is_selected = i == self.location_picker_selected;
-            let bg = if is_selected { selection_bg } else { overlay_bg };
+            let bg = if is_selected { t.selection } else { t.sidebar_bg };
             let idx = i;
 
             list = list.child(
@@ -492,7 +457,7 @@ impl GhostAppView {
                     .px(px(12.0))
                     .py(px(6.0))
                     .bg(bg)
-                    .text_color(fg)
+                    .text_color(t.fg)
                     .text_sm()
                     .cursor_pointer()
                     .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
@@ -525,9 +490,9 @@ impl GhostAppView {
                                 cx.stop_propagation();
                             }))
                             .w(px(400.0))
-                            .bg(overlay_bg)
+                            .bg(t.sidebar_bg)
                             .border_1()
-                            .border_color(border_color)
+                            .border_color(t.border)
                             .rounded(px(8.0))
                             .shadow_lg()
                             .flex()
@@ -537,9 +502,9 @@ impl GhostAppView {
                                     .px(px(12.0))
                                     .py(px(6.0))
                                     .border_b_1()
-                                    .border_color(border_color)
+                                    .border_color(t.border)
                                     .text_sm()
-                                    .text_color(hint_fg)
+                                    .text_color(t.hint)
                                     .child("Create note in:"),
                             )
                             .child(list),
@@ -548,12 +513,7 @@ impl GhostAppView {
     }
 
     pub(crate) fn render_command_palette(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let ghost = GhostTheme::from_name(self.active_theme);
-        let overlay_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
-        let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
-        let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-        let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
-        let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
+        let t = &self.theme;
 
         let is_rename = self.rename_mode.is_some();
         let rename_label = match &self.rename_mode {
@@ -570,7 +530,7 @@ impl GhostAppView {
                     .px(px(12.0))
                     .py(px(6.0))
                     .text_sm()
-                    .text_color(hint_fg)
+                    .text_color(t.hint)
                     .child(rename_label),
             );
         } else {
@@ -587,7 +547,7 @@ impl GhostAppView {
 
             for (i, cmd) in filtered.iter().enumerate() {
                 let is_selected = i == self.palette.selected_index;
-                let bg = if is_selected { selection_bg } else { overlay_bg };
+                let bg = if is_selected { t.selection } else { t.sidebar_bg };
                 let action_id = cmd.action_id.clone();
 
                 let mut row = div()
@@ -599,7 +559,7 @@ impl GhostAppView {
                     .flex_row()
                     .justify_between()
                     .bg(bg)
-                    .text_color(fg)
+                    .text_color(t.fg)
                     .text_sm()
                     .cursor_pointer()
                     .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
@@ -615,7 +575,7 @@ impl GhostAppView {
                 if let Some(hint) = &cmd.shortcut_hint {
                     row = row.child(
                         div()
-                            .text_color(hint_fg)
+                            .text_color(t.hint)
                             .text_xs()
                             .child(hint.clone()),
                     );
@@ -649,9 +609,9 @@ impl GhostAppView {
                                 cx.stop_propagation();
                             }))
                             .w(px(400.0))
-                            .bg(overlay_bg)
+                            .bg(t.sidebar_bg)
                             .border_1()
-                            .border_color(border_color)
+                            .border_color(t.border)
                             .rounded(px(8.0))
                             .shadow_lg()
                             .flex()
@@ -661,7 +621,7 @@ impl GhostAppView {
                                     .px(px(8.0))
                                     .py(px(6.0))
                                     .border_b_1()
-                                    .border_color(border_color)
+                                    .border_color(t.border)
                                     .child(
                                         Input::new(&self.palette_input)
                                             .appearance(false)

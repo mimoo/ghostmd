@@ -242,6 +242,7 @@ impl GhostAppView {
     /// Switch to a named theme.
     pub(crate) fn switch_theme(&mut self, name: ThemeName, cx: &mut Context<Self>) {
         self.active_theme = name;
+        self.theme = crate::theme::ResolvedTheme::from_name(name);
         self.file_tree.update(cx, |tree, _cx| {
             tree.set_theme(name);
         });
