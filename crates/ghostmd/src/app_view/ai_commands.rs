@@ -231,6 +231,9 @@ impl GhostAppView {
         if content.trim().is_empty() { return; }
 
         let root = self.root.clone();
+        let ws_id = self.active_ws().id;
+        self.ai_loading.insert(ws_id);
+        self.start_ai_animation(cx);
 
         // Collect existing folders (relative to root)
         let mut folders = Vec::new();
@@ -269,10 +272,11 @@ impl GhostAppView {
                     .arg(&prompt)
                     .output()
             }).await;
-            if let Ok(out) = output {
-                let suggested = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !suggested.is_empty() {
-                    this.update(cx, |this, cx| {
+            this.update(cx, |this, cx| {
+                this.ai_loading.remove(&ws_id);
+                if let Ok(out) = output {
+                    let suggested = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !suggested.is_empty() {
                         let target_dir = this.root.join(&suggested);
                         // Sanitize: ensure the target stays within the notes root
                         if let Ok(canonical) = target_dir.canonicalize().or_else(|_| {
@@ -281,13 +285,29 @@ impl GhostAppView {
                             target_dir.canonicalize()
                         }) {
                             if canonical.starts_with(&this.root) {
+                                let old_path = source.clone();
                                 this.move_file_to_dir(source, &canonical, cx);
+                                // Set move transition for title bar animation
+                                if let Some(new_path) = this.focused_active_path() {
+                                    if new_path != old_path {
+                                        this.move_transition = Some((old_path, new_path, std::time::Instant::now()));
+                                        this.start_ai_animation(cx);
+                                        // Schedule fade-out clear after 4 seconds
+                                        cx.spawn(async |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+                                            cx.background_executor().timer(std::time::Duration::from_secs(4)).await;
+                                            this.update(cx, |this, cx| {
+                                                this.move_transition = None;
+                                                cx.notify();
+                                            }).ok();
+                                        }).detach();
+                                    }
+                                }
                             }
                         }
-                        cx.notify();
-                    }).ok();
+                    }
                 }
-            }
+                cx.notify();
+            }).ok();
         }).detach();
     }
 

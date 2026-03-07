@@ -124,6 +124,8 @@ pub struct GhostAppView {
     // Animation frame counter for AI loading spinner
     pub(crate) ai_anim_frame: usize,
     pub(crate) ai_anim_active: bool,
+    // Move transition: (old_path, new_path, timestamp) for fade-out animation in title bar
+    pub(crate) move_transition: Option<(PathBuf, PathBuf, Instant)>,
 }
 
 impl GhostAppView {
@@ -380,6 +382,7 @@ impl GhostAppView {
             ai_loading: HashSet::new(),
             ai_anim_frame: 0,
             ai_anim_active: false,
+            move_transition: None,
         };
 
         // Set up file watcher for external changes
@@ -507,7 +510,9 @@ impl GhostAppView {
             loop {
                 cx.background_executor().timer(Duration::from_millis(80)).await;
                 let should_continue = this.update(cx, |this, cx| {
-                    if this.ai_loading.is_empty() {
+                    let has_loading = !this.ai_loading.is_empty();
+                    let has_transition = this.move_transition.is_some();
+                    if !has_loading && !has_transition {
                         this.ai_anim_active = false;
                         cx.notify();
                         false

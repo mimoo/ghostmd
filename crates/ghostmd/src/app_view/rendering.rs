@@ -142,8 +142,8 @@ impl GhostAppView {
 
                 if has_editor {
                     // Title bar + editor — split path into dir (muted) + filename (bright)
-                    let (dir_part, file_part) = pane
-                        .and_then(|p| p.active_path.as_ref())
+                    let active_path = pane.and_then(|p| p.active_path.as_ref());
+                    let (dir_part, file_part) = active_path
                         .map(|p| {
                             let full = p.display().to_string();
                             match full.rfind('/') {
@@ -153,6 +153,31 @@ impl GhostAppView {
                         })
                         .unwrap_or_else(|| (String::new(), "untitled".to_string()));
 
+                    // Check for active move transition on this pane's path
+                    let move_old = self.move_transition.as_ref().and_then(|(old, new, started)| {
+                        if active_path == Some(new) {
+                            let elapsed = started.elapsed().as_millis() as f32;
+                            let fade = (1.0 - elapsed / 4000.0).max(0.0);
+                            if fade > 0.0 {
+                                Some((old.display().to_string(), fade))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    });
+
+                    let mut title_row = div().flex().flex_row();
+                    if let Some((old_path_str, fade)) = move_old {
+                        title_row = title_row
+                            .child(div().text_color(t.error.opacity(fade)).child(old_path_str))
+                            .child(div().text_color(t.pane_title_fg).child(" → "));
+                    }
+                    title_row = title_row
+                        .child(div().text_color(t.pane_title_fg).child(dir_part))
+                        .child(div().text_color(t.fg).child(file_part));
+
                     let title_bar = div()
                         .w_full()
                         .h(px(24.0))
@@ -161,13 +186,7 @@ impl GhostAppView {
                         .px(px(8.0))
                         .bg(t.pane_title_bg)
                         .text_xs()
-                        .child(
-                            div().flex().flex_row().child(
-                                div().text_color(t.pane_title_fg).child(dir_part)
-                            ).child(
-                                div().text_color(t.fg).child(file_part)
-                            )
-                        );
+                        .child(title_row);
 
                     pane_div = pane_div.child(title_bar);
 
