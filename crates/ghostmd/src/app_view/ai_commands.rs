@@ -192,16 +192,9 @@ impl GhostAppView {
                         if !suggested.is_empty() {
                             this.update(cx, |this, cx| {
                                 let parent = path.parent().unwrap_or(&this.app.root).to_path_buf();
-                                let mut new_path = parent.join(format!("{}{}", suggested, ext));
-                                if new_path.exists() {
-                                    for n in 2..100 {
-                                        let candidate = parent.join(format!("{}-{}{}", suggested, n, ext));
-                                        if !candidate.exists() {
-                                            new_path = candidate;
-                                            break;
-                                        }
-                                    }
-                                }
+                                let new_path = ghostmd_core::path_utils::unique_path(
+                                    &parent.join(format!("{}{}", suggested, ext)),
+                                );
                                 if new_path != path && !new_path.exists()
                                     && std::fs::rename(&path, &new_path).is_ok()
                                 {

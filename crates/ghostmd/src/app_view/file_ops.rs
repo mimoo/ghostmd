@@ -4,6 +4,7 @@ use std::process::Command;
 use gpui::*;
 
 use ghostmd_core::diary;
+use ghostmd_core::path_utils::unique_path;
 
 use super::*;
 
@@ -175,26 +176,8 @@ impl GhostAppView {
     /// Move a file to a target directory, updating editor paths and tree.
     pub(crate) fn move_file_to_dir(&mut self, source: PathBuf, target_dir: &std::path::Path, cx: &mut Context<Self>) {
         let file_name = source.file_name().unwrap_or_default();
-        let mut new_path = target_dir.join(file_name);
-        if new_path == source { return; }
-        // Avoid collision: append -2, -3, ... if target exists
-        if new_path.exists() {
-            let stem = source.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            let ext = source.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-            let is_dir = source.is_dir();
-            for n in 2..100 {
-                let candidate = if is_dir {
-                    target_dir.join(format!("{}-{}", stem, n))
-                } else {
-                    target_dir.join(format!("{}-{}{}", stem, n, ext))
-                };
-                if !candidate.exists() {
-                    new_path = candidate;
-                    break;
-                }
-            }
-        }
-        if new_path.exists() { return; }
+        let new_path = unique_path(&target_dir.join(file_name));
+        if new_path == source || new_path.exists() { return; }
         if std::fs::rename(&source, &new_path).is_ok() {
             self.update_editor_paths(&source, &new_path, cx);
             self.file_tree.update(cx, |tree, cx| {

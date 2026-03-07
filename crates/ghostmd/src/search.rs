@@ -137,6 +137,7 @@ impl FileFinder {
     }
 
     /// Reorder results so open files come first (in open_files order), rest after.
+    /// Preserves all results including content matches for open files.
     fn prioritize(&self, results: Vec<FinderResult>) -> Vec<FinderResult> {
         if self.open_files.is_empty() {
             return results;
@@ -144,30 +145,23 @@ impl FileFinder {
         let open_set: HashSet<&PathBuf> = self.open_files.iter().collect();
         let mut open_results: Vec<FinderResult> = Vec::new();
         let mut rest: Vec<FinderResult> = Vec::new();
-        let mut seen_open: HashSet<PathBuf> = HashSet::new();
 
-        // First pass: pull out open file matches, preserving open_files order
-        for result in &results {
-            let p = result.path().to_path_buf();
-            if open_set.contains(&p) && !seen_open.contains(&p) {
-                seen_open.insert(p);
+        // Partition: open file results vs rest
+        let mut open_bucket: Vec<FinderResult> = Vec::new();
+        for result in results {
+            if open_set.contains(&result.path().to_path_buf()) {
+                open_bucket.push(result);
+            } else {
+                rest.push(result);
             }
         }
 
-        // Add open files in their priority order
+        // Add open file results in priority order (by open_files ordering)
         for open_path in &self.open_files {
-            if seen_open.contains(open_path) {
-                // Find the matching result
-                if let Some(r) = results.iter().find(|r| r.path() == open_path.as_path()) {
+            for r in &open_bucket {
+                if r.path() == open_path.as_path() {
                     open_results.push(r.clone());
                 }
-            }
-        }
-
-        // Add remaining results
-        for result in results {
-            if !open_set.contains(&result.path().to_path_buf()) {
-                rest.push(result);
             }
         }
 
