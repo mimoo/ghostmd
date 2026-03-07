@@ -115,8 +115,11 @@ impl GhostAppView {
         let dir = self.root.join(".ghostmd");
         std::fs::create_dir_all(&dir).ok();
         let path = dir.join("session.json");
+        let tmp_path = dir.join(".session.json.tmp");
         if let Ok(json) = serde_json::to_string_pretty(&session) {
-            std::fs::write(path, json).ok();
+            if std::fs::write(&tmp_path, &json).is_ok() {
+                std::fs::rename(&tmp_path, &path).ok();
+            }
             self.last_session_write = Instant::now();
         }
     }
