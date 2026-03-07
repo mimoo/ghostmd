@@ -352,7 +352,7 @@ impl GhostTheme {
         GhostTheme {
             bg: (0xfd, 0xf6, 0xe3),         // #FDF6E3 base3
             fg: (0x65, 0x7b, 0x83),         // #657B83 base00
-            selection: (0xee, 0xe8, 0xd5),   // #EEE8D5 base2
+            selection: (0xd6, 0xd0, 0xbe),   // darkened base2 for visible palette highlight
             cursor: (0x26, 0x8b, 0xd2),     // #268BD2 blue
             line_number: (0x93, 0xa1, 0xa1), // #93A1A1 base1
             sidebar_bg: (0xee, 0xe8, 0xd5),  // base2
@@ -370,7 +370,7 @@ impl GhostTheme {
         GhostTheme {
             bg: (0xef, 0xf1, 0xf5),         // #EFF1F5 base
             fg: (0x4c, 0x4f, 0x69),         // #4C4F69 text
-            selection: (0xcc, 0xd0, 0xda),   // #CCD0DA surface0
+            selection: (0xbc, 0xc0, 0xcc),   // #BCC0CC surface1 for visible palette
             cursor: (0xfe, 0x64, 0x0b),     // #FE640B peach
             line_number: (0x8c, 0x8f, 0xa1), // #8C8FA1 overlay0
             sidebar_bg: (0xe6, 0xe9, 0xef),  // #E6E9EF mantle
@@ -388,7 +388,7 @@ impl GhostTheme {
         GhostTheme {
             bg: (0xfa, 0xf4, 0xed),         // #FAF4ED base
             fg: (0x57, 0x52, 0x79),         // #575279 text
-            selection: (0xf2, 0xe9, 0xe1),   // #F2E9E1 highlight low
+            selection: (0xdf, 0xd8, 0xd0),   // #DFD8D0 highlight med for visible palette
             cursor: (0xb4, 0x63, 0x7a),     // #B4637A love
             line_number: (0x9e, 0x93, 0x86), // #9E9386 muted (subtle)
             sidebar_bg: (0xf2, 0xe9, 0xde),  // #F2E9DE surface
