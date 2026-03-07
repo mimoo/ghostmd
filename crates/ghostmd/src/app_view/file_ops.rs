@@ -1,0 +1,197 @@
+use std::path::PathBuf;
+
+use gpui::*;
+
+use ghostmd_core::diary;
+
+use super::*;
+
+impl GhostAppView {
+    /// Open a file: create per-pane editor and set it as active in the focused pane.
+    pub(crate) fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_workspace(window, cx);
+        // Save current editor if switching files
+        let save_editor = {
+            let ws = &self.workspaces[self.active_workspace];
+            ws.panes.get(&ws.focused_pane).and_then(|p| {
+                if p.active_path.as_ref() != Some(&path) {
+                    p.editor.clone()
+                } else {
+                    None
+                }
+            })
+        };
+        if let Some(editor) = save_editor {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
+        }
+
+        // Check if this pane already has this file
+        let already_open = {
+            let ws = &self.workspaces[self.active_workspace];
+            ws.panes.get(&ws.focused_pane)
+                .map(|p| p.active_path.as_ref() == Some(&path))
+                .unwrap_or(false)
+        };
+
+        if !already_open {
+            let p = path.clone();
+            let editor = cx.new(|cx| crate::editor_view::EditorView::new(p, window, cx));
+            let ws = self.active_ws_mut();
+            if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
+                pane.editor = Some(editor);
+                pane.active_path = Some(path.clone());
+            }
+        }
+
+        let focused = self.active_ws().focused_pane;
+        self.focus_pane_editor(focused, window, cx);
+        // Reveal file in tree (collapse non-ancestors, expand ancestors, scroll)
+        self.file_tree.update(cx, |tree, cx| {
+            tree.reveal_file(&path, cx);
+        });
+        cx.notify();
+    }
+
+    /// Create a new note with inline rename in the file tree (cmd-n).
+    /// If a folder is selected in the file tree, creates the note there instead of diary path.
+    pub(crate) fn new_note_in_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_workspace(window, cx);
+        let root = self.app.root.clone();
+        let selected_dir = self.file_tree.read(cx).selected_path()
+            .and_then(|p| {
+                if p.is_dir() { Some(p.clone()) } else { p.parent().map(|pp| pp.to_path_buf()) }
+            })
+            .filter(|d| d.starts_with(&root) && *d != root);
+
+        let parent_dir = selected_dir.unwrap_or_else(|| diary::today_diary_dir(&root));
+        std::fs::create_dir_all(&parent_dir).ok();
+
+        if !self.app.sidebar_visible {
+            self.app.toggle_sidebar();
+        }
+        let name = pick_note_name(&parent_dir);
+        self.file_tree.update(cx, |tree, cx| {
+            tree.start_new_note(&parent_dir, &name, window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Create a new note in a specific directory with inline rename.
+    pub(crate) fn new_note_in_dir(&mut self, dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.app.sidebar_visible {
+            self.app.toggle_sidebar();
+        }
+        let name = pick_note_name(&dir);
+        self.file_tree.update(cx, |tree, cx| {
+            tree.start_new_note(&dir, &name, window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Create a new folder inside a parent directory with inline rename.
+    pub(crate) fn create_new_folder(&mut self, parent: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.app.sidebar_visible {
+            self.app.toggle_sidebar();
+        }
+        self.file_tree.update(cx, |tree, cx| {
+            tree.start_new_folder(&parent, window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Move a file to a target directory, updating editor paths and tree.
+    pub(crate) fn move_file_to_dir(&mut self, source: PathBuf, target_dir: &std::path::Path, cx: &mut Context<Self>) {
+        let file_name = source.file_name().unwrap_or_default();
+        let mut new_path = target_dir.join(file_name);
+        if new_path == source { return; }
+        // Avoid collision: append -2, -3, ... if target exists
+        if new_path.exists() {
+            let stem = source.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let ext = source.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+            let is_dir = source.is_dir();
+            for n in 2..100 {
+                let candidate = if is_dir {
+                    target_dir.join(format!("{}-{}", stem, n))
+                } else {
+                    target_dir.join(format!("{}-{}{}", stem, n, ext))
+                };
+                if !candidate.exists() {
+                    new_path = candidate;
+                    break;
+                }
+            }
+        }
+        if new_path.exists() { return; }
+        if std::fs::rename(&source, &new_path).is_ok() {
+            let mut editors_to_update = Vec::new();
+            for ws in &mut self.workspaces {
+                for pane in ws.panes.values_mut() {
+                    if pane.active_path.as_ref() == Some(&source) {
+                        pane.active_path = Some(new_path.clone());
+                        if let Some(editor) = &pane.editor {
+                            editors_to_update.push(editor.clone());
+                        }
+                    }
+                }
+            }
+            for editor in editors_to_update {
+                let np = new_path.clone();
+                editor.update(cx, |e, _cx| { e.path = np; });
+            }
+            self.file_tree.update(cx, |tree, cx| {
+                tree.refresh(cx);
+                tree.reveal_file(&new_path, cx);
+            });
+        }
+    }
+
+    /// Open the file finder in folder-only mode for moving a file.
+    pub(crate) fn start_move_to_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let source = match self.focused_active_path() {
+            Some(p) => p,
+            None => return,
+        };
+        self.folder_move_source = Some(source);
+        self.show_file_finder = true;
+        self.file_finder.open_folders().ok();
+        self.finder_scroll = ScrollHandle::new();
+        self.file_finder_input.update(cx, |state, cx| {
+            state.set_value("", window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Move a file or folder to the macOS Trash and update the UI.
+    pub(crate) fn move_to_trash(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        // Close any panes showing this file (or files inside this directory)
+        let is_dir = path.is_dir();
+        let mut editors_to_save: Vec<_> = Vec::new();
+        for ws in &mut self.workspaces {
+            for pane in ws.panes.values_mut() {
+                let should_close = pane.active_path.as_ref().map(|p| {
+                    if is_dir { p.starts_with(&path) } else { p == &path }
+                }).unwrap_or(false);
+                if should_close {
+                    if let Some(editor) = pane.editor.take() {
+                        editors_to_save.push(editor);
+                    }
+                    pane.active_path = None;
+                }
+            }
+        }
+        // Save editors before trashing (best effort)
+        for editor in editors_to_save {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
+        }
+
+        // Move to Trash using the trash crate (macOS native)
+        if trash::delete(&path).is_ok() {
+            self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+            // Re-focus current pane
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+            cx.notify();
+        }
+    }
+}
