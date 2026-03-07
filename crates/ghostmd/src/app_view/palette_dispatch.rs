@@ -137,7 +137,7 @@ impl GhostAppView {
         let filtered = self.palette.filtered_commands();
         if let Some(cmd) = filtered.get(self.palette.selected_index) {
             let action_id = cmd.action_id.clone();
-            self.show_palette = false;
+            self.active_overlay = None;
             self.palette.close();
             self.dispatch_palette_action(&action_id, window, cx);
             // Don't refocus editor if we entered rename mode (it needs palette focus)
@@ -154,7 +154,7 @@ impl GhostAppView {
         if self.workspaces.is_empty() { return; }
         let current_value = self.active_ws().title.clone();
         self.rename_mode = Some(RenameMode::Tab);
-        self.show_palette = true;
+        self.active_overlay = Some(OverlayKind::Palette);
         self.palette_input.update(cx, |state, cx| {
             state.set_value(&current_value, window, cx);
             state.focus(window, cx);

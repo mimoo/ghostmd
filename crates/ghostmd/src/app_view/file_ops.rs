@@ -107,7 +107,7 @@ impl GhostAppView {
                     (rel_path, dir.clone()),
                 ];
                 self.location_picker_selected = 0;
-                self.show_location_picker = true;
+                self.active_overlay = Some(OverlayKind::LocationPicker);
                 cx.notify();
                 return;
             }
@@ -132,7 +132,7 @@ impl GhostAppView {
 
     /// Close the location picker and refocus the editor.
     pub(crate) fn close_location_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.show_location_picker = false;
+        self.active_overlay = None;
         self.location_picker_options.clear();
         if !self.workspaces.is_empty() {
             let focused = self.active_ws().focused_pane;
@@ -144,7 +144,7 @@ impl GhostAppView {
     /// Confirm the location picker selection and create the note.
     pub(crate) fn confirm_location_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((_, dir)) = self.location_picker_options.get(self.location_picker_selected).cloned() {
-            self.show_location_picker = false;
+            self.active_overlay = None;
             self.location_picker_options.clear();
             self.create_note_at(dir, window, cx);
         }
@@ -194,7 +194,7 @@ impl GhostAppView {
             None => return,
         };
         self.folder_move_source = Some(source);
-        self.show_file_finder = true;
+        self.active_overlay = Some(OverlayKind::FileFinder);
         self.file_finder.open_folders().ok();
         self.finder_scroll = ScrollHandle::new();
         self.file_finder_input.update(cx, |state, cx| {

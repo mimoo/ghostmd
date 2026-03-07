@@ -176,7 +176,7 @@ impl GhostAppView {
                     pane_div = pane_div.child(title_bar);
 
                     // Search bar (only on focused pane)
-                    if is_focused && self.show_search {
+                    if is_focused && self.overlay_is(OverlayKind::Search) {
                         let match_text = if self.search_match_count > 0 {
                             format!("{} matches", self.search_match_count)
                         } else {
@@ -603,7 +603,7 @@ impl GhostAppView {
                     .text_sm()
                     .cursor_pointer()
                     .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                        this.show_palette = false;
+                        this.active_overlay = None;
                         this.palette.close();
                         this.dispatch_palette_action(&action_id, window, cx);
                         let focused = this.active_ws().focused_pane;

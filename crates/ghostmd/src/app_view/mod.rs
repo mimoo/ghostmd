@@ -38,6 +38,19 @@ pub(crate) enum RenameMode {
 }
 
 // ---------------------------------------------------------------------------
+// Overlay kind — at most one overlay is active at a time
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, PartialEq)]
+pub(crate) enum OverlayKind {
+    Palette,
+    FileFinder,
+    Search,
+    AgenticSearch,
+    LocationPicker,
+}
+
+// ---------------------------------------------------------------------------
 // Pane — each pane owns its own editor (independent scroll, cursor, state)
 // ---------------------------------------------------------------------------
 
@@ -73,16 +86,14 @@ pub struct GhostAppView {
     pub(crate) closed_workspaces: Vec<Workspace>,
     pub(crate) next_workspace_id: usize,
     pub(crate) next_pane_id: usize,
-    pub(crate) show_palette: bool,
+    pub(crate) active_overlay: Option<OverlayKind>,
     pub(crate) palette: CommandPalette,
     pub(crate) palette_input: Entity<InputState>,
     pub(crate) rename_mode: Option<RenameMode>,
-    pub(crate) show_file_finder: bool,
     pub(crate) file_finder: FileFinder,
     pub(crate) file_finder_input: Entity<InputState>,
     pub(crate) focus_handle: FocusHandle,
     // Search bar
-    pub(crate) show_search: bool,
     pub(crate) search_input: Entity<InputState>,
     pub(crate) search_match_count: usize,
     // Theme
@@ -90,14 +101,12 @@ pub struct GhostAppView {
     // Context menu (from file tree right-click)
     pub(crate) tree_context_menu: Option<(PathBuf, Point<Pixels>)>,
     // Agentic search (cmd-shift-f)
-    pub(crate) show_agentic_search: bool,
     pub(crate) agentic_input: Entity<InputState>,
     pub(crate) agentic_results: Vec<String>,
     pub(crate) agentic_loading: bool,
     // Folder move mode (file finder shows folders instead of files)
     pub(crate) folder_move_source: Option<PathBuf>,
     // Location picker (shown when creating a new note with a folder selected)
-    pub(crate) show_location_picker: bool,
     pub(crate) location_picker_options: Vec<(String, PathBuf)>,
     pub(crate) location_picker_selected: usize,
     // Scroll handles for overlays
@@ -194,12 +203,12 @@ impl GhostAppView {
                             this.apply_rename(&new_name, &mode, window, cx);
                         }
                         this.rename_mode = None;
-                        this.show_palette = false;
+                        this.active_overlay = None;
                         this.palette.close();
                         let focused = this.active_ws().focused_pane;
                         this.focus_pane_editor(focused, window, cx);
                         cx.notify();
-                    } else if this.show_palette {
+                    } else if this.overlay_is(OverlayKind::Palette) {
                         this.palette_confirm(window, cx);
                     }
                 }
@@ -215,7 +224,7 @@ impl GhostAppView {
         cx.subscribe_in(&file_finder_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
             match event {
                 InputEvent::Change => {
-                    if this.show_file_finder {
+                    if this.overlay_is(OverlayKind::FileFinder) {
                         let value = this.file_finder_input.read(cx).value().to_string();
                         if this.folder_move_source.is_some() {
                             this.file_finder.set_folder_query(&value);
@@ -226,11 +235,11 @@ impl GhostAppView {
                     }
                 }
                 InputEvent::PressEnter { .. } => {
-                    if this.show_file_finder {
+                    if this.overlay_is(OverlayKind::FileFinder) {
                         if let Some(source) = this.folder_move_source.take() {
                             // Folder move mode: move file to selected directory
                             if let Some(target_dir) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
-                                this.show_file_finder = false;
+                                this.active_overlay = None;
                                 this.file_finder.close();
                                 this.move_file_to_dir(source, &target_dir, cx);
                                 let focused = this.active_ws().focused_pane;
@@ -238,7 +247,7 @@ impl GhostAppView {
                                 cx.notify();
                             }
                         } else if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
-                            this.show_file_finder = false;
+                            this.active_overlay = None;
                             this.file_finder.close();
                             this.open_file(path, window, cx);
                         }
@@ -254,12 +263,12 @@ impl GhostAppView {
         cx.subscribe_in(&search_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
             match event {
                 InputEvent::Change => {
-                    if this.show_search {
+                    if this.overlay_is(OverlayKind::Search) {
                         this.update_search_matches(cx);
                     }
                 }
                 InputEvent::PressEnter { .. } => {
-                    if this.show_search {
+                    if this.overlay_is(OverlayKind::Search) {
                         this.close_search(window, cx);
                     }
                 }
@@ -272,7 +281,7 @@ impl GhostAppView {
         let agentic_input = cx.new(|cx| InputState::new(window, cx).placeholder("Ask Claude about your notes..."));
         cx.subscribe_in(&agentic_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
             if let InputEvent::PressEnter { .. } = event {
-                if this.show_agentic_search && !this.agentic_loading {
+                if this.overlay_is(OverlayKind::AgenticSearch) && !this.agentic_loading {
                     this.run_agentic_search(window, cx);
                 }
             }
@@ -345,25 +354,21 @@ impl GhostAppView {
             closed_workspaces: Vec::new(),
             next_workspace_id,
             next_pane_id,
-            show_palette: false,
+            active_overlay: None,
             palette,
             palette_input,
             rename_mode: None,
-            show_file_finder: false,
             file_finder,
             file_finder_input,
             focus_handle,
-            show_search: false,
             search_input,
             search_match_count: 0,
             active_theme,
             tree_context_menu: None,
-            show_agentic_search: false,
             agentic_input,
             agentic_results: Vec::new(),
             agentic_loading: false,
             folder_move_source: None,
-            show_location_picker: false,
             location_picker_options: Vec::new(),
             location_picker_selected: 0,
             palette_scroll: ScrollHandle::new(),
@@ -470,6 +475,11 @@ impl GhostAppView {
         ws.panes.get(&ws.focused_pane)
             .and_then(|p| p.active_path.clone())
     }
+
+    /// Check if a specific overlay is active.
+    pub(crate) fn overlay_is(&self, kind: OverlayKind) -> bool {
+        self.active_overlay.as_ref() == Some(&kind)
+    }
 }
 
 impl Focusable for GhostAppView {
@@ -501,10 +511,10 @@ impl Render for GhostAppView {
         } else {
             (None, None)
         };
-        let show_palette = self.show_palette;
-        let show_file_finder = self.show_file_finder;
-        let show_agentic_search = self.show_agentic_search;
-        let show_location_picker = self.show_location_picker;
+        let show_palette = self.overlay_is(OverlayKind::Palette);
+        let show_file_finder = self.overlay_is(OverlayKind::FileFinder);
+        let show_agentic_search = self.overlay_is(OverlayKind::AgenticSearch);
+        let show_location_picker = self.overlay_is(OverlayKind::LocationPicker);
 
         // Context menu overlay data
         let ctx_menu = self.tree_context_menu.clone();
@@ -594,8 +604,11 @@ impl Render for GhostAppView {
                 cx.notify();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenFileFinder, window, cx| {
-                this.show_file_finder = !this.show_file_finder;
-                if this.show_file_finder {
+                let was_open = this.overlay_is(OverlayKind::FileFinder);
+                if was_open {
+                    this.close_file_finder(window, cx);
+                } else {
+                    this.active_overlay = Some(OverlayKind::FileFinder);
                     // Collect open files sorted by most recently edited
                     let mut open_with_time: Vec<(PathBuf, Option<Instant>)> = Vec::new();
                     let mut seen = HashSet::new();
@@ -624,29 +637,27 @@ impl Render for GhostAppView {
                         state.set_value("", window, cx);
                         state.focus(window, cx);
                     });
-                } else {
-                    this.close_file_finder(window, cx);
                 }
                 cx.notify();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenContentSearch, window, cx| {
-                if this.show_agentic_search {
+                if this.overlay_is(OverlayKind::AgenticSearch) {
                     this.close_agentic_search(window, cx);
                 } else {
                     this.open_agentic_search(window, cx);
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenCommandPalette, window, cx| {
-                this.show_palette = !this.show_palette;
-                if this.show_palette {
+                if this.overlay_is(OverlayKind::Palette) {
+                    this.close_palette(window, cx);
+                } else {
+                    this.active_overlay = Some(OverlayKind::Palette);
                     this.palette.open();
                     this.palette_scroll = ScrollHandle::new();
                     this.palette_input.update(cx, |state, cx| {
                         state.set_value("", window, cx);
                         state.focus(window, cx);
                     });
-                } else {
-                    this.close_palette(window, cx);
                 }
                 cx.notify();
             }))
@@ -654,68 +665,63 @@ impl Render for GhostAppView {
                 let editing = this.file_tree.read(cx).is_editing();
                 if editing {
                     this.file_tree.update(cx, |tree, cx| tree.cancel_rename(window, cx));
-                } else if this.show_location_picker {
-                    this.close_location_picker(window, cx);
-                } else if this.show_search {
-                    this.close_search(window, cx);
-                } else if this.show_agentic_search {
-                    this.close_agentic_search(window, cx);
-                } else if this.show_file_finder {
-                    this.close_file_finder(window, cx);
-                } else if this.show_palette {
-                    this.close_palette(window, cx);
+                } else if this.active_overlay.is_some() {
+                    this.dismiss_overlays(window, cx);
                 } else if this.tree_context_menu.is_some() {
                     this.tree_context_menu = None;
                     cx.notify();
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, window, cx| {
-                if this.show_location_picker {
-                    if this.location_picker_selected > 0 {
-                        this.location_picker_selected -= 1;
+                match &this.active_overlay {
+                    Some(OverlayKind::LocationPicker) => {
+                        if this.location_picker_selected > 0 {
+                            this.location_picker_selected -= 1;
+                        }
+                        cx.notify();
                     }
-                    cx.notify();
-                } else if this.show_file_finder {
-                    this.file_finder.select_prev();
-                    this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
-                    cx.notify();
-                } else if this.show_agentic_search {
-                    // No item selection for agentic search
-                    cx.notify();
-                } else if this.show_palette {
-                    this.palette_move_up(cx);
-                } else {
-                    window.dispatch_action(Box::new(gpui_component::input::MoveUp), cx);
+                    Some(OverlayKind::FileFinder) => {
+                        this.file_finder.select_prev();
+                        this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
+                        cx.notify();
+                    }
+                    Some(OverlayKind::AgenticSearch) => cx.notify(),
+                    Some(OverlayKind::Palette) => this.palette_move_up(cx),
+                    Some(OverlayKind::Search) | None => {
+                        window.dispatch_action(Box::new(gpui_component::input::MoveUp), cx);
+                    }
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteDown, window, cx| {
-                if this.show_location_picker {
-                    if this.location_picker_selected + 1 < this.location_picker_options.len() {
-                        this.location_picker_selected += 1;
+                match &this.active_overlay {
+                    Some(OverlayKind::LocationPicker) => {
+                        if this.location_picker_selected + 1 < this.location_picker_options.len() {
+                            this.location_picker_selected += 1;
+                        }
+                        cx.notify();
                     }
-                    cx.notify();
-                } else if this.show_file_finder {
-                    this.file_finder.select_next();
-                    this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
-                    cx.notify();
-                } else if this.show_agentic_search {
-                    cx.notify();
-                } else if this.show_palette {
-                    this.palette_move_down(cx);
-                } else {
-                    window.dispatch_action(Box::new(gpui_component::input::MoveDown), cx);
+                    Some(OverlayKind::FileFinder) => {
+                        this.file_finder.select_next();
+                        this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
+                        cx.notify();
+                    }
+                    Some(OverlayKind::AgenticSearch) => cx.notify(),
+                    Some(OverlayKind::Palette) => this.palette_move_down(cx),
+                    Some(OverlayKind::Search) | None => {
+                        window.dispatch_action(Box::new(gpui_component::input::MoveDown), cx);
+                    }
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteConfirm, window, cx| {
-                if this.show_location_picker {
-                    this.confirm_location_picker(window, cx);
-                } else if this.show_palette {
-                    this.palette_confirm(window, cx);
+                match &this.active_overlay {
+                    Some(OverlayKind::LocationPicker) => this.confirm_location_picker(window, cx),
+                    Some(OverlayKind::Palette) => this.palette_confirm(window, cx),
+                    _ => {}
                 }
             }))
             // Find in file
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FindInFile, window, cx| {
-                if this.show_search {
+                if this.overlay_is(OverlayKind::Search) {
                     this.close_search(window, cx);
                 } else {
                     this.open_search(window, cx);
