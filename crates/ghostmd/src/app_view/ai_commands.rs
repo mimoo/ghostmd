@@ -158,6 +158,10 @@ impl GhostAppView {
             .map(|e| format!(".{}", e.to_string_lossy()))
             .unwrap_or_else(|| ".md".to_string());
 
+        let ws_id = self.active_ws().id;
+        self.ai_loading.insert(ws_id);
+        self.start_ai_animation(cx);
+
         let output_path = std::env::temp_dir().join(format!("ghostmd-ai-file-{}.json", std::process::id()));
         let output_path_str = output_path.display().to_string();
 
@@ -182,15 +186,17 @@ impl GhostAppView {
                     .status();
                 status.is_ok_and(|s| s.success())
             }).await;
-            if result {
-                if let Ok(json_str) = std::fs::read_to_string(&output_path) {
-                    let _ = std::fs::remove_file(&output_path);
-                    #[derive(serde::Deserialize)]
-                    struct AiFile { filename: String }
-                    if let Ok(parsed) = serde_json::from_str::<AiFile>(&json_str) {
-                        let suggested = parsed.filename;
-                        if !suggested.is_empty() {
-                            this.update(cx, |this, cx| {
+            this.update(cx, |this, cx| {
+                this.ai_loading.remove(&ws_id);
+                if result {
+                    if let Ok(json_str) = std::fs::read_to_string(&output_path) {
+                        let _ = std::fs::remove_file(&output_path);
+                        #[derive(serde::Deserialize)]
+                        struct AiFile { filename: String }
+                        if let Ok(parsed) = serde_json::from_str::<AiFile>(&json_str) {
+                            let suggested = parsed.filename;
+                            if !suggested.is_empty() {
+                                let old_path = path.clone();
                                 let parent = path.parent().unwrap_or(&this.root).to_path_buf();
                                 let new_path = ghostmd_core::path_utils::unique_path(
                                     &parent.join(format!("{}{}", suggested, ext)),
@@ -198,19 +204,29 @@ impl GhostAppView {
                                 if new_path != path && !new_path.exists()
                                     && std::fs::rename(&path, &new_path).is_ok()
                                 {
-                                    this.update_editor_paths(&path, &new_path, cx);
+                                    this.update_editor_paths(&old_path, &new_path, cx);
                                     this.file_tree.update(cx, |tree, cx| {
                                         tree.refresh(cx);
                                         tree.reveal_file(&new_path, cx);
                                     });
+                                    // Show old → new transition in title bar
+                                    this.move_transition = Some((old_path, new_path, std::time::Instant::now()));
+                                    this.start_ai_animation(cx);
+                                    cx.spawn(async |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+                                        cx.background_executor().timer(std::time::Duration::from_secs(4)).await;
+                                        this.update(cx, |this, cx| {
+                                            this.move_transition = None;
+                                            cx.notify();
+                                        }).ok();
+                                    }).detach();
                                 }
-                                cx.notify();
-                            }).ok();
+                            }
                         }
                     }
                 }
-            }
-            let _ = std::fs::remove_file(&output_path_str);
+                let _ = std::fs::remove_file(&output_path_str);
+                cx.notify();
+            }).ok();
         }).detach();
     }
 
