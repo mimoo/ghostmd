@@ -4,6 +4,8 @@ A native macOS note-taking app that feels like [Ghostty](https://ghostty.org) â€
 
 Notes are plain `.md` files in `~/Documents/ghostmd/`. No database, no lock-in. Back up the folder however you want.
 
+![GhostMD screenshot](screenshot.png)
+
 ## Philosophy
 
 - **Fast path to writing**: open the app, you're typing. AI suggests a title and where to file it later.
@@ -47,7 +49,7 @@ Download the latest `.tar.gz` from [Releases](https://github.com/user/ghostmd/re
 - Agentic search (Cmd+Shift+F) â€” ask Claude natural language questions about your notes
 - Command palette (Cmd+Shift+P) with theme switching
 - Ghostty-style tabs and splits with close buttons
-- 5 built-in themes: Rose Pine, Nord, Solarized, Dracula, Light
+- 19 built-in themes (15 dark, 4 light) with runtime switching via command palette
 - Session persistence (tabs, splits, theme restored on relaunch)
 - JetBrains Mono font
 
@@ -123,7 +125,7 @@ crates/
     file_tree_view.rs # Sidebar file tree with context menu events
     palette.rs        # Command palette state machine
     search.rs         # File finder + content search state machines
-    theme.rs          # 5 themes with runtime switching
+    theme.rs          # 19 themes with runtime switching
     keybindings.rs    # Keyboard shortcut definitions
 ```
 
