@@ -64,6 +64,8 @@ pub struct EditorView {
     pub path: PathBuf,
     pub dirty: bool,
     pub needs_reload: bool,
+    /// When true, the next Change event from InputState is suppressed (used during reload).
+    skip_next_change: bool,
     input_state: Entity<InputState>,
     focus_handle: FocusHandle,
     pub last_edit: Option<Instant>,
@@ -97,8 +99,12 @@ impl EditorView {
         // Subscribe to text changes
         cx.subscribe(&input_state, |this: &mut Self, _entity: Entity<InputState>, event: &InputEvent, _cx: &mut Context<Self>| {
             if matches!(event, InputEvent::Change) {
-                this.dirty = true;
-                this.last_edit = Some(Instant::now());
+                if this.skip_next_change {
+                    this.skip_next_change = false;
+                } else {
+                    this.dirty = true;
+                    this.last_edit = Some(Instant::now());
+                }
             }
         })
         .detach();
@@ -109,6 +115,7 @@ impl EditorView {
             path,
             dirty: false,
             needs_reload: false,
+            skip_next_change: false,
             input_state,
             focus_handle,
             last_edit: None,
@@ -160,12 +167,10 @@ impl Render for EditorView {
         if self.needs_reload && !self.dirty {
             self.needs_reload = false;
             if let Ok((_note, content)) = Note::load(&self.path) {
+                self.skip_next_change = true;
                 self.input_state.update(cx, |state, cx| {
                     state.set_value(content, window, cx);
                 });
-                // Clear dirty flag that set_value triggers via the Change subscription
-                self.dirty = false;
-                self.last_edit = None;
             }
         }
         div()

@@ -1703,7 +1703,8 @@ impl GhostAppView {
                 let status = std::process::Command::new("claude")
                     .arg("-p")
                     .arg("--model").arg("sonnet")
-                    .arg("--allowedTools").arg("Edit,Write")
+                    .arg("--allowedTools").arg("Write")
+                    .arg("--dangerously-skip-permissions")
                     .arg("--").arg(&prompt)
                     .status();
                 status.is_ok_and(|s| s.success())
@@ -1767,7 +1768,8 @@ impl GhostAppView {
                 let status = std::process::Command::new("claude")
                     .arg("-p")
                     .arg("--model").arg("sonnet")
-                    .arg("--allowedTools").arg("Edit,Write")
+                    .arg("--allowedTools").arg("Write")
+                    .arg("--dangerously-skip-permissions")
                     .arg("--").arg(&prompt)
                     .status();
                 status.is_ok_and(|s| s.success())
@@ -1831,7 +1833,8 @@ impl GhostAppView {
                 let status = std::process::Command::new("claude")
                     .arg("-p")
                     .arg("--model").arg("sonnet")
-                    .arg("--allowedTools").arg("Edit,Write")
+                    .arg("--allowedTools").arg("Write")
+                    .arg("--dangerously-skip-permissions")
                     .arg("--").arg(&prompt)
                     .status();
                 status.is_ok_and(|s| s.success())
