@@ -69,9 +69,10 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("alt-cmd-right", FocusPaneRight, None),
         GpuiKeyBinding::new("alt-cmd-up", FocusPaneUp, None),
         GpuiKeyBinding::new("alt-cmd-down", FocusPaneDown, None),
-        // Palette navigation (up/down only; Enter handled via InputEvent::PressEnter)
+        // Palette navigation
         GpuiKeyBinding::new("up", PaletteUp, None),
         GpuiKeyBinding::new("down", PaletteDown, None),
+        GpuiKeyBinding::new("enter", PaletteConfirm, None),
         // Find in file
         GpuiKeyBinding::new("cmd-f", FindInFile, None),
         // Quick tab switching

@@ -108,6 +108,8 @@ impl GhostAppView {
                 ];
                 self.location_picker_selected = 0;
                 self.active_overlay = Some(OverlayKind::LocationPicker);
+                // Focus root so Enter/Up/Down aren't consumed by the editor's Input
+                window.focus(&self.focus_handle);
                 cx.notify();
                 return;
             }
