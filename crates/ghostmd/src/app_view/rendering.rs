@@ -143,6 +143,11 @@ impl GhostAppView {
                 if has_editor {
                     // Title bar + editor — split path into dir (muted) + filename (bright)
                     let active_path = pane.and_then(|p| p.active_path.as_ref());
+                    let pane_dirty = pane
+                        .and_then(|p| p.editor.as_ref())
+                        .map(|e| e.read(cx).dirty)
+                        .unwrap_or(false);
+
                     let (dir_part, file_part) = active_path
                         .map(|p| {
                             let full = p.display().to_string();
@@ -152,6 +157,12 @@ impl GhostAppView {
                             }
                         })
                         .unwrap_or_else(|| (String::new(), "untitled".to_string()));
+
+                    let file_part = if pane_dirty {
+                        format!("{} ●", file_part)
+                    } else {
+                        file_part
+                    };
 
                     // Check for active move transition on this pane's path
                     let move_old = self.move_transition.as_ref().and_then(|(old, new, started)| {
