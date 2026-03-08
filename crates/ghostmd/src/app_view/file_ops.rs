@@ -271,7 +271,13 @@ impl GhostAppView {
                     .output();
                 match output {
                     Ok(out) if out.status.success() => {
-                        let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                        // gh gist create outputs the URL to stderr
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        let url = stderr.lines()
+                            .find(|l| l.starts_with("https://"))
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
                         if !url.is_empty() {
                             Command::new("open").arg(&url).spawn().ok();
                         }
