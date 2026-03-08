@@ -21,6 +21,8 @@ pub(crate) struct SessionState {
     pub(crate) sidebar_visible: bool,
     #[serde(default)]
     pub(crate) theme: Option<ThemeName>,
+    #[serde(default)]
+    pub(crate) collapsed_folders: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -96,7 +98,12 @@ pub(crate) fn restore_split_node(
 
 impl GhostAppView {
     /// Save session state to disk.
-    pub(crate) fn save_session(&mut self) {
+    pub(crate) fn save_session(&mut self, cx: &App) {
+        let collapsed: Vec<String> = self.file_tree.read(cx)
+            .collapsed_paths()
+            .into_iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
         let session = SessionState {
             workspaces: self.workspaces.iter().map(|ws| {
                 let leaves = ws.split_root.leaves();
@@ -110,6 +117,7 @@ impl GhostAppView {
             active_workspace: self.active_workspace,
             sidebar_visible: self.sidebar_visible,
             theme: Some(self.active_theme),
+            collapsed_folders: collapsed,
         };
 
         let dir = self.root.join(".ghostmd");

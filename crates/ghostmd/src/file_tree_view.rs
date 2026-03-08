@@ -189,6 +189,17 @@ impl FileTreeView {
     }
 
     /// Collapse all directories.
+    /// Returns the set of collapsed directory paths (for session persistence).
+    pub fn collapsed_paths(&self) -> std::collections::HashSet<std::path::PathBuf> {
+        self.panel.tree.collapsed_paths()
+    }
+
+    /// Restore collapsed state from a set of paths.
+    pub fn set_collapsed(&mut self, collapsed: &std::collections::HashSet<std::path::PathBuf>, cx: &mut Context<Self>) {
+        self.panel.tree.set_collapsed(collapsed);
+        cx.notify();
+    }
+
     pub fn collapse_all(&mut self, cx: &mut Context<Self>) {
         self.panel.tree.collapse_all();
         cx.notify();

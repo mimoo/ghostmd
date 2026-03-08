@@ -313,12 +313,14 @@ impl GhostAppView {
         let mut sidebar_visible = true;
         let mut active_theme = ThemeName::default();
 
+        let mut collapsed_folders = Vec::new();
         if let Some(session) = session {
             sidebar_visible = session.sidebar_visible;
             active_workspace = session.active_workspace.min(session.workspaces.len().saturating_sub(1));
             if let Some(theme) = session.theme {
                 active_theme = theme;
             }
+            collapsed_folders = session.collapsed_folders;
 
             for sws in &session.workspaces {
                 let ws_id = next_workspace_id;
@@ -346,8 +348,15 @@ impl GhostAppView {
         }
 
         // Apply saved theme to file tree and global gpui-component theme
-        file_tree.update(cx, |tree, _cx| {
+        file_tree.update(cx, |tree, cx| {
             tree.set_theme(active_theme);
+            if !collapsed_folders.is_empty() {
+                let collapsed: std::collections::HashSet<std::path::PathBuf> = collapsed_folders
+                    .into_iter()
+                    .map(std::path::PathBuf::from)
+                    .collect();
+                tree.set_collapsed(&collapsed, cx);
+            }
         });
         crate::theme::apply_theme(active_theme, cx);
 
@@ -625,7 +634,7 @@ impl Render for GhostAppView {
                 for editor in editors {
                     editor.update(cx, |e, cx| { e.save(cx).ok(); });
                 }
-                this.save_session();
+                this.save_session(cx);
                 cx.quit();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::CloseTab, window, cx| {

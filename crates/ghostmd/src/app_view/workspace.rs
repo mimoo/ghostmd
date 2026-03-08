@@ -206,7 +206,7 @@ impl GhostAppView {
             self.closed_workspaces.push(removed);
 
             if self.workspaces.is_empty() {
-                self.save_session();
+                self.save_session(cx);
                 window.remove_window();
                 return;
             } else if self.active_workspace >= self.workspaces.len() {
@@ -274,7 +274,7 @@ impl GhostAppView {
         self.closed_workspaces.push(removed);
 
         if self.workspaces.is_empty() {
-            self.save_session();
+            self.save_session(cx);
             window.remove_window();
             return;
         } else if self.active_workspace >= self.workspaces.len() {

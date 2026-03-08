@@ -20,7 +20,7 @@ impl GhostAppView {
             }
         }
         // Periodically save session state
-        self.save_session();
+        self.save_session(cx);
     }
 
     pub(crate) fn process_fs_events(&mut self, cx: &mut Context<Self>) {

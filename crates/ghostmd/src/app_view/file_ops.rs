@@ -279,7 +279,7 @@ impl GhostAppView {
     /// Run the update script and restart the app.
     pub(crate) fn run_update(&mut self, cx: &mut Context<Self>) {
         // Save session before updating
-        self.save_session();
+        self.save_session(cx);
         cx.spawn(async |_this, cx: &mut AsyncApp| {
             let result = cx.background_executor().spawn(async {
                 Command::new("bash")

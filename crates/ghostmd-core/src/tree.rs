@@ -110,6 +110,18 @@ impl FileTree {
         expand_ancestors(&mut self.nodes, target);
     }
 
+    /// Returns the set of collapsed directory paths.
+    pub fn collapsed_paths(&self) -> HashSet<PathBuf> {
+        let mut out = HashSet::new();
+        collect_collapsed(&self.nodes, &mut out);
+        out
+    }
+
+    /// Collapse specific directories by path.
+    pub fn set_collapsed(&mut self, collapsed: &HashSet<PathBuf>) {
+        apply_collapsed(&mut self.nodes, collapsed);
+    }
+
     /// Collapse all directories.
     pub fn collapse_all(&mut self) {
         set_all_expanded(&mut self.nodes, false);
