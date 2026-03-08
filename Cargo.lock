@@ -2156,17 +2156,17 @@ dependencies = [
 
 [[package]]
 name = "ghostmd"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
  "core-foundation 0.10.0",
  "core-text",
+ "getrandom 0.3.4",
  "ghostmd-core",
  "gpui",
  "gpui-component",
  "gpui-component-assets",
- "libc",
  "lsp-types",
  "notify",
  "nucleo-matcher",
