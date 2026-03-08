@@ -27,28 +27,6 @@ impl GhostAppView {
         cx.notify();
     }
 
-    /// Open the search bar.
-    pub(crate) fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.active_overlay = Some(OverlayKind::Search);
-        self.search_match_count = 0;
-        self.search_input.update(cx, |state, cx| {
-            state.set_value("", window, cx);
-            state.focus(window, cx);
-        });
-        cx.notify();
-    }
-
-    /// Close the search bar and refocus the editor.
-    pub(crate) fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.active_overlay = None;
-        self.search_match_count = 0;
-        if !self.workspaces.is_empty() {
-            let focused = self.active_ws().focused_pane;
-            self.focus_pane_editor(focused, window, cx);
-        }
-        cx.notify();
-    }
-
     pub(crate) fn open_agentic_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.active_overlay = Some(OverlayKind::AgenticSearch);
         self.agentic_results.clear();
@@ -82,9 +60,6 @@ impl GhostAppView {
             Some(OverlayKind::Palette) => {
                 self.rename_mode = None;
                 self.palette.close();
-            }
-            Some(OverlayKind::Search) => {
-                self.search_match_count = 0;
             }
             Some(OverlayKind::AgenticSearch) => {
                 self.agentic_loading = false;

@@ -129,9 +129,6 @@ impl GhostAppView {
                             ws.focused_pane = pid;
                             this.focus_pane_editor(pid, window, cx);
                             this.sync_file_tree_selection(cx);
-                            if this.overlay_is(OverlayKind::Search) {
-                                this.update_search_matches(cx);
-                            }
                             cx.notify();
                         }
                     }));
@@ -204,39 +201,6 @@ impl GhostAppView {
                         .child(title_row);
 
                     pane_div = pane_div.child(title_bar);
-
-                    // Search bar (only on focused pane)
-                    if is_focused && self.overlay_is(OverlayKind::Search) {
-                        let match_text = if self.search_match_count > 0 {
-                            format!("{} matches", self.search_match_count)
-                        } else {
-                            let query = self.search_input.read(cx).value().to_string();
-                            if query.is_empty() { String::new() } else { "No matches".to_string() }
-                        };
-                        let search_bar = div()
-                            .w_full()
-                            .h(px(32.0))
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(8.0))
-                            .px(px(8.0))
-                            .bg(t.pane_title_bg)
-                            .border_b_1()
-                            .border_color(t.border)
-                            .child(
-                                Input::new(&self.search_input)
-                                    .appearance(false)
-                                    .w(px(200.0)),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(t.hint)
-                                    .child(match_text),
-                            );
-                        pane_div = pane_div.child(search_bar);
-                    }
 
                     if let Some(p) = pane {
                         if let Some(editor) = &p.editor {

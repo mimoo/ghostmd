@@ -464,27 +464,6 @@ impl GhostAppView {
         .detach();
     }
 
-    /// Update match count based on current search query and focused editor.
-    pub(crate) fn update_search_matches(&mut self, cx: &mut Context<Self>) {
-        let query = self.search_input.read(cx).value().to_string().to_lowercase();
-        if query.is_empty() || self.workspaces.is_empty() {
-            self.search_match_count = 0;
-            cx.notify();
-            return;
-        }
-        let editor = {
-            let ws = self.active_ws();
-            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
-        };
-        if let Some(editor) = editor {
-            let text = editor.read(cx).text(cx).to_lowercase();
-            self.search_match_count = text.matches(&query).count();
-        } else {
-            self.search_match_count = 0;
-        }
-        cx.notify();
-    }
-
     /// Open a file from an agentic search result, scroll to the matched line, and highlight it.
     pub(crate) fn open_agentic_result(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
         let m = match self.agentic_results.get(idx) {

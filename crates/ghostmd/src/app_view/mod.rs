@@ -44,7 +44,6 @@ pub(crate) enum RenameMode {
 pub(crate) enum OverlayKind {
     Palette,
     FileFinder,
-    Search,
     AgenticSearch,
     LocationPicker,
 }
@@ -107,9 +106,6 @@ pub struct GhostAppView {
     pub(crate) file_finder: FileFinder,
     pub(crate) file_finder_input: Entity<InputState>,
     pub(crate) focus_handle: FocusHandle,
-    // Search bar
-    pub(crate) search_input: Entity<InputState>,
-    pub(crate) search_match_count: usize,
     // Theme
     pub(crate) active_theme: ThemeName,
     pub(crate) theme: ResolvedTheme,
@@ -283,25 +279,6 @@ impl GhostAppView {
         })
         .detach();
 
-        // Search bar input
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Find in file..."));
-        cx.subscribe_in(&search_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
-            match event {
-                InputEvent::Change => {
-                    if this.overlay_is(OverlayKind::Search) {
-                        this.update_search_matches(cx);
-                    }
-                }
-                InputEvent::PressEnter { .. } => {
-                    if this.overlay_is(OverlayKind::Search) {
-                        this.close_search(window, cx);
-                    }
-                }
-                _ => {}
-            }
-        })
-        .detach();
-
         // Agentic search input (cmd-shift-f)
         let agentic_input = cx.new(|cx| InputState::new(window, cx).placeholder("Ask Claude about your notes..."));
         cx.subscribe_in(&agentic_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
@@ -393,8 +370,6 @@ impl GhostAppView {
             file_finder,
             file_finder_input,
             focus_handle,
-            search_input,
-            search_match_count: 0,
             active_theme,
             theme: ResolvedTheme::from_name(active_theme),
             tree_context_menu: None,
@@ -794,7 +769,7 @@ impl Render for GhostAppView {
                         cx.notify();
                     }
                     Some(OverlayKind::Palette) => this.palette_move_up(cx),
-                    Some(OverlayKind::Search) | None => {
+                    None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveUp), cx);
                     }
                 }
@@ -820,7 +795,7 @@ impl Render for GhostAppView {
                         cx.notify();
                     }
                     Some(OverlayKind::Palette) => this.palette_move_down(cx),
-                    Some(OverlayKind::Search) | None => {
+                    None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveDown), cx);
                     }
                 }
@@ -845,14 +820,6 @@ impl Render for GhostAppView {
                     _ => {
                         window.dispatch_action(Box::new(gpui_component::input::Enter { secondary: false }), cx);
                     }
-                }
-            }))
-            // Find in file
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FindInFile, window, cx| {
-                if this.overlay_is(OverlayKind::Search) {
-                    this.close_search(window, cx);
-                } else {
-                    this.open_search(window, cx);
                 }
             }))
             // Quick tab switching (cmd-1 through cmd-9)

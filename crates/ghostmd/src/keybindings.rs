@@ -31,7 +31,6 @@ actions!(
         PaletteUp,
         PaletteDown,
         PaletteConfirm,
-        FindInFile,
         SwitchTab1,
         SwitchTab2,
         SwitchTab3,
@@ -73,8 +72,6 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("up", PaletteUp, None),
         GpuiKeyBinding::new("down", PaletteDown, None),
         GpuiKeyBinding::new("enter", PaletteConfirm, None),
-        // Find in file
-        GpuiKeyBinding::new("cmd-f", FindInFile, None),
         // Quick tab switching
         GpuiKeyBinding::new("cmd-1", SwitchTab1, None),
         GpuiKeyBinding::new("cmd-2", SwitchTab2, None),

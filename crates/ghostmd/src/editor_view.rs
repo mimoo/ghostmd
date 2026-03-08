@@ -86,7 +86,8 @@ impl EditorView {
         let input_state = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
                 .multi_line(true)
-                .soft_wrap(true);
+                .soft_wrap(true)
+                .searchable(true);
             state.lsp.definition_provider = Some(Rc::new(UrlDefinitionProvider));
             state
         });
@@ -228,7 +229,7 @@ impl Render for EditorView {
             self.retry_scroll(window, cx);
         }
 
-        // Compute highlight flash opacity (fades from 0.15 to 0 over 1.5s)
+        // Compute highlight flash opacity (fades from 0.3 to 0 over 1.5s)
         let highlight_opacity = if let Some(start) = self.highlight_start {
             let elapsed = start.elapsed().as_secs_f32();
             let duration = 1.5_f32;
@@ -241,7 +242,7 @@ impl Render for EditorView {
                     cx.background_executor().timer(std::time::Duration::from_millis(30)).await;
                     this.update(cx, |_this, cx| cx.notify()).ok();
                 }).detach();
-                0.15 * (1.0 - elapsed / duration)
+                0.3 * (1.0 - elapsed / duration)
             }
         } else {
             0.0
@@ -256,8 +257,9 @@ impl Render for EditorView {
 
         if highlight_opacity > 0.0 {
             container = container
+                .bg(hsla(210.0 / 360.0, 0.7, 0.5, highlight_opacity))
                 .border_2()
-                .border_color(hsla(210.0 / 360.0, 0.8, 0.6, highlight_opacity))
+                .border_color(hsla(210.0 / 360.0, 0.8, 0.6, highlight_opacity * 1.5))
                 .rounded(px(4.0));
         }
 

@@ -135,12 +135,7 @@ impl GhostAppView {
         if self.workspaces.is_empty() {
             return;
         }
-        // Keep the search overlay open when navigating between panes
-        // so match count can update; dismiss all other overlays.
-        let keep_search = self.overlay_is(OverlayKind::Search);
-        if !keep_search {
-            self.dismiss_overlays(window, cx);
-        }
+        self.dismiss_overlays(window, cx);
         let ws = self.active_ws_mut();
         let from = ws.focused_pane;
         let target = if dx > 0 {
@@ -159,9 +154,6 @@ impl GhostAppView {
             ws.focused_pane = new_id;
             self.focus_pane_editor(new_id, window, cx);
             self.sync_file_tree_selection(cx);
-            if keep_search {
-                self.update_search_matches(cx);
-            }
             cx.notify();
         }
     }
