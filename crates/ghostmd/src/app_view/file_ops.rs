@@ -211,13 +211,21 @@ impl GhostAppView {
 
     /// Move a file or folder to the macOS Trash and update the UI.
     pub(crate) fn move_to_trash(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        // Close any panes showing this file (or files inside this directory)
-        let is_dir = path.is_dir();
+        self.move_many_to_trash(vec![path], window, cx);
+    }
+
+    /// Move multiple files/folders to the macOS Trash in a single batch operation.
+    pub(crate) fn move_many_to_trash(&mut self, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
+        if paths.is_empty() { return; }
+
+        // Close any panes showing these files (or files inside these directories)
         let mut editors_to_save: Vec<_> = Vec::new();
         for ws in &mut self.workspaces {
             for pane in ws.panes.values_mut() {
                 let should_close = pane.active_path.as_ref().map(|p| {
-                    if is_dir { p.starts_with(&path) } else { p == &path }
+                    paths.iter().any(|path| {
+                        if path.is_dir() { p.starts_with(path) } else { p == path }
+                    })
                 }).unwrap_or(false);
                 if should_close {
                     if let Some(editor) = pane.editor.take() {
@@ -232,10 +240,9 @@ impl GhostAppView {
             editor.update(cx, |e, cx| { e.save(cx).ok(); });
         }
 
-        // Move to Trash using the trash crate (macOS native)
-        if trash::delete(&path).is_ok() {
+        // Move to Trash in a single batch (one macOS Finder operation, one sound)
+        if trash::delete_all(&paths).is_ok() {
             self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
-            // Re-focus current pane
             let focused = self.active_ws().focused_pane;
             self.focus_pane_editor(focused, window, cx);
             cx.notify();

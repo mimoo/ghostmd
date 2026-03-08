@@ -644,9 +644,7 @@ impl Render for GhostAppView {
                 // If sidebar is focused with selection, delete those; otherwise delete focused file
                 let tree_paths: Vec<PathBuf> = this.file_tree.read(cx).selected_paths().iter().cloned().collect();
                 if !tree_paths.is_empty() && this.sidebar_visible {
-                    for path in tree_paths {
-                        this.move_to_trash(path, window, cx);
-                    }
+                    this.move_many_to_trash(tree_paths, window, cx);
                 } else if let Some(path) = this.focused_active_path() {
                     this.move_to_trash(path, window, cx);
                 }
@@ -919,6 +917,7 @@ impl Render for GhostAppView {
                                     .child(
                                         div()
                                             .size_full()
+                                            .overflow_hidden()
                                             .flex()
                                             .flex_col()
                                             .relative()
