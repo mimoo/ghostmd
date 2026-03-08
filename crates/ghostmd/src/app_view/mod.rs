@@ -796,6 +796,11 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteConfirm, window, cx| {
                 match &this.active_overlay {
                     Some(OverlayKind::LocationPicker) => this.confirm_location_picker(window, cx),
+                    Some(OverlayKind::Palette) if this.rename_mode.is_some() => {
+                        // In rename mode, forward Enter to the input so the
+                        // InputEvent::PressEnter subscriber applies the rename.
+                        window.dispatch_action(Box::new(gpui_component::input::Enter { secondary: false }), cx);
+                    }
                     Some(OverlayKind::Palette) => this.palette_confirm(window, cx),
                     _ => {
                         window.dispatch_action(Box::new(gpui_component::input::Enter { secondary: false }), cx);
