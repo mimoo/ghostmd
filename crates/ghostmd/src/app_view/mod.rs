@@ -746,6 +746,9 @@ impl Render for GhostAppView {
                 } else if this.tree_context_menu.is_some() {
                     this.tree_context_menu = None;
                     cx.notify();
+                } else {
+                    // Forward to editor so the built-in search panel can close on Escape
+                    window.dispatch_action(Box::new(gpui_component::input::Escape), cx);
                 }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, window, cx| {
