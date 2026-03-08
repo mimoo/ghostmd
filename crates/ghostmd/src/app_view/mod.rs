@@ -755,8 +755,11 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::MoveToTrash, window, cx| {
                 // If sidebar is focused with selection, delete those; otherwise delete focused file
                 let tree_paths: Vec<PathBuf> = this.file_tree.read(cx).selected_paths().iter().cloned().collect();
-                if !tree_paths.is_empty() && this.sidebar_visible {
+                let from_sidebar = !tree_paths.is_empty() && this.sidebar_visible;
+                if from_sidebar {
                     this.move_many_to_trash(tree_paths, window, cx);
+                    // Keep focus on file tree so cmd-z triggers file undo
+                    this.file_tree.focus_handle(cx).focus(window);
                 } else if let Some(path) = this.focused_active_path() {
                     this.move_to_trash(path, window, cx);
                 }
