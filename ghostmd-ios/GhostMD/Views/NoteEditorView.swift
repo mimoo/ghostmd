@@ -101,9 +101,9 @@ struct NoteEditorView: View {
                         dismiss()
                     }
                 }
-                .accessibilityIdentifier("deleteConfirmButton")
+                .accessibilityIdentifier("confirmDeleteButton")
                 Button("Cancel", role: .cancel) { }
-                    .accessibilityIdentifier("deleteCancelButton")
+                    .accessibilityIdentifier("cancelDeleteButton")
             }
     }
 }

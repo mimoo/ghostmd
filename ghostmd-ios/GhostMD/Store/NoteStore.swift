@@ -15,8 +15,12 @@ final class NoteStore {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     init() {
-        // Use iCloud container if available, local Documents otherwise
-        if let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+            // Isolated temp directory for UI tests
+            let tmp = FileManager.default.temporaryDirectory.appending(path: "ghostmd-uitests")
+            try? FileManager.default.removeItem(at: tmp)
+            rootURL = tmp
+        } else if let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
             rootURL = containerURL.appending(path: "Documents")
         } else {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
