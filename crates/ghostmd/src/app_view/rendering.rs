@@ -219,8 +219,8 @@ impl GhostAppView {
                             .gap(px(8.0))
                             .bg(t.sidebar_bg)
                             .child(div().text_lg().text_color(t.hint).child("No file open"))
-                            .child(div().text_sm().text_color(t.hint).child("Cmd+N  Create a new note"))
-                            .child(div().text_sm().text_color(t.hint).child("Cmd+P  Search files")),
+                            .child(div().text_sm().text_color(t.hint).child(format!("{}+N  Create a new note", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })))
+                            .child(div().text_sm().text_color(t.hint).child(format!("{}+P  Search files", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }))),
                     );
                 }
 

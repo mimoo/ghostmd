@@ -1,10 +1,25 @@
 use chrono::{Local, NaiveDate};
 use std::path::{Path, PathBuf};
 
-/// Returns the default ghostmd root directory: `~/Documents/ghostmd`.
+/// Returns the default ghostmd root directory.
+/// On macOS: `~/Documents/ghostmd`
+/// On Linux: `$XDG_DATA_HOME/ghostmd` (defaults to `~/.local/share/ghostmd`)
 pub fn ghostmd_root() -> PathBuf {
     let home = std::env::var("HOME").expect("HOME environment variable not set");
-    PathBuf::from(home).join("Documents").join("ghostmd")
+
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from(home).join("Documents").join("ghostmd")
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+            PathBuf::from(xdg).join("ghostmd")
+        } else {
+            PathBuf::from(home).join(".local").join("share").join("ghostmd")
+        }
+    }
 }
 
 /// Returns the diary directory for a specific date, e.g. `<root>/diary/2024/03/15/`.
@@ -149,10 +164,9 @@ mod tests {
     }
 
     #[test]
-    fn ghostmd_root_is_under_documents() {
+    fn ghostmd_root_ends_with_ghostmd() {
         let root = ghostmd_root();
         let root_str = root.to_string_lossy();
-        assert!(root_str.contains("Documents"));
         assert!(root_str.ends_with("ghostmd"));
     }
 

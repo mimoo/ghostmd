@@ -13,7 +13,7 @@ fn ai_temp_path(prefix: &str) -> std::path::PathBuf {
 }
 
 /// Resolve the full path to the `claude` CLI binary.
-/// macOS .app bundles don't inherit the user's shell PATH, so we check common locations.
+/// App bundles may not inherit the user's shell PATH, so we check common locations.
 fn claude_binary() -> &'static str {
     static RESOLVED: OnceLock<String> = OnceLock::new();
     RESOLVED.get_or_init(|| {
@@ -21,8 +21,13 @@ fn claude_binary() -> &'static str {
         let candidates = [
             home.as_ref().map(|h| h.join(".local/bin/claude")),
             home.as_ref().map(|h| h.join(".claude/local/claude")),
+            home.as_ref().map(|h| h.join(".cargo/bin/claude")),
+            home.as_ref().map(|h| h.join(".npm/bin/claude")),
             Some(std::path::PathBuf::from("/usr/local/bin/claude")),
+            #[cfg(target_os = "macos")]
             Some(std::path::PathBuf::from("/opt/homebrew/bin/claude")),
+            #[cfg(not(target_os = "macos"))]
+            Some(std::path::PathBuf::from("/usr/bin/claude")),
         ];
         for candidate in candidates.into_iter().flatten() {
             if candidate.exists() {

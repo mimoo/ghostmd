@@ -5,21 +5,31 @@ use crate::theme::ThemeName;
 
 use super::*;
 
+/// Returns the platform-specific modifier key name for display in UI hints.
+fn mod_key() -> &'static str {
+    if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }
+}
+
 impl GhostAppView {
     pub(crate) fn palette_commands() -> Vec<PaletteCommand> {
+        let m = mod_key();
         vec![
-            PaletteCommand { label: "New Note".into(), shortcut_hint: Some("Cmd+N".into()), action_id: "new_note".into() },
-            PaletteCommand { label: "New Workspace".into(), shortcut_hint: Some("Cmd+T".into()), action_id: "new_workspace".into() },
-            PaletteCommand { label: "New Window".into(), shortcut_hint: Some("Cmd+Shift+N".into()), action_id: "new_window".into() },
-            PaletteCommand { label: "Save".into(), shortcut_hint: Some("Cmd+S".into()), action_id: "save".into() },
-            PaletteCommand { label: "Close Pane".into(), shortcut_hint: Some("Cmd+W".into()), action_id: "close_pane".into() },
-            PaletteCommand { label: "Restore Workspace".into(), shortcut_hint: Some("Cmd+Shift+T".into()), action_id: "restore_workspace".into() },
-            PaletteCommand { label: "Split Right".into(), shortcut_hint: Some("Cmd+D".into()), action_id: "split_right".into() },
-            PaletteCommand { label: "Split Down".into(), shortcut_hint: Some("Cmd+Shift+D".into()), action_id: "split_down".into() },
-            PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some("Cmd+B".into()), action_id: "toggle_sidebar".into() },
+            PaletteCommand { label: "New Note".into(), shortcut_hint: Some(format!("{m}+N")), action_id: "new_note".into() },
+            PaletteCommand { label: "New Workspace".into(), shortcut_hint: Some(format!("{m}+T")), action_id: "new_workspace".into() },
+            PaletteCommand { label: "New Window".into(), shortcut_hint: Some(format!("{m}+Shift+N")), action_id: "new_window".into() },
+            PaletteCommand { label: "Save".into(), shortcut_hint: Some(format!("{m}+S")), action_id: "save".into() },
+            PaletteCommand { label: "Close Pane".into(), shortcut_hint: Some(format!("{m}+W")), action_id: "close_pane".into() },
+            PaletteCommand { label: "Restore Workspace".into(), shortcut_hint: Some(format!("{m}+Shift+T")), action_id: "restore_workspace".into() },
+            PaletteCommand { label: "Split Right".into(), shortcut_hint: Some(format!("{m}+D")), action_id: "split_right".into() },
+            PaletteCommand { label: "Split Down".into(), shortcut_hint: Some(format!("{m}+Shift+D")), action_id: "split_down".into() },
+            PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some(format!("{m}+B")), action_id: "toggle_sidebar".into() },
             PaletteCommand { label: "Rename File...".into(), shortcut_hint: None, action_id: "rename_file".into() },
             PaletteCommand { label: "Rename Tab...".into(), shortcut_hint: None, action_id: "rename_tab".into() },
-            PaletteCommand { label: "Open in Finder".into(), shortcut_hint: None, action_id: "open_in_finder".into() },
+            PaletteCommand {
+                label: if cfg!(target_os = "macos") { "Open in Finder" } else { "Open in File Manager" }.into(),
+                shortcut_hint: None,
+                action_id: "open_in_finder".into(),
+            },
             PaletteCommand { label: "Collapse All Folders".into(), shortcut_hint: None, action_id: "collapse_all".into() },
             PaletteCommand { label: "Expand All Folders".into(), shortcut_hint: None, action_id: "expand_all".into() },
             PaletteCommand { label: "Theme: Ayu Dark (dark)".into(), shortcut_hint: None, action_id: "theme_ayu_dark".into() },
@@ -47,8 +57,8 @@ impl GhostAppView {
             PaletteCommand { label: "AI: Suggest Folder".into(), shortcut_hint: None, action_id: "ai_suggest_folder".into() },
             PaletteCommand { label: "Share as Gist".into(), shortcut_hint: None, action_id: "share_gist".into() },
             PaletteCommand { label: "Move to Folder...".into(), shortcut_hint: None, action_id: "move_to_folder".into() },
-            PaletteCommand { label: "Delete Current File".into(), shortcut_hint: Some("Cmd+\u{232b}".into()), action_id: "delete_file".into() },
-            PaletteCommand { label: "Quit".into(), shortcut_hint: Some("Cmd+Q".into()), action_id: "quit".into() },
+            PaletteCommand { label: "Delete Current File".into(), shortcut_hint: Some(format!("{m}+\u{232b}")), action_id: "delete_file".into() },
+            PaletteCommand { label: "Quit".into(), shortcut_hint: Some(format!("{m}+Q")), action_id: "quit".into() },
         ]
     }
 
@@ -100,7 +110,13 @@ impl GhostAppView {
             "rename_tab" => self.enter_rename_mode(RenameMode::Tab, window, cx),
             "open_in_finder" => {
                 if let Some(path) = self.focused_active_path() {
-                    std::process::Command::new("open").arg("-R").arg(&path).spawn().ok();
+                    #[cfg(target_os = "macos")]
+                    { std::process::Command::new("open").arg("-R").arg(&path).spawn().ok(); }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        let dir = path.parent().unwrap_or(&path);
+                        std::process::Command::new("xdg-open").arg(dir).spawn().ok();
+                    }
                 }
             }
             "collapse_all" => {

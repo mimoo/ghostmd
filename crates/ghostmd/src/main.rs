@@ -28,6 +28,7 @@ use keybindings::register_keybindings;
 use theme::apply_ghost_theme;
 
 /// Set the macOS dock icon from embedded PNG data.
+#[cfg(target_os = "macos")]
 fn set_dock_icon() {
     let icon_data = include_bytes!("../../../assets/icon.png");
     unsafe {
@@ -52,17 +53,26 @@ fn set_dock_icon() {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn set_dock_icon() {}
+
 fn open_main_window(root: std::path::PathBuf, cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(1200.), px(800.)), cx);
+
+    #[cfg(target_os = "macos")]
+    let titlebar = Some(TitlebarOptions {
+        appears_transparent: true,
+        traffic_light_position: Some(point(px(9.0), px(9.0))),
+        ..Default::default()
+    });
+    #[cfg(not(target_os = "macos"))]
+    let titlebar = None;
+
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             focus: true,
-            titlebar: Some(TitlebarOptions {
-                appears_transparent: true,
-                traffic_light_position: Some(point(px(9.0), px(9.0))),
-                ..Default::default()
-            }),
+            titlebar,
             ..Default::default()
         },
         |window, cx| {

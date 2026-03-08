@@ -975,10 +975,10 @@ impl Render for GhostAppView {
                                             .gap(px(12.0))
                                             .bg(t.sidebar_bg)
                                             .child(div().text_lg().text_color(t.fg).child(format!("ghostmd (v{})", env!("CARGO_PKG_VERSION"))))
-                                            .child(div().text_sm().text_color(t.hint).child("Cmd+N  Create a new note"))
-                                            .child(div().text_sm().text_color(t.hint).child("Cmd+P  Search files"))
-                                            .child(div().text_sm().text_color(t.hint).child("Cmd+T  New workspace"))
-                                            .child(div().text_sm().text_color(t.hint).child("Cmd+Shift+T  Restore last workspace"))
+                                            .child(div().text_sm().text_color(t.hint).child(format!("{}+N  Create a new note", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })))
+                                            .child(div().text_sm().text_color(t.hint).child(format!("{}+P  Search files", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })))
+                                            .child(div().text_sm().text_color(t.hint).child(format!("{}+T  New workspace", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })))
+                                            .child(div().text_sm().text_color(t.hint).child(format!("{}+Shift+T  Restore last workspace", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })))
                                             .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
                                             .when(show_palette, |d| d.child(self.render_command_palette(cx))),
                                     ),

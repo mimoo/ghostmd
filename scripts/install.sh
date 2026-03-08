@@ -2,22 +2,33 @@
 set -euo pipefail
 
 REPO="mimoo/ghostmd"
-INSTALL_DIR="/Applications"
-APP_NAME="GhostMD.app"
 STATE_DIR="$HOME/.ghostmd"
 
 info() { printf "\033[0;34m%s\033[0m\n" "$1"; }
 success() { printf "\033[0;32m%s\033[0m\n" "$1"; }
 error() { printf "\033[0;31m%s\033[0m\n" "$1" >&2; exit 1; }
 
-# macOS only
-[ "$(uname -s)" = "Darwin" ] || error "ghostmd is macOS only."
+OS="$(uname -s)"
+ARCH="$(uname -m)"
 
-# detect architecture
-case "$(uname -m)" in
-  arm64)  TARGET="aarch64-apple-darwin" ;;
-  x86_64) TARGET="x86_64-apple-darwin" ;;
-  *)      error "Unsupported architecture: $(uname -m)" ;;
+case "$OS" in
+  Darwin)
+    case "$ARCH" in
+      arm64)  TARGET="aarch64-apple-darwin" ;;
+      x86_64) TARGET="x86_64-apple-darwin" ;;
+      *)      error "Unsupported architecture: $ARCH" ;;
+    esac
+    ;;
+  Linux)
+    case "$ARCH" in
+      x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
+      aarch64) TARGET="aarch64-unknown-linux-gnu" ;;
+      *)       error "Unsupported architecture: $ARCH" ;;
+    esac
+    ;;
+  *)
+    error "Unsupported OS: $OS"
+    ;;
 esac
 
 info "Detected: $TARGET"
@@ -38,10 +49,6 @@ info "Latest release: $TAG"
 # check if already up to date
 mkdir -p "$STATE_DIR"
 CURRENT=$(cat "$STATE_DIR/version" 2>/dev/null || echo "")
-if [ "$CURRENT" = "$TAG" ] && [ -d "$INSTALL_DIR/$APP_NAME" ]; then
-  success "Already up to date ($TAG)."
-  exit 0
-fi
 
 # download tarball
 TARBALL="GhostMD-${TARGET}.tar.gz"
@@ -56,35 +63,37 @@ curl -fSL --progress-bar -o "$TMPDIR/$TARBALL" "$URL"
 info "Extracting..."
 tar -xzf "$TMPDIR/$TARBALL" -C "$TMPDIR"
 
-# remove old version if present
-if [ -d "$INSTALL_DIR/$APP_NAME" ]; then
-  info "Removing previous installation..."
-  rm -rf "$INSTALL_DIR/$APP_NAME"
-fi
+if [ "$OS" = "Darwin" ]; then
+  # --- macOS: install .app bundle ---
+  INSTALL_DIR="/Applications"
+  APP_NAME="GhostMD.app"
 
-# install app
-info "Installing to $INSTALL_DIR/$APP_NAME..."
-mv "$TMPDIR/$APP_NAME" "$INSTALL_DIR/"
+  if [ "$CURRENT" = "$TAG" ] && [ -d "$INSTALL_DIR/$APP_NAME" ]; then
+    success "Already up to date ($TAG)."
+    exit 0
+  fi
 
-# save installed version
-echo "$TAG" > "$STATE_DIR/version"
-rm -f "$STATE_DIR/latest_available"
+  if [ -d "$INSTALL_DIR/$APP_NAME" ]; then
+    info "Removing previous installation..."
+    rm -rf "$INSTALL_DIR/$APP_NAME"
+  fi
 
-# create CLI command
-read -r -d '' CLI_SCRIPT << 'CLI' || true
+  info "Installing to $INSTALL_DIR/$APP_NAME..."
+  mv "$TMPDIR/$APP_NAME" "$INSTALL_DIR/"
+
+  # create CLI command
+  read -r -d '' CLI_SCRIPT << 'CLI' || true
 #!/bin/bash
 REPO="mimoo/ghostmd"
 STATE_DIR="$HOME/.ghostmd"
 
 check_update() {
-  # only check once a day
   if [ -f "$STATE_DIR/last_check" ]; then
     last=$(cat "$STATE_DIR/last_check")
     now=$(date +%s)
     [ $((now - last)) -lt 86400 ] && show_update_msg && return
   fi
 
-  # run check in background so launch isn't delayed
   (
     mkdir -p "$STATE_DIR"
     date +%s > "$STATE_DIR/last_check"
@@ -123,34 +132,57 @@ case "${1:-}" in
 esac
 CLI
 
-install_cli() {
-  local bin_dir="$1"
-  local use_sudo="${2:-false}"
+  install_cli() {
+    local bin_dir="$1"
+    local use_sudo="${2:-false}"
 
-  if [ "$use_sudo" = "true" ]; then
-    sudo mkdir -p "$bin_dir"
-    echo "$CLI_SCRIPT" | sudo tee "$bin_dir/ghostmd" >/dev/null
-    sudo chmod +x "$bin_dir/ghostmd"
+    if [ "$use_sudo" = "true" ]; then
+      sudo mkdir -p "$bin_dir"
+      echo "$CLI_SCRIPT" | sudo tee "$bin_dir/ghostmd" >/dev/null
+      sudo chmod +x "$bin_dir/ghostmd"
+    else
+      mkdir -p "$bin_dir"
+      echo "$CLI_SCRIPT" > "$bin_dir/ghostmd"
+      chmod +x "$bin_dir/ghostmd"
+    fi
+    success "Installed CLI: $bin_dir/ghostmd"
+  }
+
+  if [ -w /usr/local/bin ] || [ -w /usr/local ]; then
+    install_cli "/usr/local/bin"
+  elif sudo -n true 2>/dev/null || [ -t 0 ]; then
+    info "Creating CLI command (requires sudo)..."
+    install_cli "/usr/local/bin" true
   else
-    mkdir -p "$bin_dir"
-    echo "$CLI_SCRIPT" > "$bin_dir/ghostmd"
-    chmod +x "$bin_dir/ghostmd"
+    BIN_DIR="$HOME/.local/bin"
+    install_cli "$BIN_DIR"
+    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
+      info "Add $BIN_DIR to your PATH to use the 'ghostmd' command."
+    fi
   fi
-  success "Installed CLI: $bin_dir/ghostmd"
-}
 
-if [ -w /usr/local/bin ] || [ -w /usr/local ]; then
-  install_cli "/usr/local/bin"
-elif sudo -n true 2>/dev/null || [ -t 0 ]; then
-  info "Creating CLI command (requires sudo)..."
-  install_cli "/usr/local/bin" true
 else
+  # --- Linux: install plain binary ---
   BIN_DIR="$HOME/.local/bin"
-  install_cli "$BIN_DIR"
+
+  if [ "$CURRENT" = "$TAG" ] && command -v ghostmd &>/dev/null; then
+    success "Already up to date ($TAG)."
+    exit 0
+  fi
+
+  mkdir -p "$BIN_DIR"
+  cp "$TMPDIR/ghostmd-${TARGET}/ghostmd" "$BIN_DIR/ghostmd"
+  chmod +x "$BIN_DIR/ghostmd"
+  info "Installed binary to $BIN_DIR/ghostmd"
+
   if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
-    info "Add $BIN_DIR to your PATH to use the 'ghostmd' command."
+    info "Add $BIN_DIR to your PATH: export PATH=\"$BIN_DIR:\$PATH\""
   fi
 fi
 
+# save installed version
+echo "$TAG" > "$STATE_DIR/version"
+rm -f "$STATE_DIR/latest_available"
+
 echo ""
-success "ghostmd installed ($TAG)! Run 'ghostmd' or open from Applications."
+success "ghostmd installed ($TAG)!"

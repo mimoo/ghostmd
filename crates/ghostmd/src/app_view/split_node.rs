@@ -40,9 +40,10 @@ pub(crate) fn random_note_name() -> String {
         "summit", "thorn", "tide", "timber", "tower", "trail", "vale", "vine",
         "wave", "weald", "wheat", "wind", "wing", "wren", "yarrow",
     ];
-    // SAFETY: arc4random is always available on macOS, returns a uniform u32
-    let r1 = unsafe { libc::arc4random() } as usize;
-    let r2 = unsafe { libc::arc4random() } as usize;
+    let mut buf = [0u8; 16];
+    getrandom::fill(&mut buf).expect("getrandom failed");
+    let r1 = usize::from_ne_bytes(buf[..8].try_into().unwrap());
+    let r2 = usize::from_ne_bytes(buf[8..].try_into().unwrap());
     let adj = ADJECTIVES[r1 % ADJECTIVES.len()];
     let noun = NOUNS[r2 % NOUNS.len()];
     format!("{}-{}", adj, noun)
