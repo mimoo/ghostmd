@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 use gpui::*;
 
@@ -9,6 +10,38 @@ static AI_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 fn ai_temp_path(prefix: &str) -> std::path::PathBuf {
     let id = AI_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("ghostmd-{}-{}-{}.json", prefix, std::process::id(), id))
+}
+
+/// Resolve the full path to the `claude` CLI binary.
+/// macOS .app bundles don't inherit the user's shell PATH, so we check common locations.
+fn claude_binary() -> &'static str {
+    static RESOLVED: OnceLock<String> = OnceLock::new();
+    RESOLVED.get_or_init(|| {
+        // Try the user's shell to resolve PATH
+        if let Ok(output) = std::process::Command::new("/bin/zsh")
+            .args(["-l", "-c", "which claude"])
+            .output()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && std::path::Path::new(&path).exists() {
+                return path;
+            }
+        }
+        // Fallback: check common install locations
+        let home = std::env::var("HOME").ok().map(std::path::PathBuf::from);
+        let candidates = [
+            home.as_ref().map(|h| h.join(".local/bin/claude")),
+            home.as_ref().map(|h| h.join(".claude/local/claude")),
+            Some(std::path::PathBuf::from("/usr/local/bin/claude")),
+            Some(std::path::PathBuf::from("/opt/homebrew/bin/claude")),
+        ];
+        for candidate in candidates.into_iter().flatten() {
+            if candidate.exists() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+        "claude".to_string()
+    })
 }
 
 impl GhostAppView {
@@ -45,7 +78,7 @@ impl GhostAppView {
                     snippets.join("\n---\n"),
                     op.display()
                 );
-                let status = std::process::Command::new("claude")
+                let status = std::process::Command::new(claude_binary())
                     .arg("-p")
                     .arg("--model").arg("sonnet")
                     .arg("--allowedTools").arg("Write")
@@ -114,7 +147,7 @@ impl GhostAppView {
                     op.display(),
                     count
                 );
-                let status = std::process::Command::new("claude")
+                let status = std::process::Command::new(claude_binary())
                     .arg("-p")
                     .arg("--model").arg("sonnet")
                     .arg("--allowedTools").arg("Write")
@@ -186,7 +219,7 @@ impl GhostAppView {
                     content,
                     op.display()
                 );
-                let status = std::process::Command::new("claude")
+                let status = std::process::Command::new(claude_binary())
                     .arg("-p")
                     .arg("--model").arg("sonnet")
                     .arg("--allowedTools").arg("Write")
@@ -291,7 +324,7 @@ impl GhostAppView {
                     content,
                     if folders.is_empty() { "(none)".to_string() } else { folders.join(", ") }
                 );
-                std::process::Command::new("claude")
+                std::process::Command::new(claude_binary())
                     .arg("-p")
                     .arg("--model").arg("haiku").arg("--effort").arg("low")
                     .arg(&prompt)
@@ -353,7 +386,7 @@ impl GhostAppView {
                      Be concise. List relevant file paths and quotes.",
                     root.display(), query
                 );
-                std::process::Command::new("claude")
+                std::process::Command::new(claude_binary())
                     .arg("-p")
                     .arg(&prompt)
                     .current_dir(&root)
