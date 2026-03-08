@@ -9,7 +9,6 @@ use super::*;
 impl GhostAppView {
     pub(crate) fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
-        let soft_border = hsla(t.border.h, t.border.s, t.border.l, 0.4);
 
         let mut tabs = div()
             .w_full()
@@ -17,11 +16,9 @@ impl GhostAppView {
             .flex()
             .flex_row()
             .items_center()
-            .px(px(4.0))
-            .gap(px(2.0))
             .bg(t.bg)
             .border_b_1()
-            .border_color(soft_border)
+            .border_color(t.border)
             .overflow_x_hidden();
 
         for (i, ws) in self.workspaces.iter().enumerate() {
@@ -44,24 +41,22 @@ impl GhostAppView {
                 ws.title.clone()
             };
 
-            let active_pill_bg = hsla(t.accent.h, t.accent.s, t.accent.l, 0.15);
-            let hover_bg = hsla(t.selection.h, t.selection.s, t.selection.l, 0.5);
+            let tab_bg = if is_active { t.tab_active } else { t.tab_inactive };
 
             let ws_idx = i;
             let close_idx = i;
-            let tab_div = div()
+            let mut tab_div = div()
                 .id(ElementId::NamedInteger("ws-tab".into(), i as u64))
                 .group(SharedString::from(format!("tab-{}", i)))
-                .px(px(10.0))
-                .py(px(4.0))
+                .px(px(12.0))
+                .py(px(6.0))
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
                 .text_sm()
-                .rounded(px(6.0))
-                .when(is_active, |d| d.bg(active_pill_bg).text_color(t.accent))
-                .when(!is_active, |d| d.text_color(t.hint).hover(move |s| s.bg(hover_bg).text_color(t.fg)))
+                .bg(tab_bg)
+                .text_color(t.fg)
                 .cursor_pointer()
                 .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                     this.switch_workspace(ws_idx, window, cx);
@@ -81,21 +76,22 @@ impl GhostAppView {
                         .child("\u{00d7}"),
                 );
 
+            if is_active {
+                tab_div = tab_div.border_b_2().border_color(t.accent);
+            }
+
             tabs = tabs.child(tab_div);
         }
 
         // "+" button for new workspace
-        let plus_hover_bg = hsla(t.selection.h, t.selection.s, t.selection.l, 0.5);
         tabs = tabs.child(
             div()
                 .id("new-workspace-btn")
                 .px(px(8.0))
-                .py(px(4.0))
+                .py(px(6.0))
                 .text_sm()
                 .text_color(t.hint)
-                .rounded(px(6.0))
                 .cursor_pointer()
-                .hover(move |s| s.bg(plus_hover_bg))
                 .on_click(cx.listener(|this: &mut Self, _event, window, cx| {
                     this.new_workspace_tab(window, cx);
                 }))
@@ -139,9 +135,9 @@ impl GhostAppView {
 
                 if multi_pane {
                     if is_focused {
-                        pane_div = pane_div.border_l_2().border_color(t.accent);
+                        pane_div = pane_div.border_2().border_color(t.accent);
                     } else {
-                        pane_div = pane_div.border_l_2().border_color(hsla(0., 0., 0., 0.)).opacity(0.85);
+                        pane_div = pane_div.border_2().border_color(hsla(0., 0., 0., 0.)).opacity(0.85);
                     }
                 }
 
@@ -194,16 +190,13 @@ impl GhostAppView {
                         .child(div().text_color(t.pane_title_fg).child(dir_part))
                         .child(div().text_color(t.fg).child(file_part));
 
-                    let soft_title_border = hsla(t.border.h, t.border.s, t.border.l, 0.25);
                     let title_bar = div()
                         .w_full()
                         .h(px(24.0))
                         .flex()
                         .items_center()
-                        .px(px(12.0))
+                        .px(px(8.0))
                         .bg(t.pane_title_bg)
-                        .border_b_1()
-                        .border_color(soft_title_border)
                         .text_xs()
                         .child(title_row);
 
