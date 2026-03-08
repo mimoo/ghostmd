@@ -132,6 +132,35 @@ impl EditorView {
         }
     }
 
+    /// Switch this editor to a different file, reusing the existing InputState
+    /// (preserves layout metrics so soft wrap doesn't flicker).
+    pub fn load_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        // Save current file first
+        self.save(cx).ok();
+
+        self.path = path.clone();
+        self.dirty = false;
+        self.needs_reload = false;
+        self.last_edit = None;
+        self.last_save = None;
+        self.pending_scroll = None;
+        self.highlight_start = None;
+
+        // Load new content, suppressing the Change event
+        self.skip_next_change = true;
+        let content = if path.exists() {
+            Note::load(&path)
+                .ok()
+                .map(|(_, c)| c)
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        self.input_state.update(cx, |state, cx| {
+            state.set_value(content, window, cx);
+        });
+    }
+
     /// Save the current content to disk.
     pub fn save(&mut self, cx: &App) -> anyhow::Result<()> {
         let text = self.input_state.read(cx).value().to_string();

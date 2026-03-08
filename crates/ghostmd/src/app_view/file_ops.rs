@@ -65,11 +65,25 @@ impl GhostAppView {
         };
 
         if !already_open {
-            let p = path.clone();
-            let editor = cx.new(|cx| crate::editor_view::EditorView::new(p, window, cx));
+            // Reuse existing editor entity if the pane has one (preserves layout metrics
+            // so soft wrap doesn't flicker). Only create a new entity for empty panes.
+            let existing_editor = {
+                let ws = &self.workspaces[self.active_workspace];
+                ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+            };
+            if let Some(editor) = existing_editor {
+                let p = path.clone();
+                editor.update(cx, |e, cx| { e.load_file(p, window, cx); });
+            } else {
+                let p = path.clone();
+                let editor = cx.new(|cx| crate::editor_view::EditorView::new(p, window, cx));
+                let ws = self.active_ws_mut();
+                if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
+                    pane.editor = Some(editor);
+                }
+            }
             let ws = self.active_ws_mut();
             if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
-                pane.editor = Some(editor);
                 pane.active_path = Some(path.clone());
             }
         }
