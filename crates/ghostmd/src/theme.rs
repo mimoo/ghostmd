@@ -28,6 +28,11 @@ pub enum ThemeName {
     CatppuccinLatte,
     RosePineDawn,
     GithubLight,
+    AyuLight,
+    GruvboxLight,
+    EverforestLight,
+    NordLight,
+    TokyoNightDay,
 }
 
 /// The GhostMD color theme.
@@ -75,6 +80,11 @@ impl GhostTheme {
             ThemeName::CatppuccinLatte => Self::catppuccin_latte(),
             ThemeName::RosePineDawn => Self::rose_pine_dawn(),
             ThemeName::GithubLight => Self::github_light(),
+            ThemeName::AyuLight => Self::ayu_light(),
+            ThemeName::GruvboxLight => Self::gruvbox_light(),
+            ThemeName::EverforestLight => Self::everforest_light(),
+            ThemeName::NordLight => Self::nord_light(),
+            ThemeName::TokyoNightDay => Self::tokyo_night_day(),
         }
     }
 
@@ -419,6 +429,96 @@ impl GhostTheme {
             pane_title_fg: (0x8b, 0x94, 0x9e),
         }
     }
+
+    fn ayu_light() -> Self {
+        GhostTheme {
+            bg: (0xfc, 0xfc, 0xf0),         // #FCFCF0
+            fg: (0x5c, 0x61, 0x66),         // #5C6166
+            selection: (0xd1, 0xdc, 0xe4),
+            cursor: (0xff, 0x9d, 0x33),     // #FF9D33 accent
+            line_number: (0x8a, 0x91, 0x99), // #8A9199
+            sidebar_bg: (0xf3, 0xf3, 0xe4),
+            tab_active: (0xe8, 0xe8, 0xd8),
+            tab_inactive: (0xfc, 0xfc, 0xf0),
+            accent: (0xff, 0x9d, 0x33),     // orange
+            error: (0xf0, 0x71, 0x71),      // #F07171
+            border: (0xd8, 0xda, 0xcd),
+            pane_title_bg: (0xf0, 0xf0, 0xe2),
+            pane_title_fg: (0x8a, 0x91, 0x99),
+        }
+    }
+
+    fn gruvbox_light() -> Self {
+        GhostTheme {
+            bg: (0xfb, 0xf1, 0xc7),         // #FBF1C7 bg0
+            fg: (0x3c, 0x38, 0x36),         // #3C3836 fg1
+            selection: (0xd5, 0xc4, 0xa1),   // #D5C4A1 bg2
+            cursor: (0xd6, 0x5d, 0x0e),     // #D65D0E orange
+            line_number: (0x92, 0x83, 0x74), // #928374 gray
+            sidebar_bg: (0xf2, 0xe5, 0xbc),  // #F2E5BC bg1
+            tab_active: (0xe2, 0xd5, 0xae),
+            tab_inactive: (0xfb, 0xf1, 0xc7),
+            accent: (0xb5, 0x76, 0x14),     // #B57614 yellow
+            error: (0xcc, 0x24, 0x1d),      // #CC241D red
+            border: (0xd5, 0xc4, 0xa1),
+            pane_title_bg: (0xeb, 0xdb, 0xb2),
+            pane_title_fg: (0x92, 0x83, 0x74),
+        }
+    }
+
+    fn everforest_light() -> Self {
+        GhostTheme {
+            bg: (0xfe, 0xf6, 0xe4),         // slightly shifted from Solarized Light's #FDF6E3
+            fg: (0x5c, 0x6a, 0x72),         // #5C6A72 fg
+            selection: (0xe0, 0xda, 0xc6),   // #E0DAC6 bg3
+            cursor: (0x8d, 0xa1, 0x01),     // #8DA101 green
+            line_number: (0x93, 0x9f, 0x91), // #939F91 grey0
+            sidebar_bg: (0xf4, 0xf0, 0xd9),  // #F4F0D9 bg1
+            tab_active: (0xe6, 0xe2, 0xcc),
+            tab_inactive: (0xfd, 0xf6, 0xe3),
+            accent: (0x35, 0xa7, 0x7c),     // #35A77C aqua
+            error: (0xf8, 0x55, 0x52),      // #F85552 red
+            border: (0xdd, 0xd8, 0xc4),
+            pane_title_bg: (0xef, 0xea, 0xd5),
+            pane_title_fg: (0x93, 0x9f, 0x91),
+        }
+    }
+
+    fn nord_light() -> Self {
+        GhostTheme {
+            bg: (0xec, 0xef, 0xf4),         // #ECEFF4 snow storm 3
+            fg: (0x2e, 0x34, 0x40),         // #2E3440 polar night 0
+            selection: (0xd0, 0xd6, 0xe1),
+            cursor: (0x5e, 0x81, 0xac),     // #5E81AC frost 3
+            line_number: (0x7b, 0x88, 0x9e),
+            sidebar_bg: (0xe5, 0xe9, 0xf0),  // #E5E9F0 snow storm 2
+            tab_active: (0xd8, 0xde, 0xe9),  // #D8DEE9 snow storm 1
+            tab_inactive: (0xec, 0xef, 0xf4),
+            accent: (0x5e, 0x81, 0xac),     // #5E81AC frost
+            error: (0xbf, 0x61, 0x6a),      // #BF616A aurora red
+            border: (0xd8, 0xde, 0xe9),
+            pane_title_bg: (0xe0, 0xe5, 0xed),
+            pane_title_fg: (0x7b, 0x88, 0x9e),
+        }
+    }
+
+    fn tokyo_night_day() -> Self {
+        GhostTheme {
+            bg: (0xe1, 0xe2, 0xe7),         // #E1E2E7 bg
+            fg: (0x34, 0x37, 0x64),         // #343764 fg
+            selection: (0xc4, 0xc8, 0xda),   // #C4C8DA bg_visual
+            cursor: (0x2e, 0x7d, 0xe9),     // #2E7DE9 blue
+            line_number: (0x84, 0x8c, 0xb5), // #848CB5 dark3
+            sidebar_bg: (0xd5, 0xd6, 0xdb),  // #D5D6DB bg_sidebar
+            tab_active: (0xc9, 0xcc, 0xd7),
+            tab_inactive: (0xe1, 0xe2, 0xe7),
+            accent: (0x2e, 0x7d, 0xe9),     // blue
+            error: (0xf5, 0x2a, 0x65),      // #F52A65 red
+            border: (0xc4, 0xc8, 0xda),
+            pane_title_bg: (0xd5, 0xd8, 0xe2),
+            pane_title_fg: (0x84, 0x8c, 0xb5),
+        }
+    }
 }
 
 /// Convert an RGB tuple to GPUI's Hsla color space.
@@ -546,7 +646,7 @@ pub fn apply_ghost_theme(cx: &mut gpui::App) {
 /// Switch to a named theme at runtime.
 pub fn apply_theme(name: ThemeName, cx: &mut gpui::App) {
     let ghost = GhostTheme::from_name(name);
-    let mode = if matches!(name, ThemeName::Light | ThemeName::SolarizedLight | ThemeName::CatppuccinLatte | ThemeName::RosePineDawn | ThemeName::GithubLight) { ThemeMode::Light } else { ThemeMode::Dark };
+    let mode = if matches!(name, ThemeName::Light | ThemeName::SolarizedLight | ThemeName::CatppuccinLatte | ThemeName::RosePineDawn | ThemeName::GithubLight | ThemeName::AyuLight | ThemeName::GruvboxLight | ThemeName::EverforestLight | ThemeName::NordLight | ThemeName::TokyoNightDay) { ThemeMode::Light } else { ThemeMode::Dark };
     Theme::change(mode, None, cx);
     let theme = Theme::global_mut(cx);
     apply_theme_colors(&ghost, theme);
@@ -593,6 +693,9 @@ mod tests {
             ThemeName::AyuDark, ThemeName::Palenight, ThemeName::Vesper,
             ThemeName::SolarizedLight, ThemeName::CatppuccinLatte,
             ThemeName::RosePineDawn, ThemeName::GithubLight,
+            ThemeName::AyuLight, ThemeName::GruvboxLight,
+            ThemeName::EverforestLight, ThemeName::NordLight,
+            ThemeName::TokyoNightDay,
         ].iter().map(|n| GhostTheme::from_name(*n).bg).collect();
         for i in 0..themes.len() {
             for j in (i+1)..themes.len() {
