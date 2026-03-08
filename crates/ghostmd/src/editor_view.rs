@@ -71,6 +71,10 @@ pub struct EditorView {
     pub last_edit: Option<Instant>,
     /// Tracks when we last wrote to disk, so the file watcher can ignore our own saves.
     pub last_save: Option<Instant>,
+    /// Deferred scroll: line (1-based) + remaining retry attempts.
+    pending_scroll: Option<(usize, u8)>,
+    /// Flash highlight: start time for a brief border flash after navigating from search.
+    pub highlight_start: Option<Instant>,
 }
 
 impl EditorView {
@@ -122,6 +126,8 @@ impl EditorView {
             focus_handle,
             last_edit: None,
             last_save: None,
+            pending_scroll: None,
+            highlight_start: None,
         }
     }
 
@@ -160,7 +166,10 @@ impl EditorView {
     }
 
     /// Scroll to a specific line (1-based) and place the cursor there.
-    pub fn scroll_to_line(&self, line: usize, window: &mut Window, cx: &mut Context<Self>) {
+    /// Retries on subsequent renders to ensure the viewport actually scrolls
+    /// (InputState's scroll_to is a no-op until layout has been computed).
+    pub fn scroll_to_line(&mut self, line: usize, window: &mut Window, cx: &mut Context<Self>) {
+        // Apply immediately (cursor offset is set even if scroll doesn't work yet)
         let line_0 = if line > 0 { line - 1 } else { 0 } as u32;
         self.input_state.update(cx, |state, cx| {
             state.set_cursor_position(
@@ -169,6 +178,31 @@ impl EditorView {
                 cx,
             );
         });
+        // Schedule retries to ensure scroll works after layout
+        self.pending_scroll = Some((line, 3));
+    }
+
+    /// Re-apply a pending scroll. Called from render when layout is available.
+    fn retry_scroll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (line, retries) = match self.pending_scroll {
+            Some((l, r)) if r > 0 => (l, r),
+            _ => { self.pending_scroll = None; return; }
+        };
+        let line_0 = if line > 0 { line - 1 } else { 0 } as u32;
+        self.input_state.update(cx, |state, cx| {
+            state.set_cursor_position(
+                lsp_types::Position { line: line_0, character: 0 },
+                window,
+                cx,
+            );
+        });
+        self.pending_scroll = Some((line, retries - 1));
+    }
+
+    /// Scroll to a line and briefly flash the editor to indicate the match location.
+    pub fn highlight_line(&mut self, line: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.scroll_to_line(line, window, cx);
+        self.highlight_start = Some(Instant::now());
     }
 }
 
@@ -189,12 +223,45 @@ impl Render for EditorView {
                 });
             }
         }
-        div()
+        // Retry deferred scroll (layout may now be available)
+        if self.pending_scroll.is_some() {
+            self.retry_scroll(window, cx);
+        }
+
+        // Compute highlight flash opacity (fades from 0.15 to 0 over 1.5s)
+        let highlight_opacity = if let Some(start) = self.highlight_start {
+            let elapsed = start.elapsed().as_secs_f32();
+            let duration = 1.5_f32;
+            if elapsed >= duration {
+                self.highlight_start = None;
+                0.0
+            } else {
+                // Schedule repaint for smooth fade
+                cx.spawn(async |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(30)).await;
+                    this.update(cx, |_this, cx| cx.notify()).ok();
+                }).detach();
+                0.15 * (1.0 - elapsed / duration)
+            }
+        } else {
+            0.0
+        };
+
+        let mut container = div()
             .w_full()
             .flex_1()
             .min_h(px(0.0))
             .overflow_hidden()
-            .track_focus(&self.focus_handle)
+            .track_focus(&self.focus_handle);
+
+        if highlight_opacity > 0.0 {
+            container = container
+                .border_2()
+                .border_color(hsla(210.0 / 360.0, 0.8, 0.6, highlight_opacity))
+                .rounded(px(4.0));
+        }
+
+        container
             .capture_any_mouse_down(|event: &MouseDownEvent, _window, cx| {
                 if event.button == MouseButton::Right {
                     cx.stop_propagation();

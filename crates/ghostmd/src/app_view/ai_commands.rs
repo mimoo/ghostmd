@@ -363,12 +363,23 @@ impl GhostAppView {
         if query.is_empty() {
             return;
         }
+
+        // Check cache first
+        if let Some(cached) = self.agentic_cache.iter().find(|(q, _)| q == &query) {
+            self.agentic_results = cached.1.clone();
+            self.agentic_selected = 0;
+            self.agentic_loading = false;
+            cx.notify();
+            return;
+        }
+
         self.agentic_loading = true;
         self.agentic_results.clear();
         self.agentic_selected = 0;
         cx.notify();
 
         let root = self.root.clone();
+        let query_for_cache = query.clone();
         let output_path = ai_temp_path("search");
         let output_path2 = output_path.clone();
 
@@ -437,6 +448,13 @@ impl GhostAppView {
             std::fs::remove_file(&output_path2).ok();
 
             this.update(cx, |this, cx| {
+                // Cache the results (keep last 10 searches)
+                if !matches.is_empty() {
+                    if this.agentic_cache.len() >= 10 {
+                        this.agentic_cache.remove(0);
+                    }
+                    this.agentic_cache.push((query_for_cache, matches.clone()));
+                }
                 this.agentic_results = matches;
                 this.agentic_selected = 0;
                 this.agentic_loading = false;
@@ -467,7 +485,7 @@ impl GhostAppView {
         cx.notify();
     }
 
-    /// Open a file from an agentic search result and scroll to the matched line.
+    /// Open a file from an agentic search result, scroll to the matched line, and highlight it.
     pub(crate) fn open_agentic_result(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
         let m = match self.agentic_results.get(idx) {
             Some(m) if !m.file.is_empty() => m.clone(),
@@ -479,12 +497,12 @@ impl GhostAppView {
         if !path.exists() { return; }
         self.open_file(path, window, cx);
 
-        // Scroll to the matched line after the editor is set up
+        // Scroll to the matched line and highlight it
         if m.line > 0 {
             let ws = self.active_ws();
             if let Some(editor) = ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone()) {
                 editor.update(cx, |e, cx| {
-                    e.scroll_to_line(m.line, window, cx);
+                    e.highlight_line(m.line, window, cx);
                 });
             }
         }

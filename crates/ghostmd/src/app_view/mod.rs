@@ -121,6 +121,7 @@ pub struct GhostAppView {
     pub(crate) agentic_loading: bool,
     pub(crate) agentic_selected: usize,
     pub(crate) agentic_scroll: ScrollHandle,
+    pub(crate) agentic_cache: Vec<(String, Vec<AgenticMatch>)>,
     // Folder move mode (file finder shows folders instead of files)
     pub(crate) folder_move_source: Option<PathBuf>,
     // Location picker (shown when creating a new note with a folder selected)
@@ -402,6 +403,7 @@ impl GhostAppView {
             agentic_loading: false,
             agentic_selected: 0,
             agentic_scroll: ScrollHandle::new(),
+            agentic_cache: Vec::new(),
             folder_move_source: None,
             location_picker_options: Vec::new(),
             location_picker_selected: 0,
