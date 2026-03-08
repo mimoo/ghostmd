@@ -566,7 +566,9 @@ pub struct ResolvedTheme {
     pub cursor: Hsla,
     pub hint: Hsla,
     pub sidebar_bg: Hsla,
+    #[allow(dead_code)]
     pub tab_active: Hsla,
+    #[allow(dead_code)]
     pub tab_inactive: Hsla,
     pub accent: Hsla,
     pub error: Hsla,

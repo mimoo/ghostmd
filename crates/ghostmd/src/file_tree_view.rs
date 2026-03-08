@@ -490,10 +490,11 @@ impl Render for FileTreeView {
 
         let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
         let drop_bg = hsla(accent.h, accent.s, accent.l, 0.15);
+        let hover_bg = hsla(selection_bg.h, selection_bg.s, selection_bg.l, 0.5);
         let mut list = div()
             .id("file-tree-list")
             .flex_1()
-            .pl(px(4.0))
+            .py(px(4.0))
             .overflow_y_scroll()
             .track_scroll(&self.scroll_handle)
             .on_mouse_down(MouseButton::Right, cx.listener(move |_this: &mut Self, event: &MouseDownEvent, _window, cx| {
@@ -523,18 +524,25 @@ impl Render for FileTreeView {
                     div()
                         .w_full()
                         .h(px(1.0))
-                        .my(px(4.0))
-                        .mx(px(8.0))
-                        .bg(border_color),
+                        .my(px(6.0))
+                        .mx(px(12.0))
+                        .bg(hsla(border_color.h, border_color.s, border_color.l, 0.4)),
                 );
             }
 
             let row_bg = if is_selected { selection_bg } else { sidebar_bg };
 
             let chevron_label = if is_dir {
-                if is_expanded { "\u{25bc}" } else { "\u{25b6}" }
+                if is_expanded { "\u{25be}" } else { "\u{25b8}" }
             } else {
                 ""
+            };
+
+            // File/folder icons
+            let icon_label = if is_dir {
+                if is_expanded { "\u{1f4c2}" } else { "\u{1f4c1}" }
+            } else {
+                "\u{1f4c4}"
             };
 
             let drag_name = name.clone();
@@ -575,11 +583,13 @@ impl Render for FileTreeView {
 
             let row = div()
                 .id(ElementId::NamedInteger("tree-row".into(), i as u64))
-                .w_full()
+                .mx(px(4.0))
                 .flex()
                 .flex_row()
                 .items_center()
+                .rounded(px(6.0))
                 .bg(row_bg)
+                .when(!is_selected, |d| d.hover(move |s| s.bg(hover_bg)))
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
                     // If right-clicked item is not in selection, select only it
                     if !this.selected_paths.contains(&right_click_path) {
@@ -601,6 +611,7 @@ impl Render for FileTreeView {
                         .w(px(indent + 20.0))
                         .pl(px(indent + 4.0))
                         .text_color(hint_fg)
+                        .text_xs()
                         .flex_shrink_0()
                         .when(is_dir, |d| {
                             d.cursor_pointer()
@@ -610,6 +621,14 @@ impl Render for FileTreeView {
                                 }))
                         })
                         .child(chevron_label),
+                )
+                // Icon
+                .child(
+                    div()
+                        .text_xs()
+                        .pr(px(4.0))
+                        .flex_shrink_0()
+                        .child(icon_label),
                 )
                 // Label area
                 .child(
@@ -622,7 +641,7 @@ impl Render for FileTreeView {
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .cursor_pointer()
-                        .py(px(2.0))
+                        .py(px(3.0))
                         .when(!is_editing, |d| {
                             d.on_drag(TreeDragPayload(drag_path.clone()), {
                                 let drag_name = drag_name.clone();
@@ -672,21 +691,24 @@ impl Render for FileTreeView {
                 })),
         );
 
+        let soft_border = hsla(border_color.h, border_color.s, border_color.l, 0.5);
+
         div()
             .size_full()
             .relative()
             .bg(sidebar_bg)
             .border_r_1()
-            .border_color(border_color)
+            .border_color(soft_border)
             .track_focus(&self.focus_handle)
             .flex()
             .flex_col()
             .child(
                 div()
-                    .p(px(8.0))
-                    .text_sm()
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_xs()
                     .flex_shrink_0()
-                    .text_color(hint_fg)
+                    .text_color(hsla(hint_fg.h, hint_fg.s, hint_fg.l, 0.6))
                     .child(format!("ghostmd v{}", env!("CARGO_PKG_VERSION"))),
             )
             .child(list)
