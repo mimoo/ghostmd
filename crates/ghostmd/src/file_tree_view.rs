@@ -673,6 +673,7 @@ impl Render for FileTreeView {
         );
 
         div()
+            .key_context("FileTree")
             .size_full()
             .relative()
             .bg(sidebar_bg)

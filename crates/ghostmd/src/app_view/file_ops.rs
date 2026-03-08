@@ -184,6 +184,14 @@ impl GhostAppView {
         let new_path = unique_path(&target_dir.join(file_name));
         if new_path == source || new_path.exists() { return; }
         if std::fs::rename(&source, &new_path).is_ok() {
+            super::file_undo::push_undo(
+                &mut self.file_undo_stack,
+                &mut self.file_redo_stack,
+                super::file_undo::FileOp::Move {
+                    old_path: source.clone(),
+                    new_path: new_path.clone(),
+                },
+            );
             self.update_editor_paths(&source, &new_path, cx);
             self.file_tree.update(cx, |tree, cx| {
                 tree.refresh(cx);
@@ -240,8 +248,30 @@ impl GhostAppView {
             editor.update(cx, |e, cx| { e.save(cx).ok(); });
         }
 
+        // Back up files before trashing (for undo)
+        let mut delete_ops: Vec<super::file_undo::FileOp> = Vec::new();
+        for path in &paths {
+            let backup = super::file_undo::backup_file(path);
+            delete_ops.push(super::file_undo::FileOp::Delete {
+                path: path.clone(),
+                backup,
+                is_dir: path.is_dir(),
+            });
+        }
+
         // Move to Trash in a single batch (one macOS Finder operation, one sound)
         if trash::delete_all(&paths).is_ok() {
+            // Push to undo stack
+            let op = if delete_ops.len() == 1 {
+                delete_ops.into_iter().next().unwrap()
+            } else {
+                super::file_undo::FileOp::DeleteBatch { ops: delete_ops }
+            };
+            super::file_undo::push_undo(
+                &mut self.file_undo_stack,
+                &mut self.file_redo_stack,
+                op,
+            );
             self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
             let focused = self.active_ws().focused_pane;
             self.focus_pane_editor(focused, window, cx);

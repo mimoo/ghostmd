@@ -41,6 +41,8 @@ actions!(
         SwitchTab8,
         SwitchTab9,
         MoveToTrash,
+        FileTreeUndo,
+        FileTreeRedo,
     ]
 );
 
@@ -85,6 +87,9 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("secondary-9", SwitchTab9, None),
         // Move to Trash
         GpuiKeyBinding::new("secondary-backspace", MoveToTrash, None),
+        // File tree undo/redo (only when file tree is focused)
+        GpuiKeyBinding::new("secondary-z", FileTreeUndo, Some("FileTree")),
+        GpuiKeyBinding::new("secondary-shift-z", FileTreeRedo, Some("FileTree")),
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),

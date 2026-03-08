@@ -2,6 +2,7 @@ mod split_node;
 mod session;
 mod workspace;
 mod file_ops;
+mod file_undo;
 mod palette_dispatch;
 mod overlays;
 mod ai_commands;
@@ -12,7 +13,7 @@ pub(crate) use split_node::*;
 pub(crate) use session::*;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder as _;
@@ -139,6 +140,9 @@ pub struct GhostAppView {
     pub(crate) ai_anim_active: bool,
     // Move transition: (old_path, new_path, timestamp) for fade-out animation in title bar
     pub(crate) move_transition: Option<(PathBuf, PathBuf, Instant)>,
+    // File operation undo/redo stacks
+    pub(crate) file_undo_stack: Vec<file_undo::FileOp>,
+    pub(crate) file_redo_stack: Vec<file_undo::FileOp>,
 }
 
 impl GhostAppView {
@@ -153,6 +157,14 @@ impl GhostAppView {
 
         // Subscribe to inline rename events from the tree
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemRenamed, window, cx| {
+            file_undo::push_undo(
+                &mut this.file_undo_stack,
+                &mut this.file_redo_stack,
+                file_undo::FileOp::Rename {
+                    old_path: event.old_path.clone(),
+                    new_path: event.new_path.clone(),
+                },
+            );
             this.update_editor_paths(&event.old_path, &event.new_path, cx);
             if !this.workspaces.is_empty() {
                 let focused = this.active_ws().focused_pane;
@@ -164,6 +176,14 @@ impl GhostAppView {
 
         // Subscribe to drag-and-drop move events from the tree
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ItemMoved, _window, cx| {
+            file_undo::push_undo(
+                &mut this.file_undo_stack,
+                &mut this.file_redo_stack,
+                file_undo::FileOp::Move {
+                    old_path: event.old_path.clone(),
+                    new_path: event.new_path.clone(),
+                },
+            );
             this.update_editor_paths(&event.old_path, &event.new_path, cx);
             this.file_tree.update(cx, |tree, cx| tree.refresh(cx));
             cx.notify();
@@ -172,6 +192,14 @@ impl GhostAppView {
 
         // Subscribe to new item creation from the tree
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &NewItemCreated, window, cx| {
+            file_undo::push_undo(
+                &mut this.file_undo_stack,
+                &mut this.file_redo_stack,
+                file_undo::FileOp::Create {
+                    path: event.0.clone(),
+                    is_dir: event.0.is_dir(),
+                },
+            );
             if event.0.is_file() {
                 this.open_file(event.0.clone(), window, cx);
             }
@@ -392,6 +420,8 @@ impl GhostAppView {
             ai_anim_frame: 0,
             ai_anim_active: false,
             move_transition: None,
+            file_undo_stack: Vec::new(),
+            file_redo_stack: Vec::new(),
         };
 
         // Set up file watcher for external changes
@@ -540,6 +570,93 @@ impl GhostAppView {
         .detach();
     }
 
+    /// Undo the last file operation.
+    pub(crate) fn undo_file_op(&mut self, cx: &mut Context<Self>) {
+        let Some(mut op) = self.file_undo_stack.pop() else { return };
+        self.update_editors_for_reverse(&op, cx);
+        if file_undo::reverse_op(&mut op) {
+            self.file_redo_stack.push(op);
+        }
+        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+        cx.notify();
+    }
+
+    /// Redo the last undone file operation.
+    pub(crate) fn redo_file_op(&mut self, cx: &mut Context<Self>) {
+        let Some(mut op) = self.file_redo_stack.pop() else { return };
+        self.update_editors_for_reapply(&op, cx);
+        if file_undo::reapply_op(&mut op) {
+            self.file_undo_stack.push(op);
+        }
+        self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+        cx.notify();
+    }
+
+    /// Update editor paths when reversing a file op (undo).
+    fn update_editors_for_reverse(&mut self, op: &file_undo::FileOp, cx: &mut Context<Self>) {
+        match op {
+            file_undo::FileOp::Rename { old_path, new_path }
+            | file_undo::FileOp::Move { old_path, new_path } => {
+                // Reversing: new_path -> old_path
+                self.update_editor_paths(new_path, old_path, cx);
+            }
+            file_undo::FileOp::Create { path, .. } => {
+                // Undoing create = closing editors for that path
+                self.close_editors_for_path(path, cx);
+            }
+            file_undo::FileOp::DeleteBatch { ops } => {
+                for sub_op in ops {
+                    self.update_editors_for_reverse(sub_op, cx);
+                }
+            }
+            file_undo::FileOp::Delete { .. } => {
+                // Restoring a deleted file — no editor paths to update
+            }
+        }
+    }
+
+    /// Update editor paths when reapplying a file op (redo).
+    fn update_editors_for_reapply(&mut self, op: &file_undo::FileOp, cx: &mut Context<Self>) {
+        match op {
+            file_undo::FileOp::Rename { old_path, new_path }
+            | file_undo::FileOp::Move { old_path, new_path } => {
+                self.update_editor_paths(old_path, new_path, cx);
+            }
+            file_undo::FileOp::Delete { path, .. } => {
+                self.close_editors_for_path(path, cx);
+            }
+            file_undo::FileOp::DeleteBatch { ops } => {
+                for sub_op in ops {
+                    self.update_editors_for_reapply(sub_op, cx);
+                }
+            }
+            file_undo::FileOp::Create { .. } => {
+                // Recreating a file — no editor paths to update
+            }
+        }
+    }
+
+    /// Close editors showing a file at the given path (used when undoing create / redoing delete).
+    fn close_editors_for_path(&mut self, path: &Path, cx: &mut Context<Self>) {
+        for ws in &mut self.workspaces {
+            for pane in ws.panes.values_mut() {
+                let should_close = pane.active_path.as_ref().map(|p| {
+                    if path.is_dir() || !path.exists() {
+                        p == path || p.starts_with(path)
+                    } else {
+                        p == path
+                    }
+                }).unwrap_or(false);
+                if should_close {
+                    if let Some(editor) = pane.editor.take() {
+                        editor.update(cx, |e, cx| { e.save(cx).ok(); });
+                    }
+                    pane.active_path = None;
+                }
+            }
+        }
+    }
+
     /// Clear pane editors that reference deleted files.
     pub(crate) fn clear_deleted_panes(&mut self, ws_idx: usize) {
         if ws_idx >= self.workspaces.len() { return; }
@@ -643,6 +760,12 @@ impl Render for GhostAppView {
                 } else if let Some(path) = this.focused_active_path() {
                     this.move_to_trash(path, window, cx);
                 }
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FileTreeUndo, _window, cx| {
+                this.undo_file_op(cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FileTreeRedo, _window, cx| {
+                this.redo_file_op(cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::RestoreTab, window, cx| {
                 if let Some(ws) = this.closed_workspaces.pop() {
