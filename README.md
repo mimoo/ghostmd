@@ -28,7 +28,7 @@ This installs `GhostMD.app` to `/Applications/` and creates a `ghostmd` CLI comm
 Requires Rust 1.75+ and Xcode with Metal on macOS.
 
 ```
-git clone https://github.com/user/ghostmd.git
+git clone https://github.com/mimoo/ghostmd.git
 cd ghostmd
 cargo build --release
 ./scripts/bundle-macos.sh
@@ -37,7 +37,7 @@ cp -r target/GhostMD.app /Applications/
 
 ### From release
 
-Download the latest `.tar.gz` from [Releases](https://github.com/user/ghostmd/releases), extract, and drag `GhostMD.app` to `/Applications/`.
+Download the latest `.tar.gz` from [Releases](https://github.com/mimoo/ghostmd/releases), extract, and drag `GhostMD.app` to `/Applications/`.
 
 ## Features
 
