@@ -687,7 +687,7 @@ impl Render for FileTreeView {
                     .text_sm()
                     .flex_shrink_0()
                     .text_color(hint_fg)
-                    .child("ghostmd"),
+                    .child(format!("ghostmd v{}", env!("CARGO_PKG_VERSION"))),
             )
             .child(list)
     }
