@@ -15,6 +15,7 @@ targets:
       - GhostMD
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: true
         PRODUCT_BUNDLE_IDENTIFIER: com.ghostmd.ios
         CODE_SIGN_ENTITLEMENTS: GhostMD/GhostMD.entitlements
         DEVELOPMENT_TEAM: ""
