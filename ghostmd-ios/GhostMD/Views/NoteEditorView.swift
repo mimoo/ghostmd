@@ -22,6 +22,7 @@ struct NoteEditorView: View {
             .font(.system(.body, design: .monospaced))
             .focused($isFocused)
             .scrollDismissesKeyboard(.interactively)
+            .accessibilityIdentifier("noteEditor")
             .onChange(of: store.editingContent) {
                 store.contentChanged()
             }
@@ -43,12 +44,14 @@ struct NoteEditorView: View {
                         } label: {
                             Label("Rename", systemImage: "pencil")
                         }
+                        .accessibilityIdentifier("renameButton")
 
                         Button {
                             showMoveSheet = true
                         } label: {
                             Label("Move to...", systemImage: "folder")
                         }
+                        .accessibilityIdentifier("moveButton")
 
                         Divider()
 
@@ -57,15 +60,18 @@ struct NoteEditorView: View {
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+                        .accessibilityIdentifier("deleteButton")
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityIdentifier("menuButton")
                 }
 
                 ToolbarItem(placement: .keyboard) {
                     HStack {
                         Spacer()
                         Button("Done") { isFocused = false }
+                            .accessibilityIdentifier("doneButton")
                     }
                 }
             }
@@ -79,12 +85,15 @@ struct NoteEditorView: View {
             }
             .alert("Rename", isPresented: $showRenameAlert) {
                 TextField("Name", text: $renameText)
+                    .accessibilityIdentifier("renameTextField")
                 Button("Cancel", role: .cancel) { }
+                    .accessibilityIdentifier("renameCancelButton")
                 Button("Rename") {
                     if let url = store.editingURL {
                         _ = store.renameNote(url, to: renameText)
                     }
                 }
+                .accessibilityIdentifier("renameConfirmButton")
             }
             .confirmationDialog("Delete this note?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
@@ -92,7 +101,9 @@ struct NoteEditorView: View {
                         dismiss()
                     }
                 }
+                .accessibilityIdentifier("deleteConfirmButton")
                 Button("Cancel", role: .cancel) { }
+                    .accessibilityIdentifier("deleteCancelButton")
             }
     }
 }

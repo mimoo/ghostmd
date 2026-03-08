@@ -35,6 +35,7 @@ struct NewNoteSheet: View {
                             Image(systemName: "calendar")
                         }
                     }
+                    .accessibilityIdentifier("newNoteDiaryButton")
 
                     Button {
                         if let url = store.createNote(in: currentFolder) {
@@ -52,12 +53,14 @@ struct NewNoteSheet: View {
                             Image(systemName: "folder")
                         }
                     }
+                    .accessibilityIdentifier("newNoteCurrentFolderButton")
 
                     Button {
                         showFolderPicker = true
                     } label: {
                         Label("Choose Folder...", systemImage: "folder.badge.questionmark")
                     }
+                    .accessibilityIdentifier("newNoteChooseFolderButton")
                 } header: {
                     Text("Where to create the note?")
                 }
@@ -67,6 +70,7 @@ struct NewNoteSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("cancelButton")
                 }
             }
             .sheet(isPresented: $showFolderPicker, onDismiss: {

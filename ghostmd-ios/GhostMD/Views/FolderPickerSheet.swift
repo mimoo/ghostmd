@@ -23,6 +23,7 @@ struct FolderPickerSheet: View {
                                 systemImage: folder == store.rootURL ? "house" : "folder"
                             )
                         }
+                        .accessibilityIdentifier("folderRow_\(store.relativePath(of: folder))")
                     }
                 }
 
@@ -33,6 +34,7 @@ struct FolderPickerSheet: View {
                     } label: {
                         Label("New Folder...", systemImage: "folder.badge.plus")
                     }
+                    .accessibilityIdentifier("newFolderButton")
                 }
             }
             .navigationTitle("Choose Folder")
@@ -40,11 +42,14 @@ struct FolderPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("cancelButton")
                 }
             }
             .alert("New Folder", isPresented: $showNewFolder) {
                 TextField("Folder name", text: $newFolderName)
+                    .accessibilityIdentifier("newFolderTextField")
                 Button("Cancel", role: .cancel) { newFolderName = "" }
+                    .accessibilityIdentifier("newFolderCancelButton")
                 Button("Create") {
                     if let parent = newFolderParent,
                        let folder = store.createFolder(in: parent, name: newFolderName) {
@@ -53,6 +58,7 @@ struct FolderPickerSheet: View {
                         dismiss()
                     }
                 }
+                .accessibilityIdentifier("newFolderCreateButton")
             }
         }
         .presentationDetents([.medium, .large])

@@ -32,6 +32,7 @@ struct FolderView: View {
                 } description: {
                     Text("Tap  \(Image(systemName: "square.and.pencil"))  to create your first note")
                 }
+                .accessibilityIdentifier("emptyState")
             } else {
                 List {
                     ForEach(filteredContents) { node in
@@ -39,6 +40,7 @@ struct FolderView: View {
                             NavigationLink(value: Route.folder(node.url)) {
                                 Label(node.displayName, systemImage: "folder")
                             }
+                            .accessibilityIdentifier("folderRow_\(node.displayName)")
                             .contextMenu { folderContextMenu(node) }
                         } else {
                             NavigationLink(value: Route.note(node.url)) {
@@ -49,12 +51,14 @@ struct FolderView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            .accessibilityIdentifier("noteRow_\(node.displayName)")
                             .contextMenu { noteContextMenu(node) }
                         }
                     }
                     .onDelete(perform: deleteItems)
                 }
                 .searchable(text: $searchText, prompt: "Search")
+                .accessibilityIdentifier("notesList")
             }
         }
         .navigationTitle(isRoot ? "GhostMD" : folderURL.lastPathComponent)
@@ -63,6 +67,7 @@ struct FolderView: View {
                 Button { showNewNote = true } label: {
                     Image(systemName: "square.and.pencil")
                 }
+                .accessibilityIdentifier("composeButton")
             }
         }
         .sheet(isPresented: $showNewNote, onDismiss: {
@@ -87,13 +92,16 @@ struct FolderView: View {
         }
         .alert("Rename", isPresented: $showRenameAlert) {
             TextField("Name", text: $renameText)
+                .accessibilityIdentifier("renameTextField")
             Button("Cancel", role: .cancel) { }
+                .accessibilityIdentifier("renameCancelButton")
             Button("Rename") {
                 if let target = renameTarget {
                     _ = store.renameNote(target, to: renameText)
                     refresh()
                 }
             }
+            .accessibilityIdentifier("renameConfirmButton")
         }
         .onAppear { refresh() }
         .refreshable { refresh() }
@@ -120,6 +128,7 @@ struct FolderView: View {
         } label: {
             Label("Rename", systemImage: "pencil")
         }
+        .accessibilityIdentifier("renameButton")
 
         Button {
             moveTarget = node.url
@@ -127,6 +136,7 @@ struct FolderView: View {
         } label: {
             Label("Move to...", systemImage: "folder")
         }
+        .accessibilityIdentifier("moveButton")
 
         Divider()
 
@@ -136,6 +146,7 @@ struct FolderView: View {
         } label: {
             Label("Delete", systemImage: "trash")
         }
+        .accessibilityIdentifier("deleteButton")
     }
 
     @ViewBuilder
@@ -146,5 +157,6 @@ struct FolderView: View {
         } label: {
             Label("Delete Folder", systemImage: "trash")
         }
+        .accessibilityIdentifier("deleteFolderButton")
     }
 }
