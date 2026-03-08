@@ -17,17 +17,6 @@ fn ai_temp_path(prefix: &str) -> std::path::PathBuf {
 fn claude_binary() -> &'static str {
     static RESOLVED: OnceLock<String> = OnceLock::new();
     RESOLVED.get_or_init(|| {
-        // Try the user's shell to resolve PATH
-        if let Ok(output) = std::process::Command::new("/bin/zsh")
-            .args(["-l", "-c", "which claude"])
-            .output()
-        {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() && std::path::Path::new(&path).exists() {
-                return path;
-            }
-        }
-        // Fallback: check common install locations
         let home = std::env::var("HOME").ok().map(std::path::PathBuf::from);
         let candidates = [
             home.as_ref().map(|h| h.join(".local/bin/claude")),
