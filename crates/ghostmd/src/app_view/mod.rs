@@ -50,6 +50,20 @@ pub(crate) enum OverlayKind {
 }
 
 // ---------------------------------------------------------------------------
+// Agentic search result — structured match from Claude
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(crate) struct AgenticMatch {
+    pub file: String,
+    pub line: usize,
+    pub quote: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub reason: String,
+}
+
+// ---------------------------------------------------------------------------
 // Pane — each pane owns its own editor (independent scroll, cursor, state)
 // ---------------------------------------------------------------------------
 
@@ -103,8 +117,10 @@ pub struct GhostAppView {
     pub(crate) tree_context_menu: Option<(PathBuf, Point<Pixels>)>,
     // Agentic search (cmd-shift-f)
     pub(crate) agentic_input: Entity<InputState>,
-    pub(crate) agentic_results: Vec<String>,
+    pub(crate) agentic_results: Vec<AgenticMatch>,
     pub(crate) agentic_loading: bool,
+    pub(crate) agentic_selected: usize,
+    pub(crate) agentic_scroll: ScrollHandle,
     // Folder move mode (file finder shows folders instead of files)
     pub(crate) folder_move_source: Option<PathBuf>,
     // Location picker (shown when creating a new note with a folder selected)
@@ -384,6 +400,8 @@ impl GhostAppView {
             agentic_input,
             agentic_results: Vec::new(),
             agentic_loading: false,
+            agentic_selected: 0,
+            agentic_scroll: ScrollHandle::new(),
             folder_move_source: None,
             location_picker_options: Vec::new(),
             location_picker_selected: 0,
@@ -766,7 +784,13 @@ impl Render for GhostAppView {
                         this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
                         cx.notify();
                     }
-                    Some(OverlayKind::AgenticSearch) => cx.notify(),
+                    Some(OverlayKind::AgenticSearch) => {
+                        if this.agentic_selected > 0 {
+                            this.agentic_selected -= 1;
+                            this.agentic_scroll.scroll_to_item(this.agentic_selected);
+                        }
+                        cx.notify();
+                    }
                     Some(OverlayKind::Palette) => this.palette_move_up(cx),
                     Some(OverlayKind::Search) | None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveUp), cx);
@@ -786,7 +810,13 @@ impl Render for GhostAppView {
                         this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
                         cx.notify();
                     }
-                    Some(OverlayKind::AgenticSearch) => cx.notify(),
+                    Some(OverlayKind::AgenticSearch) => {
+                        if !this.agentic_results.is_empty() && this.agentic_selected + 1 < this.agentic_results.len() {
+                            this.agentic_selected += 1;
+                            this.agentic_scroll.scroll_to_item(this.agentic_selected);
+                        }
+                        cx.notify();
+                    }
                     Some(OverlayKind::Palette) => this.palette_move_down(cx),
                     Some(OverlayKind::Search) | None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveDown), cx);
@@ -802,6 +832,14 @@ impl Render for GhostAppView {
                         window.dispatch_action(Box::new(gpui_component::input::Enter { secondary: false }), cx);
                     }
                     Some(OverlayKind::Palette) => this.palette_confirm(window, cx),
+                    Some(OverlayKind::AgenticSearch) => {
+                        if !this.agentic_results.is_empty() {
+                            let idx = this.agentic_selected;
+                            this.open_agentic_result(idx, window, cx);
+                        } else {
+                            this.run_agentic_search(window, cx);
+                        }
+                    }
                     _ => {
                         window.dispatch_action(Box::new(gpui_component::input::Enter { secondary: false }), cx);
                     }

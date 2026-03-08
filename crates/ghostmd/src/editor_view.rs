@@ -158,6 +158,18 @@ impl EditorView {
             state.focus(window, cx);
         });
     }
+
+    /// Scroll to a specific line (1-based) and place the cursor there.
+    pub fn scroll_to_line(&self, line: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let line_0 = if line > 0 { line - 1 } else { 0 } as u32;
+        self.input_state.update(cx, |state, cx| {
+            state.set_cursor_position(
+                lsp_types::Position { line: line_0, character: 0 },
+                window,
+                cx,
+            );
+        });
+    }
 }
 
 impl Focusable for EditorView {

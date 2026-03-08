@@ -395,13 +395,15 @@ impl GhostAppView {
 
     pub(crate) fn render_agentic_search(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let t = &self.theme;
+        let root_display = self.root.to_string_lossy().to_string();
 
         let mut results_div = div()
             .id("agentic-results")
             .flex()
             .flex_col()
             .max_h(px(400.0))
-            .overflow_y_scroll();
+            .overflow_y_scroll()
+            .track_scroll(&self.agentic_scroll);
 
         if self.agentic_loading {
             results_div = results_div.child(
@@ -413,17 +415,53 @@ impl GhostAppView {
                     .child("Searching with Claude..."),
             );
         } else {
-            for (i, line) in self.agentic_results.iter().enumerate() {
-                results_div = results_div.child(
-                    div()
-                        .id(ElementId::NamedInteger("agentic-line".into(), i as u64))
-                        .w_full()
-                        .px(px(12.0))
-                        .py(px(2.0))
-                        .text_color(t.fg)
-                        .text_sm()
-                        .child(line.clone()),
-                );
+            for (i, m) in self.agentic_results.iter().enumerate() {
+                let selected = i == self.agentic_selected;
+                let is_error = m.file.is_empty();
+
+                let display_path = if is_error {
+                    m.quote.clone()
+                } else {
+                    let short = m.file.strip_prefix(&root_display)
+                        .or_else(|| m.file.strip_prefix("/"))
+                        .unwrap_or(&m.file)
+                        .trim_start_matches('/')
+                        .to_string();
+                    if m.line > 0 {
+                        format!("{}:{}", short, m.line)
+                    } else {
+                        short
+                    }
+                };
+
+                let idx = i;
+                let row = div()
+                    .id(ElementId::NamedInteger("agentic-line".into(), i as u64))
+                    .w_full()
+                    .px(px(12.0))
+                    .py(px(4.0))
+                    .when(selected, |d| d.bg(t.selection))
+                    .rounded(px(4.0))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.open_agentic_result(idx, window, cx);
+                    }))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(if is_error { t.accent } else { t.fg })
+                            .child(display_path),
+                    )
+                    .when(!is_error && !m.quote.is_empty(), |d| {
+                        let quote = m.quote.chars().take(120).collect::<String>();
+                        d.child(
+                            div()
+                                .text_xs()
+                                .text_color(t.hint)
+                                .child(quote),
+                        )
+                    });
+                results_div = results_div.child(row);
             }
         }
 
@@ -432,7 +470,7 @@ impl GhostAppView {
         } else if self.agentic_results.is_empty() {
             "Press Enter to search".to_string()
         } else {
-            format!("{} lines", self.agentic_results.len())
+            format!("{} results", self.agentic_results.len())
         };
 
         div()

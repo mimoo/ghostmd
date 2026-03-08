@@ -365,50 +365,83 @@ impl GhostAppView {
         }
         self.agentic_loading = true;
         self.agentic_results.clear();
+        self.agentic_selected = 0;
         cx.notify();
 
         let root = self.root.clone();
+        let output_path = ai_temp_path("search");
+        let output_path2 = output_path.clone();
+
         cx.spawn(async move |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
-            let output = cx.background_executor().spawn(async move {
+            let result = cx.background_executor().spawn(async move {
                 let prompt = format!(
-                    "Search through the markdown notes in {} and answer: {}. \
-                     Be concise. List relevant file paths and quotes.",
-                    root.display(), query
+                    "Search through the markdown notes in {root} and answer: {query}\n\n\
+                     Output ONLY a JSON array to {output_file} with results ordered by relevance.\n\
+                     Each element must have: \"file\" (absolute path), \"line\" (1-based line number), \
+                     \"quote\" (the relevant line or short excerpt), \"reason\" (brief explanation).\n\
+                     A file can appear multiple times if multiple lines are relevant.\n\
+                     If nothing is found, output an empty array [].\n\
+                     Do NOT output anything else besides writing the JSON file.",
+                    root = root.display(),
+                    query = query,
+                    output_file = output_path.display(),
                 );
-                std::process::Command::new(claude_binary())
+                let output = std::process::Command::new(claude_binary())
                     .arg("-p")
                     .arg(&prompt)
+                    .arg("--allowedTools")
+                    .arg("Read,Glob,Grep,Write,Bash")
                     .current_dir(&root)
-                    .output()
+                    .output();
+                (output, output_path)
             }).await;
 
-            match output {
-                Ok(out) => {
-                    let text = String::from_utf8_lossy(&out.stdout).to_string();
-                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-                    let lines: Vec<String> = if text.trim().is_empty() {
-                        if stderr.trim().is_empty() {
-                            vec!["No results found.".to_string()]
-                        } else {
-                            vec![format!("Error: {}", stderr.trim())]
-                        }
+            let (output, json_path) = result;
+            let matches: Vec<AgenticMatch> = match output {
+                Ok(out) if out.status.success() || !out.stdout.is_empty() => {
+                    // Try reading the JSON file first
+                    if let Ok(json_str) = std::fs::read_to_string(&json_path) {
+                        // Clean up temp file
+                        std::fs::remove_file(&json_path).ok();
+                        serde_json::from_str(&json_str).unwrap_or_default()
                     } else {
-                        text.lines().map(|l| l.to_string()).collect()
-                    };
-                    this.update(cx, |this, cx| {
-                        this.agentic_results = lines;
-                        this.agentic_loading = false;
-                        cx.notify();
-                    }).ok();
+                        // Fallback: try parsing JSON from stdout
+                        let text = String::from_utf8_lossy(&out.stdout);
+                        parse_json_from_text(&text)
+                    }
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    if !stderr.trim().is_empty() {
+                        vec![AgenticMatch {
+                            file: String::new(),
+                            line: 0,
+                            quote: format!("Error: {}", stderr.trim()),
+                            reason: String::new(),
+                        }]
+                    } else {
+                        Vec::new()
+                    }
                 }
                 Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.agentic_results = vec![format!("Failed to run claude: {}", e)];
-                        this.agentic_loading = false;
-                        cx.notify();
-                    }).ok();
+                    vec![AgenticMatch {
+                        file: String::new(),
+                        line: 0,
+                        quote: format!("Failed to run claude: {}", e),
+                        reason: String::new(),
+                    }]
                 }
-            }
+            };
+
+            // Clean up temp file (in case it wasn't cleaned above)
+            std::fs::remove_file(&output_path2).ok();
+
+            this.update(cx, |this, cx| {
+                this.agentic_results = matches;
+                this.agentic_selected = 0;
+                this.agentic_loading = false;
+                cx.notify();
+            }).ok();
         })
         .detach();
     }
@@ -433,4 +466,45 @@ impl GhostAppView {
         }
         cx.notify();
     }
+
+    /// Open a file from an agentic search result and scroll to the matched line.
+    pub(crate) fn open_agentic_result(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let m = match self.agentic_results.get(idx) {
+            Some(m) if !m.file.is_empty() => m.clone(),
+            _ => return,
+        };
+        self.close_agentic_search(window, cx);
+
+        let path = std::path::PathBuf::from(&m.file);
+        if !path.exists() { return; }
+        self.open_file(path, window, cx);
+
+        // Scroll to the matched line after the editor is set up
+        if m.line > 0 {
+            let ws = self.active_ws();
+            if let Some(editor) = ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone()) {
+                editor.update(cx, |e, cx| {
+                    e.scroll_to_line(m.line, window, cx);
+                });
+            }
+        }
+    }
+}
+
+/// Try to extract a JSON array from text that may contain markdown fences or other wrapping.
+fn parse_json_from_text(text: &str) -> Vec<AgenticMatch> {
+    let trimmed = text.trim();
+    // Direct parse
+    if let Ok(v) = serde_json::from_str::<Vec<AgenticMatch>>(trimmed) {
+        return v;
+    }
+    // Try to find JSON array within markdown code fences
+    if let Some(start) = trimmed.find('[') {
+        if let Some(end) = trimmed.rfind(']') {
+            if let Ok(v) = serde_json::from_str::<Vec<AgenticMatch>>(&trimmed[start..=end]) {
+                return v;
+            }
+        }
+    }
+    Vec::new()
 }

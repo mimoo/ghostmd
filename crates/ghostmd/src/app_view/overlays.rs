@@ -53,6 +53,8 @@ impl GhostAppView {
         self.active_overlay = Some(OverlayKind::AgenticSearch);
         self.agentic_results.clear();
         self.agentic_loading = false;
+        self.agentic_selected = 0;
+        self.agentic_scroll = ScrollHandle::new();
         self.agentic_input.update(cx, |state, cx| {
             state.set_value("", window, cx);
             state.focus(window, cx);
