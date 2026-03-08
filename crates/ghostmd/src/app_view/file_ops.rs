@@ -65,6 +65,15 @@ impl GhostAppView {
         };
 
         if !already_open {
+            // Push current path to history before switching
+            {
+                let ws = self.active_ws_mut();
+                if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
+                    if let Some(prev) = pane.active_path.as_ref() {
+                        pane.path_history.push(prev.clone());
+                    }
+                }
+            }
             // Reuse existing editor entity if the pane has one (preserves layout metrics
             // so soft wrap doesn't flicker). Only create a new entity for empty panes.
             let existing_editor = {
@@ -240,10 +249,12 @@ impl GhostAppView {
     pub(crate) fn move_many_to_trash(&mut self, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
         if paths.is_empty() { return; }
 
-        // Close any panes showing these files (or files inside these directories)
+        // Close panes showing these files; try to restore previous file from history.
+        // Collect (ws_index, pane_id, prev_path) for panes that can be restored.
+        let mut restore_targets: Vec<(usize, usize, PathBuf)> = Vec::new();
         let mut editors_to_save: Vec<_> = Vec::new();
-        for ws in &mut self.workspaces {
-            for pane in ws.panes.values_mut() {
+        for (ws_idx, ws) in self.workspaces.iter_mut().enumerate() {
+            for (&pane_id, pane) in ws.panes.iter_mut() {
                 let should_close = pane.active_path.as_ref().map(|p| {
                     paths.iter().any(|path| {
                         if path.is_dir() { p.starts_with(path) } else { p == path }
@@ -254,6 +265,19 @@ impl GhostAppView {
                         editors_to_save.push(editor);
                     }
                     pane.active_path = None;
+                    // Also purge deleted paths from this pane's history
+                    pane.path_history.retain(|p| {
+                        !paths.iter().any(|del| {
+                            if del.is_dir() { p.starts_with(del) } else { p == del }
+                        })
+                    });
+                    // Pop last valid path from history
+                    while let Some(prev) = pane.path_history.pop() {
+                        if prev.exists() {
+                            restore_targets.push((ws_idx, pane_id, prev));
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -287,6 +311,17 @@ impl GhostAppView {
                 op,
             );
             self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+            // Restore previous files in affected panes
+            for (ws_idx, pane_id, prev_path) in restore_targets {
+                if ws_idx < self.workspaces.len() {
+                    let ws = &mut self.workspaces[ws_idx];
+                    if let Some(pane) = ws.panes.get_mut(&pane_id) {
+                        let editor = cx.new(|cx| crate::editor_view::EditorView::new(prev_path.clone(), window, cx));
+                        pane.active_path = Some(prev_path);
+                        pane.editor = Some(editor);
+                    }
+                }
+            }
             let focused = self.active_ws().focused_pane;
             self.focus_pane_editor(focused, window, cx);
             cx.notify();

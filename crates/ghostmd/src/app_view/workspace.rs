@@ -18,7 +18,7 @@ impl GhostAppView {
         self.next_pane_id += 1;
 
         let mut panes = HashMap::new();
-        panes.insert(pane_id, Pane { active_path: None, editor: None });
+        panes.insert(pane_id, Pane { active_path: None, editor: None, path_history: Vec::new() });
 
         let ws = Workspace {
             id: ws_id,
@@ -121,7 +121,7 @@ impl GhostAppView {
         self.next_pane_id += 1;
 
         let ws = self.active_ws_mut();
-        ws.panes.insert(new_id, Pane { active_path: None, editor: None });
+        ws.panes.insert(new_id, Pane { active_path: None, editor: None, path_history: Vec::new() });
         ws.split_root.split_leaf(ws.focused_pane, new_id, direction);
         ws.pane_focus_history.push(ws.focused_pane);
         ws.focused_pane = new_id;

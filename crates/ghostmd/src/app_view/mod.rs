@@ -70,6 +70,8 @@ pub(crate) struct AgenticMatch {
 pub(crate) struct Pane {
     pub(crate) active_path: Option<PathBuf>,
     pub(crate) editor: Option<Entity<EditorView>>,
+    /// Stack of previously opened file paths (most recent last), for restoring after delete.
+    pub(crate) path_history: Vec<PathBuf>,
 }
 
 // ---------------------------------------------------------------------------
@@ -691,7 +693,7 @@ impl Render for GhostAppView {
                 title: self.active_ws().title.clone(),
                 split_root: sr.clone(),
                 panes: self.active_ws().panes.iter().map(|(&k, v)| {
-                    (k, Pane { active_path: v.active_path.clone(), editor: v.editor.clone() })
+                    (k, Pane { active_path: v.active_path.clone(), editor: v.editor.clone(), path_history: v.path_history.clone() })
                 }).collect(),
                 focused_pane: self.active_ws().focused_pane,
                 pane_focus_history: Vec::new(),

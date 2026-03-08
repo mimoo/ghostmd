@@ -78,7 +78,7 @@ pub(crate) fn restore_split_node(
                 (None, None)
             };
 
-            panes.insert(pane_id, Pane { active_path, editor });
+            panes.insert(pane_id, Pane { active_path, editor, path_history: Vec::new() });
             SplitNode::Leaf(pane_id)
         }
         SessionSplitNode::Split { direction, left, right } => {
