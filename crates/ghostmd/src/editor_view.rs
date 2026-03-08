@@ -181,7 +181,7 @@ impl Render for EditorView {
             .w_full()
             .flex_1()
             .min_h(px(0.0))
-            .relative()
+            .overflow_hidden()
             .track_focus(&self.focus_handle)
             .capture_any_mouse_down(|event: &MouseDownEvent, _window, cx| {
                 if event.button == MouseButton::Right {
@@ -189,16 +189,9 @@ impl Render for EditorView {
                 }
             })
             .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .child(
-                        Input::new(&self.input_state)
-                            .appearance(false)
-                            .h_full(),
-                    ),
+                Input::new(&self.input_state)
+                    .appearance(false)
+                    .h_full(),
             )
     }
 }
