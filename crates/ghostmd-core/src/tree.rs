@@ -71,6 +71,13 @@ impl FileTree {
         collect_collapsed(&self.nodes, &mut collapsed);
         self.nodes = scan_dir(&self.root)?;
         apply_collapsed(&mut self.nodes, &collapsed);
+        // Pin "diary" folder to the front at root level
+        if let Some(idx) = self.nodes.iter().position(|n| n.name() == "diary") {
+            if idx > 0 {
+                let diary = self.nodes.remove(idx);
+                self.nodes.insert(0, diary);
+            }
+        }
         Ok(())
     }
 

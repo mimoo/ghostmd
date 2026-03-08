@@ -489,6 +489,10 @@ impl Render for FileTreeView {
                 cx.emit(ContextMenuRequested(root_path.clone(), event.position));
             }));
 
+        // Track diary section for separator
+        let mut in_diary = false;
+        let mut diary_separator_shown = false;
+
         for (i, (depth, node)) in flat.iter().enumerate() {
             let node_path = node.path().to_path_buf();
             let is_selected = selected.contains(&node_path);
@@ -497,6 +501,22 @@ impl Render for FileTreeView {
             let name = node.name().to_string();
             let indent = *depth as f32 * 16.0;
             let is_editing = editing_path.as_ref() == Some(&node_path);
+
+            // Insert separator after diary subtree
+            if *depth == 0 && name == "diary" {
+                in_diary = true;
+            } else if *depth == 0 && in_diary && !diary_separator_shown {
+                in_diary = false;
+                diary_separator_shown = true;
+                list = list.child(
+                    div()
+                        .w_full()
+                        .h(px(1.0))
+                        .my(px(4.0))
+                        .mx(px(8.0))
+                        .bg(border_color),
+                );
+            }
 
             let row_bg = if is_selected { selection_bg } else { sidebar_bg };
 
