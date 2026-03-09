@@ -133,7 +133,7 @@ struct FolderView: View {
                     .foregroundStyle(.secondary)
             }
             .lineLimit(1)
-            Text(node.modificationDate, style: .relative)
+            Text(node.modificationDate.friendlyDate)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
