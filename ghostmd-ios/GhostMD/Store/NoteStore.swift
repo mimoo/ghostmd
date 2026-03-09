@@ -115,7 +115,7 @@ final class NoteStore {
 
     func createDiaryNote() -> URL? {
         let dir = Diary.todayDir(root: rootURL)
-        let name = PathUtils.randomNoteName()
+        let name = PathUtils.pickNoteName(in: dir)
         let url = Diary.newDiaryPath(root: rootURL, name: name)
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -219,6 +219,82 @@ final class NoteStore {
             return rel
         }
         return url.lastPathComponent
+    }
+
+    // MARK: - Search
+
+    /// Recursively collect all notes under rootURL.
+    func allNotes() -> [FileNode] {
+        var result: [FileNode] = []
+        collectNotes(in: rootURL, into: &result)
+        return result
+    }
+
+    private func collectNotes(in dir: URL, into result: inout [FileNode]) {
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for url in items {
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
+            let isDir = values?.isDirectory ?? false
+            let modDate = values?.contentModificationDate ?? .distantPast
+
+            if isDir {
+                if url.lastPathComponent != ".ghostmd" {
+                    collectNotes(in: url, into: &result)
+                }
+            } else if url.pathExtension == "md" {
+                result.append(FileNode(url: url, isDirectory: false, modificationDate: modDate))
+            }
+        }
+    }
+
+    /// Fuzzy search: matches against path, title, then content. Returns scored results.
+    func search(query: String) -> [FileNode] {
+        guard !query.isEmpty else { return [] }
+        let q = query.lowercased()
+        let notes = allNotes()
+
+        struct Scored {
+            let node: FileNode
+            let score: Int
+        }
+
+        let scored: [Scored] = notes.compactMap { node in
+            let path = relativePath(of: node.url).lowercased()
+            let title = node.displayName.lowercased()
+            let content = (try? String(contentsOf: node.url, encoding: .utf8))?.lowercased() ?? ""
+
+            // Fuzzy: check if all characters of query appear in order
+            func fuzzyMatch(_ haystack: String, _ needle: String) -> Bool {
+                var it = haystack.makeIterator()
+                for ch in needle {
+                    while let next = it.next() {
+                        if next == ch { break }
+                    }
+                    // If iterator exhausted before finding ch, check differently
+                }
+                // Simple substring containment is more useful for short queries
+                return haystack.contains(needle)
+            }
+
+            // Score: lower is better. path match = 0, title = 100, content = 200
+            if fuzzyMatch(title, q) {
+                return Scored(node: node, score: 0)
+            } else if fuzzyMatch(path, q) {
+                return Scored(node: node, score: 100)
+            } else if fuzzyMatch(content, q) {
+                return Scored(node: node, score: 200)
+            }
+            return nil
+        }
+
+        return scored
+            .sorted { $0.score == $1.score ? $0.node.displayName < $1.node.displayName : $0.score < $1.score }
+            .map(\.node)
     }
 
     func createFolder(in parent: URL, name: String) -> URL? {

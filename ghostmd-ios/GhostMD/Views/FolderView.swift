@@ -9,6 +9,7 @@ struct FolderView: View {
     @State private var searchText = ""
     @State private var showNewNote = false
     @State private var pendingNoteURL: URL?
+    @State private var showSearch = false
 
     // Context menu actions
     @State private var showRenameAlert = false
@@ -44,12 +45,7 @@ struct FolderView: View {
                             .contextMenu { folderContextMenu(node) }
                         } else {
                             NavigationLink(value: Route.note(node.url)) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(node.displayName)
-                                    Text(node.modificationDate, style: .relative)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                                noteRow(node)
                             }
                             .accessibilityIdentifier("noteRow_\(node.displayName)")
                             .contextMenu { noteContextMenu(node) }
@@ -57,17 +53,30 @@ struct FolderView: View {
                     }
                     .onDelete(perform: deleteItems)
                 }
-                .searchable(text: $searchText, prompt: "Search")
+                .listStyle(.plain)
+                .searchable(text: $searchText, prompt: "Filter")
                 .accessibilityIdentifier("notesList")
             }
         }
         .navigationTitle(isRoot ? "GhostMD" : folderURL.lastPathComponent)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { showNewNote = true } label: {
-                    Image(systemName: "square.and.pencil")
+                HStack(spacing: 16) {
+                    Button { showSearch = true } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .accessibilityIdentifier("searchButton")
+                    Button { showNewNote = true } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .accessibilityIdentifier("composeButton")
                 }
-                .accessibilityIdentifier("composeButton")
+            }
+        }
+        .sheet(isPresented: $showSearch) {
+            SearchSheet { url in
+                showSearch = false
+                path.append(.note(url))
             }
         }
         .sheet(isPresented: $showNewNote, onDismiss: {
@@ -105,6 +114,30 @@ struct FolderView: View {
         }
         .onAppear { refresh() }
         .refreshable { refresh() }
+    }
+
+    @ViewBuilder
+    private func noteRow(_ node: FileNode) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(node.displayName)
+                .font(.body.weight(.medium))
+            HStack(spacing: 4) {
+                Text(store.relativePath(of: node.url.deletingLastPathComponent()))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Text("/")
+                    .font(.caption)
+                    .foregroundStyle(.quaternary)
+                Text(node.url.lastPathComponent)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            Text(node.modificationDate, style: .relative)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 2)
     }
 
     private func refresh() {
