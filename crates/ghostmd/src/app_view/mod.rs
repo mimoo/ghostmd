@@ -145,6 +145,8 @@ pub struct GhostAppView {
     // File operation undo/redo stacks
     pub(crate) file_undo_stack: Vec<file_undo::FileOp>,
     pub(crate) file_redo_stack: Vec<file_undo::FileOp>,
+    // Markdown syntax highlighting
+    pub(crate) syntax_highlight: bool,
 }
 
 impl GhostAppView {
@@ -338,6 +340,7 @@ impl GhostAppView {
         let mut active_theme = ThemeName::default();
 
         let mut collapsed_folders = Vec::new();
+        let mut syntax_highlight = false;
         if let Some(session) = session {
             sidebar_visible = session.sidebar_visible;
             active_workspace = session.active_workspace.min(session.workspaces.len().saturating_sub(1));
@@ -345,13 +348,14 @@ impl GhostAppView {
                 active_theme = theme;
             }
             collapsed_folders = session.collapsed_folders;
+            syntax_highlight = session.syntax_highlight;
 
             for sws in &session.workspaces {
                 let ws_id = next_workspace_id;
                 next_workspace_id += 1;
 
                 let mut panes = HashMap::new();
-                let split_root = restore_split_node(&sws.split_root, &mut next_pane_id, &mut panes, window, cx);
+                let split_root = restore_split_node(&sws.split_root, &mut next_pane_id, &mut panes, syntax_highlight, window, cx);
 
                 let leaves = split_root.leaves();
                 let focused_pane = if sws.focused_pane_idx < leaves.len() {
@@ -424,6 +428,7 @@ impl GhostAppView {
             move_transition: None,
             file_undo_stack: Vec::new(),
             file_redo_stack: Vec::new(),
+            syntax_highlight,
         };
 
         // Set up file watcher for external changes
@@ -534,6 +539,22 @@ impl GhostAppView {
         let ws = self.active_ws();
         ws.panes.get(&ws.focused_pane)
             .and_then(|p| p.active_path.clone())
+    }
+
+    /// Toggle markdown syntax highlighting on all editors.
+    pub(crate) fn toggle_syntax_highlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.syntax_highlight = !self.syntax_highlight;
+        let enabled = self.syntax_highlight;
+        for ws in &self.workspaces {
+            for pane in ws.panes.values() {
+                if let Some(editor) = &pane.editor {
+                    editor.update(cx, |e, cx| {
+                        e.set_syntax_highlight(enabled, window, cx);
+                    });
+                }
+            }
+        }
+        cx.notify();
     }
 
     /// Check if a specific overlay is active.

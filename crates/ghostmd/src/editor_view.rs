@@ -75,19 +75,29 @@ pub struct EditorView {
     pending_scroll: Option<(usize, u8)>,
     /// Flash highlight: start time for a brief border flash after navigating from search.
     pub highlight_start: Option<Instant>,
+    /// Whether syntax highlighting is enabled for this editor.
+    pub syntax_highlight: bool,
 }
 
 impl EditorView {
     pub fn new(
         path: PathBuf,
+        syntax_highlight: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let input_state = cx.new(|cx| {
-            let mut state = InputState::new(window, cx)
-                .multi_line(true)
-                .soft_wrap(true)
-                .searchable(true);
+            let mut state = if syntax_highlight {
+                InputState::new(window, cx)
+                    .code_editor("markdown")
+                    .line_number(false)
+                    .soft_wrap(true)
+            } else {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .soft_wrap(true)
+                    .searchable(true)
+            };
             state.lsp.definition_provider = Some(Rc::new(UrlDefinitionProvider));
             state
         });
@@ -129,6 +139,7 @@ impl EditorView {
             last_save: None,
             pending_scroll: None,
             highlight_start: None,
+            syntax_highlight,
         }
     }
 
@@ -193,6 +204,54 @@ impl EditorView {
         self.input_state.update(cx, |state, cx| {
             state.focus(window, cx);
         });
+    }
+
+    /// Toggle syntax highlighting, recreating the InputState to switch modes.
+    pub fn set_syntax_highlight(&mut self, enabled: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.syntax_highlight == enabled {
+            return;
+        }
+        self.syntax_highlight = enabled;
+        let content = self.input_state.read(cx).value().to_string();
+
+        let new_input = cx.new(|cx| {
+            let mut state = if enabled {
+                InputState::new(window, cx)
+                    .code_editor("markdown")
+                    .line_number(false)
+                    .soft_wrap(true)
+            } else {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .soft_wrap(true)
+                    .searchable(true)
+            };
+            state.lsp.definition_provider = Some(Rc::new(UrlDefinitionProvider));
+            state
+        });
+
+        if !content.is_empty() {
+            self.skip_next_change = true;
+            new_input.update(cx, |state, cx| {
+                state.set_value(content, window, cx);
+            });
+        }
+
+        // Re-subscribe to change events
+        cx.subscribe(&new_input, |this: &mut Self, _entity: Entity<InputState>, event: &InputEvent, _cx: &mut Context<Self>| {
+            if matches!(event, InputEvent::Change) {
+                if this.skip_next_change {
+                    this.skip_next_change = false;
+                } else {
+                    this.dirty = true;
+                    this.last_edit = Some(Instant::now());
+                }
+            }
+        })
+        .detach();
+
+        self.input_state = new_input;
+        cx.notify();
     }
 
     /// Scroll to a specific line (1-based) and place the cursor there.

@@ -62,6 +62,7 @@ impl GhostAppView {
             PaletteCommand { label: "AI: Suggest Folder".into(), shortcut_hint: None, action_id: "ai_suggest_folder".into() },
             PaletteCommand { label: "Share as Gist".into(), shortcut_hint: None, action_id: "share_gist".into() },
             PaletteCommand { label: "Move to Folder...".into(), shortcut_hint: None, action_id: "move_to_folder".into() },
+            PaletteCommand { label: "Toggle Syntax Highlighting".into(), shortcut_hint: None, action_id: "toggle_syntax_highlight".into() },
             PaletteCommand { label: "Delete Current File".into(), shortcut_hint: Some(format!("{m}+\u{232b}")), action_id: "delete_file".into() },
             PaletteCommand { label: "Quit".into(), shortcut_hint: Some(format!("{m}+Q")), action_id: "quit".into() },
         ]
@@ -160,6 +161,7 @@ impl GhostAppView {
             "ai_suggest_folder" => self.ai_suggest_folder(cx),
             "share_gist" => self.share_as_gist(cx),
             "move_to_folder" => self.start_move_to_folder(window, cx),
+            "toggle_syntax_highlight" => self.toggle_syntax_highlight(window, cx),
             "delete_file" => {
                 if let Some(path) = self.focused_active_path() {
                     self.move_to_trash(path, window, cx);

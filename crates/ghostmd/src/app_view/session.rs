@@ -23,6 +23,8 @@ pub(crate) struct SessionState {
     pub(crate) theme: Option<ThemeName>,
     #[serde(default)]
     pub(crate) collapsed_folders: Vec<String>,
+    #[serde(default)]
+    pub(crate) syntax_highlight: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -57,6 +59,7 @@ pub(crate) fn restore_split_node(
     session_node: &SessionSplitNode,
     next_pane_id: &mut usize,
     panes: &mut HashMap<usize, Pane>,
+    syntax_highlight: bool,
     window: &mut Window,
     cx: &mut Context<GhostAppView>,
 ) -> SplitNode {
@@ -69,7 +72,7 @@ pub(crate) fn restore_split_node(
                 let path_buf = PathBuf::from(p);
                 if path_buf.exists() {
                     let pb = path_buf.clone();
-                    let e = cx.new(|cx| EditorView::new(pb, window, cx));
+                    let e = cx.new(|cx| EditorView::new(pb, syntax_highlight, window, cx));
                     (Some(path_buf), Some(e))
                 } else {
                     (None, None)
@@ -89,8 +92,8 @@ pub(crate) fn restore_split_node(
             };
             SplitNode::Split {
                 direction: dir,
-                left: Box::new(restore_split_node(left, next_pane_id, panes, window, cx)),
-                right: Box::new(restore_split_node(right, next_pane_id, panes, window, cx)),
+                left: Box::new(restore_split_node(left, next_pane_id, panes, syntax_highlight, window, cx)),
+                right: Box::new(restore_split_node(right, next_pane_id, panes, syntax_highlight, window, cx)),
             }
         }
     }
@@ -118,6 +121,7 @@ impl GhostAppView {
             sidebar_visible: self.sidebar_visible,
             theme: Some(self.active_theme),
             collapsed_folders: collapsed,
+            syntax_highlight: self.syntax_highlight,
         };
 
         let dir = self.root.join(".ghostmd");

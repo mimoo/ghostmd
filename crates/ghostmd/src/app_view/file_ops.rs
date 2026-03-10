@@ -85,7 +85,8 @@ impl GhostAppView {
                 editor.update(cx, |e, cx| { e.load_file(p, window, cx); });
             } else {
                 let p = path.clone();
-                let editor = cx.new(|cx| crate::editor_view::EditorView::new(p, window, cx));
+                let sh = self.syntax_highlight;
+                let editor = cx.new(|cx| crate::editor_view::EditorView::new(p, sh, window, cx));
                 let ws = self.active_ws_mut();
                 if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
                     pane.editor = Some(editor);
@@ -316,7 +317,8 @@ impl GhostAppView {
                 if ws_idx < self.workspaces.len() {
                     let ws = &mut self.workspaces[ws_idx];
                     if let Some(pane) = ws.panes.get_mut(&pane_id) {
-                        let editor = cx.new(|cx| crate::editor_view::EditorView::new(prev_path.clone(), window, cx));
+                        let sh = self.syntax_highlight;
+                        let editor = cx.new(|cx| crate::editor_view::EditorView::new(prev_path.clone(), sh, window, cx));
                         pane.active_path = Some(prev_path);
                         pane.editor = Some(editor);
                     }
