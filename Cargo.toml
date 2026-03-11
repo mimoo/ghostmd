@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/ghostmd", "crates/ghostmd-core"]
+
+[patch.crates-io]
+gpui-component = { path = "crates/gpui-component" }

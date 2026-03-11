@@ -91,6 +91,7 @@ impl EditorView {
                 InputState::new(window, cx)
                     .code_editor("markdown")
                     .line_number(false)
+                    .indent_guides(false)
                     .soft_wrap(true)
             } else {
                 InputState::new(window, cx)
@@ -219,6 +220,7 @@ impl EditorView {
                 InputState::new(window, cx)
                     .code_editor("markdown")
                     .line_number(false)
+                    .indent_guides(false)
                     .soft_wrap(true)
             } else {
                 InputState::new(window, cx)
