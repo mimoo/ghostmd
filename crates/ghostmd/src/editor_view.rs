@@ -208,6 +208,7 @@ impl EditorView {
     }
 
     /// Toggle syntax highlighting, recreating the InputState to switch modes.
+    #[allow(dead_code)]
     pub fn set_syntax_highlight(&mut self, enabled: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.syntax_highlight == enabled {
             return;

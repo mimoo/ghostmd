@@ -544,15 +544,21 @@ impl GhostAppView {
     /// Toggle markdown syntax highlighting on all editors.
     pub(crate) fn toggle_syntax_highlight(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.syntax_highlight = !self.syntax_highlight;
-        let enabled = self.syntax_highlight;
-        for ws in &self.workspaces {
-            for pane in ws.panes.values() {
-                if let Some(editor) = &pane.editor {
-                    editor.update(cx, |e, cx| {
-                        e.set_syntax_highlight(enabled, window, cx);
-                    });
+        let sh = self.syntax_highlight;
+        // Recreate all EditorView entities with the new mode
+        for ws in &mut self.workspaces {
+            for pane in ws.panes.values_mut() {
+                if let Some(path) = pane.active_path.clone() {
+                    let p = path;
+                    let editor = cx.new(|cx| EditorView::new(p, sh, window, cx));
+                    pane.editor = Some(editor);
                 }
             }
+        }
+        // Refocus the active pane's editor
+        if !self.workspaces.is_empty() {
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
         }
         cx.notify();
     }
