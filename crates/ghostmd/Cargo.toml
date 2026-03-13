@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 ghostmd-core = { path = "../ghostmd-core" }
 gpui = "0.2.2"
-gpui-component = "0.5.1"
+gpui-component = { version = "0.5.1", features = ["tree-sitter-languages"] }
 gpui-component-assets = "0.5.1"
 rust-embed = "8"
 anyhow = "1"

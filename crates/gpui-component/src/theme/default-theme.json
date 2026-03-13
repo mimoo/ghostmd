@@ -190,6 +190,21 @@
             "color": "#6F42C1"
           },
           "title": {
+            "color": "#0433FF",
+            "font_weight": 600
+          },
+          "emphasis": {
+            "color": "#333333",
+            "font_style": "italic"
+          },
+          "emphasis.strong": {
+            "color": "#333333",
+            "font_weight": 700
+          },
+          "punctuation.special": {
+            "color": "#0433FF"
+          },
+          "punctuation.list_marker": {
             "color": "#0433FF"
           },
           "type": {
@@ -406,6 +421,20 @@
           "title": {
             "color": "#fdd888",
             "font_weight": 600
+          },
+          "emphasis": {
+            "color": "#CACCCA",
+            "font_style": "italic"
+          },
+          "emphasis.strong": {
+            "color": "#CACCCA",
+            "font_weight": 700
+          },
+          "punctuation.special": {
+            "color": "#c28b12"
+          },
+          "punctuation.list_marker": {
+            "color": "#c28b12"
           },
           "type": {
             "color": "#c75828"
