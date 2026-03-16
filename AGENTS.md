@@ -62,6 +62,7 @@ Requires Rust 1.75+ and Xcode with Metal Toolchain on macOS.
 - CI auto-creates a git tag (`vX.Y.Z`) when the version changes on main (`.github/workflows/auto-tag.yml`).
 - The release workflow (`.github/workflows/release.yml`) triggers on `v*` tags and builds macOS binaries.
 - **To release**: bump the version in `Cargo.toml` and push to main. CI handles the rest.
+- **Known CI caveat**: Tags created by `GITHUB_TOKEN` (e.g. via the auto-tag workflow) do NOT trigger other workflows. If the release workflow doesn't fire after auto-tag, delete the remote tag and re-push it locally: `git push origin :refs/tags/vX.Y.Z && git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 ## Key Technical Details
 
@@ -72,6 +73,10 @@ Requires Rust 1.75+ and Xcode with Metal Toolchain on macOS.
 - **String truncation** must use `chars().take(n)` not byte slicing `&s[..n]` — byte slicing panics on multi-byte UTF-8.
 - **Dead code policy**: No crate-level `#![allow(dead_code)]`. Each module/item that is tested but not yet wired to GPUI gets its own `#[allow(dead_code)]` or module-level `#![allow(dead_code)]`. When wiring new features, remove the corresponding allows.
 - **Modules with `#![allow(dead_code)]`** (entirely unwired / test-only): `ai.rs`, `app.rs`, `editor.rs`, `splits.rs`, `search.rs` (the state machine; the `FileFinder` is wired separately). All other dead code is suppressed per-item.
+- **Vendored gpui-component**: The workspace root `Cargo.toml` has `[patch.crates-io]` pointing to `crates/gpui-component/`. Local patches to gpui-component (e.g. input behavior fixes) are applied there.
+- **gpui-component features**: The `tree-sitter-languages` feature MUST be enabled on the `gpui-component` dependency for syntax highlighting to work. Without it, `code_editor("markdown")` silently falls back to a plain JSON grammar.
+- **Testing with custom workspace**: Set `GHOSTMD_ROOT=/tmp/ghostmd-test cargo run` to use a test directory instead of `~/Documents/ghostmd/`. Useful for testing without touching personal notes.
+- **Same-file multi-pane sync**: Each pane has its own independent `EditorView`/`InputState`. Edits in one pane only appear in another pane showing the same file after auto-save triggers the file watcher reload — there is no live in-memory sync yet.
 
 ## App Structure (app_view/)
 
