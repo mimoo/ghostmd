@@ -55,10 +55,12 @@ impl SessionSplitNode {
 }
 
 /// Reconstruct a SplitNode tree from a serialized session, creating EditorView entities for each pane.
+/// Created editors are pushed into `editors_out` so the caller can subscribe to them.
 pub(crate) fn restore_split_node(
     session_node: &SessionSplitNode,
     next_pane_id: &mut usize,
     panes: &mut HashMap<usize, Pane>,
+    editors_out: &mut Vec<Entity<EditorView>>,
     syntax_highlight: bool,
     window: &mut Window,
     cx: &mut Context<GhostAppView>,
@@ -73,6 +75,7 @@ pub(crate) fn restore_split_node(
                 if path_buf.exists() {
                     let pb = path_buf.clone();
                     let e = cx.new(|cx| EditorView::new(pb, syntax_highlight, window, cx));
+                    editors_out.push(e.clone());
                     (Some(path_buf), Some(e))
                 } else {
                     (None, None)
@@ -92,8 +95,8 @@ pub(crate) fn restore_split_node(
             };
             SplitNode::Split {
                 direction: dir,
-                left: Box::new(restore_split_node(left, next_pane_id, panes, syntax_highlight, window, cx)),
-                right: Box::new(restore_split_node(right, next_pane_id, panes, syntax_highlight, window, cx)),
+                left: Box::new(restore_split_node(left, next_pane_id, panes, editors_out, syntax_highlight, window, cx)),
+                right: Box::new(restore_split_node(right, next_pane_id, panes, editors_out, syntax_highlight, window, cx)),
             }
         }
     }

@@ -8,6 +8,12 @@ use ropey::Rope;
 
 use ghostmd_core::note::Note;
 
+/// Events emitted by EditorView for cross-pane synchronization.
+pub enum EditorEvent {
+    /// Content changed (user edit). Carries the current text.
+    ContentChanged(String),
+}
+
 /// Detects URLs in text and provides them as "definitions" for Cmd+click.
 struct UrlDefinitionProvider;
 
@@ -115,13 +121,15 @@ impl EditorView {
         }
 
         // Subscribe to text changes
-        cx.subscribe(&input_state, |this: &mut Self, _entity: Entity<InputState>, event: &InputEvent, _cx: &mut Context<Self>| {
+        cx.subscribe(&input_state, |this: &mut Self, _entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>| {
             if matches!(event, InputEvent::Change) {
                 if this.skip_next_change {
                     this.skip_next_change = false;
                 } else {
                     this.dirty = true;
                     this.last_edit = Some(Instant::now());
+                    let text = this.input_state.read(cx).value().to_string();
+                    cx.emit(EditorEvent::ContentChanged(text));
                 }
             }
         })
@@ -200,6 +208,16 @@ impl EditorView {
         self.input_state.read(cx).value().to_string()
     }
 
+    /// Update content from another editor showing the same file (no event emitted).
+    pub fn sync_content(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.skip_next_change = true;
+        self.input_state.update(cx, |state, cx| {
+            state.set_value(text, window, cx);
+        });
+        self.dirty = true;
+        self.last_edit = Some(Instant::now());
+    }
+
     /// Focus this editor's input for typing.
     pub fn focus_input(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.input_state.update(cx, |state, cx| {
@@ -241,13 +259,15 @@ impl EditorView {
         }
 
         // Re-subscribe to change events
-        cx.subscribe(&new_input, |this: &mut Self, _entity: Entity<InputState>, event: &InputEvent, _cx: &mut Context<Self>| {
+        cx.subscribe(&new_input, |this: &mut Self, _entity: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>| {
             if matches!(event, InputEvent::Change) {
                 if this.skip_next_change {
                     this.skip_next_change = false;
                 } else {
                     this.dirty = true;
                     this.last_edit = Some(Instant::now());
+                    let text = this.input_state.read(cx).value().to_string();
+                    cx.emit(EditorEvent::ContentChanged(text));
                 }
             }
         })
@@ -297,6 +317,8 @@ impl EditorView {
         self.highlight_start = Some(Instant::now());
     }
 }
+
+impl EventEmitter<EditorEvent> for EditorView {}
 
 impl Focusable for EditorView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {

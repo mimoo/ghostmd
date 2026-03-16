@@ -87,6 +87,7 @@ impl GhostAppView {
                 let p = path.clone();
                 let sh = self.syntax_highlight;
                 let editor = cx.new(|cx| crate::editor_view::EditorView::new(p, sh, window, cx));
+                self.subscribe_editor(&editor, window, cx);
                 let ws = self.active_ws_mut();
                 if let Some(pane) = ws.panes.get_mut(&ws.focused_pane) {
                     pane.editor = Some(editor);
@@ -313,6 +314,7 @@ impl GhostAppView {
             );
             self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
             // Restore previous files in affected panes
+            let mut new_editors = Vec::new();
             for (ws_idx, pane_id, prev_path) in restore_targets {
                 if ws_idx < self.workspaces.len() {
                     let ws = &mut self.workspaces[ws_idx];
@@ -320,9 +322,13 @@ impl GhostAppView {
                         let sh = self.syntax_highlight;
                         let editor = cx.new(|cx| crate::editor_view::EditorView::new(prev_path.clone(), sh, window, cx));
                         pane.active_path = Some(prev_path);
-                        pane.editor = Some(editor);
+                        pane.editor = Some(editor.clone());
+                        new_editors.push(editor);
                     }
                 }
+            }
+            for editor in new_editors {
+                self.subscribe_editor(&editor, window, cx);
             }
             let focused = self.active_ws().focused_pane;
             self.focus_pane_editor(focused, window, cx);

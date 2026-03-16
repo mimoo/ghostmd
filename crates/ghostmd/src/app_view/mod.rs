@@ -21,7 +21,7 @@ use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
 use gpui_component::resizable::{h_resizable, resizable_panel};
 
-use crate::editor_view::EditorView;
+use crate::editor_view::{EditorEvent, EditorView};
 use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
 use crate::palette::CommandPalette;
@@ -341,6 +341,7 @@ impl GhostAppView {
 
         let mut collapsed_folders = Vec::new();
         let mut syntax_highlight = false;
+        let mut restored_editors: Vec<Entity<EditorView>> = Vec::new();
         if let Some(session) = session {
             sidebar_visible = session.sidebar_visible;
             active_workspace = session.active_workspace.min(session.workspaces.len().saturating_sub(1));
@@ -355,7 +356,7 @@ impl GhostAppView {
                 next_workspace_id += 1;
 
                 let mut panes = HashMap::new();
-                let split_root = restore_split_node(&sws.split_root, &mut next_pane_id, &mut panes, syntax_highlight, window, cx);
+                let split_root = restore_split_node(&sws.split_root, &mut next_pane_id, &mut panes, &mut restored_editors, syntax_highlight, window, cx);
 
                 let leaves = split_root.leaves();
                 let focused_pane = if sws.focused_pane_idx < leaves.len() {
@@ -446,6 +447,11 @@ impl GhostAppView {
             }
             view._watcher = watcher;
             view.fs_events_rx = Some(rx);
+        }
+
+        // Subscribe to restored editors for cross-pane sync
+        for editor in restored_editors {
+            view.subscribe_editor(&editor, window, cx);
         }
 
         // If no session was loaded (or it was empty), create a default workspace
@@ -546,14 +552,19 @@ impl GhostAppView {
         self.syntax_highlight = !self.syntax_highlight;
         let sh = self.syntax_highlight;
         // Recreate all EditorView entities with the new mode
+        let mut new_editors: Vec<Entity<EditorView>> = Vec::new();
         for ws in &mut self.workspaces {
             for pane in ws.panes.values_mut() {
                 if let Some(path) = pane.active_path.clone() {
                     let p = path;
                     let editor = cx.new(|cx| EditorView::new(p, sh, window, cx));
-                    pane.editor = Some(editor);
+                    pane.editor = Some(editor.clone());
+                    new_editors.push(editor);
                 }
             }
+        }
+        for editor in new_editors {
+            self.subscribe_editor(&editor, window, cx);
         }
         // Refocus the active pane's editor
         if !self.workspaces.is_empty() {
@@ -561,6 +572,33 @@ impl GhostAppView {
             self.focus_pane_editor(focused, window, cx);
         }
         cx.notify();
+    }
+
+    /// Subscribe to an editor's content changes for cross-pane live sync.
+    pub(crate) fn subscribe_editor(&mut self, editor: &Entity<EditorView>, window: &mut Window, cx: &mut Context<Self>) {
+        cx.subscribe_in(editor, window, |this: &mut Self, changed_editor: &Entity<EditorView>, event: &EditorEvent, window, cx| {
+            let EditorEvent::ContentChanged(text) = event;
+            let path = changed_editor.read(cx).path.clone();
+            // Collect other editors showing the same file
+            let mut targets: Vec<Entity<EditorView>> = Vec::new();
+            for ws in &this.workspaces {
+                for pane in ws.panes.values() {
+                    if pane.active_path.as_ref() == Some(&path) {
+                        if let Some(ed) = &pane.editor {
+                            if *ed != *changed_editor {
+                                targets.push(ed.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            for target in targets {
+                target.update(cx, |e, cx| {
+                    e.sync_content(text.clone(), window, cx);
+                });
+            }
+        })
+        .detach();
     }
 
     /// Check if a specific overlay is active.
