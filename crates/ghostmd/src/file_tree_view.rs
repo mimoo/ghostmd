@@ -685,10 +685,29 @@ impl Render for FileTreeView {
             .child(
                 div()
                     .p(px(8.0))
-                    .text_sm()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
                     .flex_shrink_0()
-                    .text_color(hint_fg)
-                    .child(format!("ghostmd v{}", env!("CARGO_PKG_VERSION"))),
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(hint_fg)
+                            .child(format!("ghostmd v{}", env!("CARGO_PKG_VERSION"))),
+                    )
+                    .child(
+                        div()
+                            .id("collapse-all-btn")
+                            .text_xs()
+                            .text_color(hint_fg)
+                            .cursor_pointer()
+                            .hover(|s| s.text_color(fg))
+                            .on_click(cx.listener(|this: &mut Self, _, _window, cx| {
+                                this.collapse_all(cx);
+                            }))
+                            .child("\u{25b6}\u{25b6}"),
+                    ),
             )
             .child(list)
     }
