@@ -5,6 +5,7 @@ All notable changes to GhostMD are documented in this file.
 ## [Unreleased]
 
 - Remove `*` dirty indicator from workspace tabs (pane title bar already shows `●`)
+- Add collapse-all button (`▶▶`) in the sidebar header
 
 ## [0.7.2] — 2026-03-21
 
