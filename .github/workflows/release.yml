@@ -2,13 +2,43 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "crates/ghostmd/Cargo.toml"
 
 permissions:
   contents: write
 
 jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if version tag is new
+        id: check
+        run: |
+          VERSION=$(grep '^version' crates/ghostmd/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v${VERSION}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version detected: $TAG"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
   build-macos:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     strategy:
       matrix:
         include:
@@ -28,22 +58,24 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Create .app bundle
+        env:
+          TAG: ${{ needs.check-version.outputs.tag }}
         run: |
+          VERSION="${TAG#v}"
           APP="GhostMD.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
           cp "target/${{ matrix.target }}/release/ghostmd" "$APP/Contents/MacOS/"
           cp scripts/Info.plist "$APP/Contents/Info.plist" 2>/dev/null || true
-          # Generate Info.plist inline if not present
           if [ ! -f "$APP/Contents/Info.plist" ]; then
-            cat > "$APP/Contents/Info.plist" <<'PLIST'
+            cat > "$APP/Contents/Info.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
               <key>CFBundleName</key><string>GhostMD</string>
               <key>CFBundleIdentifier</key><string>com.ghostmd.app</string>
-              <key>CFBundleVersion</key><string>${GITHUB_REF_NAME#v}</string>
-              <key>CFBundleShortVersionString</key><string>${GITHUB_REF_NAME#v}</string>
+              <key>CFBundleVersion</key><string>${VERSION}</string>
+              <key>CFBundleShortVersionString</key><string>${VERSION}</string>
               <key>CFBundleExecutable</key><string>ghostmd</string>
               <key>CFBundlePackageType</key><string>APPL</string>
               <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -62,6 +94,8 @@ jobs:
           path: GhostMD-${{ matrix.target }}.tar.gz
 
   build-linux:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +126,8 @@ jobs:
           path: GhostMD-x86_64-unknown-linux-gnu.tar.gz
 
   release:
-    needs: [build-macos, build-linux]
+    needs: [check-version, build-macos, build-linux]
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -102,5 +137,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.check-version.outputs.tag }}
           files: GhostMD-*.tar.gz
           generate_release_notes: true
