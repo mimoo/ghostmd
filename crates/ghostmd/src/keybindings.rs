@@ -43,6 +43,7 @@ actions!(
         MoveToTrash,
         FileTreeUndo,
         FileTreeRedo,
+        OpenNoteSwitcher,
     ]
 );
 
@@ -87,6 +88,8 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("secondary-9", SwitchTab9, None),
         // Move to Trash
         GpuiKeyBinding::new("secondary-backspace", MoveToTrash, None),
+        // Search open notes
+        GpuiKeyBinding::new("secondary-shift-a", OpenNoteSwitcher, None),
         // File tree undo/redo (only when file tree is focused)
         GpuiKeyBinding::new("secondary-z", FileTreeUndo, Some("FileTree")),
         GpuiKeyBinding::new("secondary-shift-z", FileTreeRedo, Some("FileTree")),

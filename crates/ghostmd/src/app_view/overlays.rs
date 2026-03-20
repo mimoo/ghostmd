@@ -50,6 +50,179 @@ impl GhostAppView {
         cx.notify();
     }
 
+    pub(crate) fn open_note_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.active_overlay = Some(OverlayKind::NoteSwitcher);
+        self.note_switcher_selected = 0;
+        self.note_switcher_scroll = ScrollHandle::new();
+        // Collect all open notes across all workspaces
+        self.note_switcher_all = self.collect_open_notes(cx);
+        self.note_switcher_results = self.note_switcher_all.clone();
+        self.note_switcher_input.update(cx, |state, cx| {
+            state.set_value("", window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn close_note_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.active_overlay = None;
+        self.note_switcher_results.clear();
+        self.note_switcher_all.clear();
+        if !self.workspaces.is_empty() {
+            let focused = self.active_ws().focused_pane;
+            self.focus_pane_editor(focused, window, cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn confirm_note_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(result) = self.note_switcher_results.get(self.note_switcher_selected).cloned() {
+            self.active_overlay = None;
+            self.note_switcher_results.clear();
+            self.note_switcher_all.clear();
+            // Switch to the workspace tab
+            if result.ws_index < self.workspaces.len() {
+                self.switch_workspace(result.ws_index, window, cx);
+                // Focus the specific pane
+                let ws = &mut self.workspaces[self.active_workspace];
+                if ws.panes.contains_key(&result.pane_id) {
+                    ws.pane_focus_history.push(ws.focused_pane);
+                    ws.focused_pane = result.pane_id;
+                }
+                self.focus_pane_editor(result.pane_id, window, cx);
+                self.sync_file_tree_selection(cx);
+            }
+            cx.notify();
+        }
+    }
+
+    fn collect_open_notes(&self, cx: &App) -> Vec<NoteSwitcherResult> {
+        let mut results = Vec::new();
+        for (ws_idx, ws) in self.workspaces.iter().enumerate() {
+            for (&pane_id, pane) in &ws.panes {
+                if let Some(path) = &pane.active_path {
+                    let filename = path.file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    results.push(NoteSwitcherResult {
+                        ws_index: ws_idx,
+                        pane_id,
+                        path: path.clone(),
+                        ws_title: ws.title.clone(),
+                        filename,
+                        is_title_match: true,
+                        content_snippet: None,
+                    });
+                }
+            }
+        }
+        // Read content for all open editors (for content search)
+        for result in &mut results {
+            for ws in &self.workspaces {
+                if let Some(pane) = ws.panes.get(&result.pane_id) {
+                    if let Some(editor) = &pane.editor {
+                        let text = editor.read(cx).text(cx);
+                        if !text.is_empty() {
+                            result.content_snippet = Some(text);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        results
+    }
+
+    pub(crate) fn filter_note_switcher(&mut self, query: &str, _cx: &mut Context<Self>) {
+        use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
+        use nucleo_matcher::{Config, Matcher, Utf32Str};
+
+        self.note_switcher_selected = 0;
+
+        if query.is_empty() {
+            self.note_switcher_results = self.note_switcher_all.clone();
+            return;
+        }
+
+        let mut matcher = Matcher::new(Config::DEFAULT);
+        let pattern = Pattern::new(
+            query,
+            CaseMatching::Ignore,
+            Normalization::Smart,
+            AtomKind::Fuzzy,
+        );
+
+        // Score by title match
+        let mut title_matches: Vec<(u32, usize)> = Vec::new();
+        let mut content_matches: Vec<(u32, usize)> = Vec::new();
+        let mut title_matched_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+        for (i, result) in self.note_switcher_all.iter().enumerate() {
+            let mut buf = Vec::new();
+            let haystack = Utf32Str::new(&result.filename, &mut buf);
+            if let Some(score) = pattern.score(haystack, &mut matcher) {
+                title_matches.push((score, i));
+                title_matched_indices.insert(i);
+            }
+        }
+
+        // Score by content match (only for items not already title-matched)
+        for (i, result) in self.note_switcher_all.iter().enumerate() {
+            if title_matched_indices.contains(&i) { continue; }
+            if let Some(ref content) = result.content_snippet {
+                // Search line-by-line for a matching snippet
+                let query_lower = query.to_lowercase();
+                for line in content.lines() {
+                    if line.to_lowercase().contains(&query_lower) {
+                        let snippet = line.trim();
+                        let truncated = if snippet.chars().count() > 80 {
+                            format!("{}...", snippet.chars().take(80).collect::<String>())
+                        } else {
+                            snippet.to_string()
+                        };
+                        content_matches.push((0, i));
+                        // Store the snippet on a cloned result
+                        // We'll set it when building final results
+                        let _ = truncated; // used below
+                        break;
+                    }
+                }
+            }
+        }
+
+        title_matches.sort_by(|a, b| b.0.cmp(&a.0));
+        // Don't need to sort content_matches since they all have score 0
+
+        self.note_switcher_results = Vec::new();
+        for &(_, i) in &title_matches {
+            let mut r = self.note_switcher_all[i].clone();
+            r.is_title_match = true;
+            r.content_snippet = None; // Don't show snippet for title matches
+            self.note_switcher_results.push(r);
+        }
+        for &(_, i) in &content_matches {
+            let mut r = self.note_switcher_all[i].clone();
+            r.is_title_match = false;
+            // Find and set the matching snippet
+            if let Some(ref content) = self.note_switcher_all[i].content_snippet {
+                let query_lower = query.to_lowercase();
+                for line in content.lines() {
+                    if line.to_lowercase().contains(&query_lower) {
+                        let snippet = line.trim();
+                        r.content_snippet = Some(if snippet.chars().count() > 80 {
+                            format!("{}...", snippet.chars().take(80).collect::<String>())
+                        } else {
+                            snippet.to_string()
+                        });
+                        break;
+                    }
+                }
+            }
+            self.note_switcher_results.push(r);
+        }
+    }
+
     /// Dismiss whatever overlay is currently active.
     pub(crate) fn dismiss_overlays(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.active_overlay.take() {
@@ -66,6 +239,10 @@ impl GhostAppView {
             }
             Some(OverlayKind::LocationPicker) => {
                 self.location_picker_options.clear();
+            }
+            Some(OverlayKind::NoteSwitcher) => {
+                self.note_switcher_results.clear();
+                self.note_switcher_all.clear();
             }
             None => return,
         }

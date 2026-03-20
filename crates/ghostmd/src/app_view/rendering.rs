@@ -684,6 +684,126 @@ impl GhostAppView {
             )
     }
 
+    pub(crate) fn render_note_switcher(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let t = &self.theme;
+
+        let mut list = div()
+            .id("note-switcher-results")
+            .flex()
+            .flex_col()
+            .max_h(px(400.0))
+            .overflow_y_scroll()
+            .track_scroll(&self.note_switcher_scroll);
+
+        let max_display = 50.min(self.note_switcher_results.len());
+        for i in 0..max_display {
+            let result = &self.note_switcher_results[i];
+            let is_selected = i == self.note_switcher_selected;
+            let bg = if is_selected { t.selection } else { t.sidebar_bg };
+
+            let idx = i;
+            let mut row = div()
+                .id(ElementId::NamedInteger("note-switch-item".into(), i as u64))
+                .w_full()
+                .px(px(12.0))
+                .py(px(4.0))
+                .bg(bg)
+                .cursor_pointer()
+                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                    this.note_switcher_selected = idx;
+                    this.confirm_note_switcher(window, cx);
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(t.fg)
+                                .child(result.filename.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(t.hint)
+                                .child(result.ws_title.clone()),
+                        ),
+                );
+
+            if let Some(ref snippet) = result.content_snippet {
+                if !result.is_title_match {
+                    row = row.child(
+                        div()
+                            .text_xs()
+                            .text_color(t.hint)
+                            .px(px(0.0))
+                            .child(snippet.clone()),
+                    );
+                }
+            }
+
+            list = list.child(row);
+        }
+
+        let count_text = format!("{} open notes", self.note_switcher_results.len());
+
+        div()
+            .id("note-switcher-dismiss-bg")
+            .absolute()
+            .inset_0()
+            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                this.close_note_switcher(window, cx);
+            }))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(60.0))
+                    .left_0()
+                    .right_0()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .id("note-switcher-card")
+                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
+                                cx.stop_propagation();
+                            }))
+                            .w(px(500.0))
+                            .bg(t.sidebar_bg)
+                            .border_1()
+                            .border_color(t.border)
+                            .rounded(px(8.0))
+                            .shadow_lg()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .px(px(8.0))
+                                    .py(px(6.0))
+                                    .border_b_1()
+                                    .border_color(t.border)
+                                    .child(
+                                        Input::new(&self.note_switcher_input)
+                                            .appearance(false)
+                                            .w_full(),
+                                    ),
+                            )
+                            .child(list)
+                            .child(
+                                div()
+                                    .px(px(12.0))
+                                    .py(px(4.0))
+                                    .text_xs()
+                                    .text_color(t.hint)
+                                    .child(count_text),
+                            ),
+                    ),
+            )
+    }
+
     pub(crate) fn render_context_menu(&self, path: &Path, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
         let t = &self.theme;
         let is_file = path.is_file();

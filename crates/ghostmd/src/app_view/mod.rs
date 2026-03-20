@@ -47,6 +47,25 @@ pub(crate) enum OverlayKind {
     FileFinder,
     AgenticSearch,
     LocationPicker,
+    NoteSwitcher,
+}
+
+// ---------------------------------------------------------------------------
+// Note switcher result — an open note in a specific workspace/pane
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub(crate) struct NoteSwitcherResult {
+    pub ws_index: usize,
+    pub pane_id: usize,
+    #[allow(dead_code)]
+    pub path: PathBuf,
+    pub ws_title: String,
+    pub filename: String,
+    /// True if this result matched by title, false if by content.
+    pub is_title_match: bool,
+    /// Optional content snippet for content matches.
+    pub content_snippet: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +166,12 @@ pub struct GhostAppView {
     pub(crate) file_redo_stack: Vec<file_undo::FileOp>,
     // Markdown syntax highlighting
     pub(crate) syntax_highlight: bool,
+    // Note switcher (cmd-shift-a)
+    pub(crate) note_switcher_input: Entity<InputState>,
+    pub(crate) note_switcher_results: Vec<NoteSwitcherResult>,
+    pub(crate) note_switcher_all: Vec<NoteSwitcherResult>,
+    pub(crate) note_switcher_selected: usize,
+    pub(crate) note_switcher_scroll: ScrollHandle,
 }
 
 impl GhostAppView {
@@ -322,6 +347,27 @@ impl GhostAppView {
         })
         .detach();
 
+        // Note switcher input (cmd-shift-a)
+        let note_switcher_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search open notes..."));
+        cx.subscribe_in(&note_switcher_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
+            match event {
+                InputEvent::Change => {
+                    if this.overlay_is(OverlayKind::NoteSwitcher) {
+                        let value = this.note_switcher_input.read(cx).value().to_string();
+                        this.filter_note_switcher(&value, cx);
+                        cx.notify();
+                    }
+                }
+                InputEvent::PressEnter { .. } => {
+                    if this.overlay_is(OverlayKind::NoteSwitcher) {
+                        this.confirm_note_switcher(window, cx);
+                    }
+                }
+                _ => {}
+            }
+        })
+        .detach();
+
         // --- Load session if available ---
         let session: Option<SessionState> = if load_session {
             let session_path = root.join(".ghostmd").join("session.json");
@@ -430,6 +476,11 @@ impl GhostAppView {
             file_undo_stack: Vec::new(),
             file_redo_stack: Vec::new(),
             syntax_highlight,
+            note_switcher_input,
+            note_switcher_results: Vec::new(),
+            note_switcher_all: Vec::new(),
+            note_switcher_selected: 0,
+            note_switcher_scroll: ScrollHandle::new(),
         };
 
         // Set up file watcher for external changes
@@ -771,6 +822,7 @@ impl Render for GhostAppView {
         let show_file_finder = self.overlay_is(OverlayKind::FileFinder);
         let show_agentic_search = self.overlay_is(OverlayKind::AgenticSearch);
         let show_location_picker = self.overlay_is(OverlayKind::LocationPicker);
+        let show_note_switcher = self.overlay_is(OverlayKind::NoteSwitcher);
 
         // Context menu overlay data
         let ctx_menu = self.tree_context_menu.clone();
@@ -925,6 +977,13 @@ impl Render for GhostAppView {
                 }
                 cx.notify();
             }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenNoteSwitcher, window, cx| {
+                if this.overlay_is(OverlayKind::NoteSwitcher) {
+                    this.close_note_switcher(window, cx);
+                } else {
+                    this.open_note_switcher(window, cx);
+                }
+            }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
                 let editing = this.file_tree.read(cx).is_editing();
                 if editing {
@@ -964,6 +1023,13 @@ impl Render for GhostAppView {
                         }
                         cx.notify();
                     }
+                    Some(OverlayKind::NoteSwitcher) => {
+                        if this.note_switcher_selected > 0 {
+                            this.note_switcher_selected -= 1;
+                            this.note_switcher_scroll.scroll_to_item(this.note_switcher_selected);
+                        }
+                        cx.notify();
+                    }
                     Some(OverlayKind::Palette) => this.palette_move_up(cx),
                     None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveUp), cx);
@@ -990,6 +1056,13 @@ impl Render for GhostAppView {
                         }
                         cx.notify();
                     }
+                    Some(OverlayKind::NoteSwitcher) => {
+                        if !this.note_switcher_results.is_empty() && this.note_switcher_selected + 1 < this.note_switcher_results.len() {
+                            this.note_switcher_selected += 1;
+                            this.note_switcher_scroll.scroll_to_item(this.note_switcher_selected);
+                        }
+                        cx.notify();
+                    }
                     Some(OverlayKind::Palette) => this.palette_move_down(cx),
                     None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveDown), cx);
@@ -999,6 +1072,7 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteConfirm, window, cx| {
                 match &this.active_overlay {
                     Some(OverlayKind::LocationPicker) => this.confirm_location_picker(window, cx),
+                    Some(OverlayKind::NoteSwitcher) => this.confirm_note_switcher(window, cx),
                     Some(OverlayKind::Palette) if this.rename_mode.is_some() => {
                         // In rename mode, forward Enter to the input so the
                         // InputEvent::PressEnter subscriber applies the rename.
@@ -1134,6 +1208,7 @@ impl Render for GhostAppView {
                                             .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
                                             .when(show_agentic_search, |d| d.child(self.render_agentic_search(cx)))
                                             .when(show_location_picker, |d| d.child(self.render_location_picker(cx)))
+                                            .when(show_note_switcher, |d| d.child(self.render_note_switcher(cx)))
                                             .when(show_palette, |d| d.child(self.render_command_palette(cx))),
                                     ),
                             ),
