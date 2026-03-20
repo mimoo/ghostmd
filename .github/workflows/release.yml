@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "crates/ghostmd/Cargo.toml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
