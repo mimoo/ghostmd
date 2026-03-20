@@ -4,7 +4,10 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-03-20
+
 - **Note switcher** (Cmd+Shift+A): fuzzy search all open notes across tabs, ranked by title match then content match, with tab name displayed on each result
+- **Custom workspace root**: set `GHOSTMD_ROOT` env var to use an alternate notes directory
 
 ## [0.7.1] — 2026-03-16
 

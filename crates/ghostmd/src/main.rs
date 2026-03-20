@@ -84,7 +84,10 @@ fn open_main_window(root: std::path::PathBuf, cx: &mut App) {
 }
 
 fn main() {
-    let root = ghostmd_core::diary::ghostmd_root();
+    let root = match std::env::var("GHOSTMD_ROOT") {
+        Ok(val) => std::path::PathBuf::from(val),
+        Err(_) => ghostmd_core::diary::ghostmd_root(),
+    };
     std::fs::create_dir_all(&root).ok();
 
     let reopen_root = root.clone();
