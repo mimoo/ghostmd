@@ -129,3 +129,4 @@ Key patterns:
 - NEVER amend commits at all - other agents might be working concurrently and amending can cause conflicts
 - NEVER use `git restore` or `git checkout` to discard changes - other agents may be working concurrently and their changes could be lost
 - NEVER use `git commit -a` - always stage specific files to avoid committing adjacent changes from other agents
+- After every committed change, update `CHANGELOG.md` under the `[Unreleased]` section with a concise description of what changed. When bumping a version, move unreleased entries under the new version heading with the date.
