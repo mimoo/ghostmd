@@ -26,7 +26,7 @@ pub fn ghostmd_root() -> PathBuf {
 pub fn diary_dir(root: &Path, date: NaiveDate) -> PathBuf {
     root.join("diary")
         .join(date.format("%Y").to_string())
-        .join(date.format("%B").to_string().to_lowercase())
+        .join(format!("{}-{}", date.format("%m"), date.format("%B").to_string().to_lowercase()))
         .join(date.format("%d").to_string())
 }
 
@@ -98,7 +98,7 @@ mod tests {
         let root = Path::new("/notes");
         let date = NaiveDate::from_ymd_opt(2024, 3, 15).unwrap();
         let dir = diary_dir(root, date);
-        assert_eq!(dir, PathBuf::from("/notes/diary/2024/march/15"));
+        assert_eq!(dir, PathBuf::from("/notes/diary/2024/03-march/15"));
     }
 
     #[test]
@@ -106,7 +106,7 @@ mod tests {
         let root = Path::new("/notes");
         let date = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
         let dir = diary_dir(root, date);
-        assert_eq!(dir, PathBuf::from("/notes/diary/2024/january/05"));
+        assert_eq!(dir, PathBuf::from("/notes/diary/2024/01-january/05"));
     }
 
     #[test]
@@ -204,7 +204,7 @@ mod tests {
         let root = Path::new("/notes");
         let date = NaiveDate::from_ymd_opt(2024, 2, 29).unwrap();
         let dir = diary_dir(root, date);
-        assert_eq!(dir, PathBuf::from("/notes/diary/2024/february/29"));
+        assert_eq!(dir, PathBuf::from("/notes/diary/2024/02-february/29"));
     }
 
     #[test]
@@ -212,7 +212,7 @@ mod tests {
         let root = Path::new("/notes");
         let date = NaiveDate::from_ymd_opt(2024, 12, 31).unwrap();
         let dir = diary_dir(root, date);
-        assert_eq!(dir, PathBuf::from("/notes/diary/2024/december/31"));
+        assert_eq!(dir, PathBuf::from("/notes/diary/2024/12-december/31"));
     }
 
     #[test]
@@ -220,6 +220,6 @@ mod tests {
         let root = Path::new("/notes");
         let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
         let dir = diary_dir(root, date);
-        assert_eq!(dir, PathBuf::from("/notes/diary/2025/january/01"));
+        assert_eq!(dir, PathBuf::from("/notes/diary/2025/01-january/01"));
     }
 }
