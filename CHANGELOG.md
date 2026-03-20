@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Remove `*` dirty indicator from workspace tabs (pane title bar already shows `●`)
+
 ## [0.7.2] — 2026-03-21
 
 - **Note switcher** (Cmd+Shift+A): fuzzy search all open notes across tabs, ranked by title match then content match, with tab name displayed on each result
