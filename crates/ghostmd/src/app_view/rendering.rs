@@ -182,7 +182,9 @@ impl GhostAppView {
                         .child(div().text_color(t.pane_title_fg).child(dir_part))
                         .child(div().text_color(t.fg).child(file_part));
 
+                    let reveal_path = active_path.cloned();
                     let title_bar = div()
+                        .id(ElementId::NamedInteger("pane-title".into(), pid as u64))
                         .w_full()
                         .h(px(24.0))
                         .flex()
@@ -190,6 +192,16 @@ impl GhostAppView {
                         .px(px(8.0))
                         .bg(t.pane_title_bg)
                         .text_xs()
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this: &mut Self, _, _window, cx| {
+                            if let Some(ref path) = reveal_path {
+                                this.sidebar_visible = true;
+                                this.file_tree.update(cx, |tree, cx| {
+                                    tree.reveal_file(path, cx);
+                                });
+                                cx.notify();
+                            }
+                        }))
                         .child(title_row);
 
                     pane_div = pane_div.child(title_bar);
