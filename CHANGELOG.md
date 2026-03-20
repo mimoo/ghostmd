@@ -4,10 +4,11 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
-## [0.7.2] — 2026-03-20
+## [0.7.2] — 2026-03-21
 
 - **Note switcher** (Cmd+Shift+A): fuzzy search all open notes across tabs, ranked by title match then content match, with tab name displayed on each result
 - **Custom workspace root**: set `GHOSTMD_ROOT` env var to use an alternate notes directory
+- Fix release CI: merge auto-tag and release into single workflow (GITHUB_TOKEN tags don't trigger other workflows)
 
 ## [0.7.1] — 2026-03-16
 
