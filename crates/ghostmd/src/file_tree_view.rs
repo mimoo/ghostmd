@@ -706,7 +706,7 @@ impl Render for FileTreeView {
                             .on_click(cx.listener(|this: &mut Self, _, _window, cx| {
                                 this.collapse_all(cx);
                             }))
-                            .child("\u{25b6}\u{25b6}"),
+                            .child("\u{229f}"),
                     ),
             )
             .child(list)
