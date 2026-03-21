@@ -5,7 +5,7 @@ All notable changes to GhostMD are documented in this file.
 ## [Unreleased]
 
 - Remove `*` dirty indicator from workspace tabs (pane title bar already shows `●`)
-- Add collapse-all button (`▶▶`) in the sidebar header
+- Add collapse-all button (`⊟`) in the sidebar header
 - Click pane title bar to reveal and highlight the file in the sidebar tree
 - Diary paths now use `MM-month` format (e.g. `diary/2026/03-march/21/`)
 
