@@ -380,7 +380,9 @@ impl GhostAppView {
     pub(crate) fn run_update(&mut self, cx: &mut Context<Self>) {
         // Save session before updating
         self.save_session(cx);
-        cx.spawn(async |_this, cx: &mut AsyncApp| {
+        self.update_in_progress = true;
+        self.start_ai_animation(cx);
+        cx.spawn(async |this, cx: &mut AsyncApp| {
             let result = cx.background_executor().spawn(async {
                 Command::new("bash")
                     .args(["-c", "curl -fsSL https://raw.githubusercontent.com/mimoo/ghostmd/main/scripts/install.sh | bash"])
@@ -394,7 +396,19 @@ impl GhostAppView {
                         .spawn()
                         .ok();
                     cx.update(|cx| cx.quit()).ok();
+                } else {
+                    // Update failed — clear the loading state
+                    let _ = this.update(cx, |this, cx| {
+                        this.update_in_progress = false;
+                        cx.notify();
+                    });
                 }
+            } else {
+                // Command failed to run — clear the loading state
+                let _ = this.update(cx, |this, cx| {
+                    this.update_in_progress = false;
+                    cx.notify();
+                });
             }
         }).detach();
     }

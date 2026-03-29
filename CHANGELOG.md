@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Show animated "Updating..." indicator when downloading an update (replaces silent background download)
+
 ## [0.7.3] — 2026-03-22
 
 - Remove `*` dirty indicator from workspace tabs (pane title bar already shows `●`)

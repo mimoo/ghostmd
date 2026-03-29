@@ -150,6 +150,7 @@ pub struct GhostAppView {
     pub(crate) finder_scroll: ScrollHandle,
     // Update check
     pub(crate) update_available: Option<String>,
+    pub(crate) update_in_progress: bool,
     // File watcher for external changes
     pub(crate) _watcher: Option<notify::RecommendedWatcher>,
     pub(crate) fs_events_rx: Option<std::sync::mpsc::Receiver<notify::Event>>,
@@ -466,6 +467,7 @@ impl GhostAppView {
             palette_scroll: ScrollHandle::new(),
             finder_scroll: ScrollHandle::new(),
             update_available: None,
+            update_in_progress: false,
             _watcher: None,
             fs_events_rx: None,
             last_session_write: Instant::now(),
@@ -669,7 +671,8 @@ impl GhostAppView {
                 let should_continue = this.update(cx, |this, cx| {
                     let has_loading = !this.ai_loading.is_empty();
                     let has_transition = this.move_transition.is_some();
-                    if !has_loading && !has_transition {
+                    let has_update = this.update_in_progress;
+                    if !has_loading && !has_transition && !has_update {
                         this.ai_anim_active = false;
                         cx.notify();
                         false
@@ -1139,7 +1142,27 @@ impl Render for GhostAppView {
                     .flex_row()
                     .items_center()
                     .justify_end();
-                if let Some(tag) = &self.update_available {
+                if self.update_in_progress {
+                    let dots = match (self.ai_anim_frame / 4) % 4 {
+                        0 => "",
+                        1 => ".",
+                        2 => "..",
+                        _ => "...",
+                    };
+                    bar = bar.child(
+                        div()
+                            .pr(px(12.0))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(t.accent)
+                                    .child(format!("Updating{dots}"))
+                            )
+                    );
+                } else if let Some(tag) = &self.update_available {
                     let accent = t.accent;
                     let bg_color = t.bg;
                     bar = bar.child(
