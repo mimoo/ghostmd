@@ -4,8 +4,10 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
-- Show animated "Updating..." indicator when downloading an update (replaces silent background download)
+## [0.8.0] — 2026-04-01
+
 - **Navigation history**: Cmd+[ / Cmd+] to go back/forward through file, pane, and workspace locations
+- Show animated "Updating..." indicator when downloading an update (replaces silent background download)
 
 ## [0.7.3] — 2026-03-22
 
