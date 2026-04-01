@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Add Go Back / Go Forward to command palette with shortcut hints
+
 ## [0.8.0] — 2026-04-01
 
 - **Navigation history**: Cmd+[ / Cmd+] to go back/forward through file, pane, and workspace locations
