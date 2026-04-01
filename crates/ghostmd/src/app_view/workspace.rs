@@ -71,6 +71,7 @@ impl GhostAppView {
     /// Switch to workspace at index.
     pub(crate) fn switch_workspace(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
         if idx < self.workspaces.len() {
+            self.push_nav_history(cx);
             self.active_workspace = idx;
             let focused = self.workspaces[idx].focused_pane;
             self.focus_pane_editor(focused, window, cx);
@@ -150,6 +151,8 @@ impl GhostAppView {
             None
         };
         if let Some(new_id) = target {
+            self.push_nav_history(cx);
+            let ws = self.active_ws_mut();
             ws.pane_focus_history.push(ws.focused_pane);
             ws.focused_pane = new_id;
             self.focus_pane_editor(new_id, window, cx);

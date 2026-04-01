@@ -65,6 +65,8 @@ impl GhostAppView {
         };
 
         if !already_open {
+            // Record location for nav history (cmd-[/cmd-])
+            self.push_nav_history(cx);
             // Push current path to history before switching
             {
                 let ws = self.active_ws_mut();

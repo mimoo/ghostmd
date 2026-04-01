@@ -8,9 +8,12 @@ mod overlays;
 mod ai_commands;
 mod rendering;
 mod fs_watcher;
+mod nav_history;
 
 pub(crate) use split_node::*;
 pub(crate) use session::*;
+
+use nav_history::{NavEntry, NavHistory};
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -151,6 +154,9 @@ pub struct GhostAppView {
     // Update check
     pub(crate) update_available: Option<String>,
     pub(crate) update_in_progress: bool,
+    // Navigation history (cmd-[ / cmd-])
+    nav_history: NavHistory,
+    navigating_history: bool,
     // File watcher for external changes
     pub(crate) _watcher: Option<notify::RecommendedWatcher>,
     pub(crate) fs_events_rx: Option<std::sync::mpsc::Receiver<notify::Event>>,
@@ -468,6 +474,8 @@ impl GhostAppView {
             finder_scroll: ScrollHandle::new(),
             update_available: None,
             update_in_progress: false,
+            nav_history: NavHistory::new(),
+            navigating_history: false,
             _watcher: None,
             fs_events_rx: None,
             last_session_write: Instant::now(),
@@ -598,6 +606,118 @@ impl GhostAppView {
         let ws = self.active_ws();
         ws.panes.get(&ws.focused_pane)
             .and_then(|p| p.active_path.clone())
+    }
+
+    // ── Navigation history (cmd-[ / cmd-]) ─────────────────────────
+
+    /// Capture the current location as a NavEntry, if a file is open.
+    fn capture_nav_location(&self, cx: &App) -> Option<NavEntry> {
+        if self.workspaces.is_empty() {
+            return None;
+        }
+        let ws = self.active_ws();
+        let pane = ws.panes.get(&ws.focused_pane)?;
+        let path = pane.active_path.clone()?;
+        let cursor_offset = pane.editor.as_ref().map(|e| {
+            e.read(cx).input_state.read(cx).cursor()
+        }).unwrap_or(0);
+        Some(NavEntry {
+            workspace_id: ws.id,
+            pane_id: ws.focused_pane,
+            path,
+            cursor_offset,
+        })
+    }
+
+    /// Push the current location onto the nav history stack (unless
+    /// we're currently navigating history ourselves).
+    pub(crate) fn push_nav_history(&mut self, cx: &App) {
+        if self.navigating_history {
+            return;
+        }
+        if let Some(entry) = self.capture_nav_location(cx) {
+            self.nav_history.push(entry);
+        }
+    }
+
+    /// Navigate back in history.
+    fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Push current location so we can come back with go_forward
+        if let Some(current) = self.capture_nav_location(cx) {
+            // Ensure current position is recorded at the top of the stack
+            self.nav_history.push(current);
+        }
+        let entry = match self.nav_history.go_back() {
+            Some(e) => e.clone(),
+            None => return,
+        };
+        self.navigate_to_entry(entry, window, cx);
+    }
+
+    /// Navigate forward in history.
+    fn go_forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let entry = match self.nav_history.go_forward() {
+            Some(e) => e.clone(),
+            None => return,
+        };
+        self.navigate_to_entry(entry, window, cx);
+    }
+
+    /// Restore the app state to a nav history entry.
+    fn navigate_to_entry(&mut self, entry: NavEntry, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigating_history = true;
+
+        // Find workspace by ID
+        let ws_idx = self.workspaces.iter().position(|ws| ws.id == entry.workspace_id);
+        if let Some(idx) = ws_idx {
+            if idx != self.active_workspace {
+                self.switch_workspace(idx, window, cx);
+            }
+            // Focus the pane if it still exists, otherwise use current focused pane
+            let ws = &self.workspaces[self.active_workspace];
+            let pane_id = if ws.panes.contains_key(&entry.pane_id) {
+                entry.pane_id
+            } else {
+                ws.focused_pane
+            };
+            let ws = self.active_ws_mut();
+            ws.focused_pane = pane_id;
+
+            // Open the file if it differs from what's in the pane
+            let needs_open = {
+                let ws = self.active_ws();
+                ws.panes.get(&pane_id)
+                    .map(|p| p.active_path.as_ref() != Some(&entry.path))
+                    .unwrap_or(true)
+            };
+            if needs_open {
+                self.open_file(entry.path, window, cx);
+            }
+
+            // Restore cursor offset
+            let editor = {
+                let ws = self.active_ws();
+                ws.panes.get(&pane_id).and_then(|p| p.editor.clone())
+            };
+            if let Some(editor) = editor {
+                let offset = entry.cursor_offset;
+                editor.update(cx, |e, cx| {
+                    e.input_state.update(cx, |state, cx| {
+                        let pos = state.text().offset_to_position(
+                            offset.min(state.text().len_bytes())
+                        );
+                        state.set_cursor_position(pos, window, cx);
+                    });
+                });
+            }
+
+            self.focus_pane_editor(pane_id, window, cx);
+            self.sync_file_tree_selection(cx);
+        }
+        // else: workspace was closed — silently skip
+
+        self.navigating_history = false;
+        cx.notify();
     }
 
     /// Toggle markdown syntax highlighting on all editors.
@@ -986,6 +1106,12 @@ impl Render for GhostAppView {
                 } else {
                     this.open_note_switcher(window, cx);
                 }
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::GoBack, window, cx| {
+                this.go_back(window, cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::GoForward, window, cx| {
+                this.go_forward(window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
                 let editing = this.file_tree.read(cx).is_editing();
