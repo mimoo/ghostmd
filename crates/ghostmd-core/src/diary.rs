@@ -88,33 +88,56 @@ pub fn slugify(s: &str) -> String {
     }
 }
 
-/// Find the most recent diary note file by walking the diary directory.
-/// Relies on the `YYYY/MM-month/DD/HHmmss-slug.md` structure for lexicographic ordering.
-pub fn last_diary_note(root: &Path) -> Option<PathBuf> {
+/// Find the most recent day folder in the diary directory.
+/// Walks `diary/YYYY/MM-month/DD/` and returns the lexicographically last day directory.
+pub fn last_diary_day_dir(root: &Path) -> Option<PathBuf> {
     let diary = root.join("diary");
     if !diary.is_dir() {
         return None;
     }
 
-    let mut notes: Vec<PathBuf> = Vec::new();
-    collect_diary_notes(&diary, &mut notes);
+    let mut day_dirs: Vec<PathBuf> = Vec::new();
+    collect_day_dirs(&diary, 0, &mut day_dirs);
 
-    // Lexicographic sort works because paths are YYYY/MM/DD/HHmmss
-    notes.sort();
-    notes.pop()
+    // Lexicographic sort works because paths are YYYY/MM-month/DD
+    day_dirs.sort();
+    day_dirs.pop()
 }
 
-fn collect_diary_notes(dir: &Path, notes: &mut Vec<PathBuf>) {
+/// Recursively collect leaf directories (day folders) at depth 3 from diary root.
+fn collect_day_dirs(dir: &Path, depth: usize, dirs: &mut Vec<PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                collect_diary_notes(&path, notes);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                notes.push(path);
+                if depth >= 2 {
+                    // depth 0=YYYY, 1=MM-month, 2=DD — this is a day folder
+                    dirs.push(path);
+                } else {
+                    collect_day_dirs(&path, depth + 1, dirs);
+                }
             }
         }
     }
+}
+
+/// Collect all pending checkbox items (`- [ ] ...`) from all `.md` files in a directory.
+pub fn pending_items_in_dir(dir: &Path) -> Vec<String> {
+    let mut items = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut paths: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("md"))
+            .collect();
+        paths.sort();
+        for path in paths {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                items.extend(extract_pending_items(&content));
+            }
+        }
+    }
+    items
 }
 
 /// Extract pending checkbox items (`- [ ] ...`) from note content.
@@ -282,43 +305,68 @@ mod tests {
     }
 
     #[test]
-    fn last_diary_note_finds_most_recent() {
-        let tmp = std::env::temp_dir().join("ghostmd_test_last_diary");
-        let _ = std::fs::remove_dir_all(&tmp);
-        let diary = tmp.join("diary/2024/03-march/15");
-        std::fs::create_dir_all(&diary).unwrap();
-        std::fs::write(diary.join("100000-first.md"), "first").unwrap();
-        std::fs::write(diary.join("120000-second.md"), "second").unwrap();
-
-        let result = last_diary_note(&tmp).unwrap();
-        assert!(result.ends_with("120000-second.md"));
-
-        std::fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
-    fn last_diary_note_across_days() {
-        let tmp = std::env::temp_dir().join("ghostmd_test_last_diary_days");
+    fn last_diary_day_dir_finds_most_recent() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_last_day");
         let _ = std::fs::remove_dir_all(&tmp);
         let day1 = tmp.join("diary/2024/03-march/14");
         let day2 = tmp.join("diary/2024/03-march/15");
         std::fs::create_dir_all(&day1).unwrap();
         std::fs::create_dir_all(&day2).unwrap();
-        std::fs::write(day1.join("230000-old.md"), "old").unwrap();
-        std::fs::write(day2.join("080000-new.md"), "new").unwrap();
+        std::fs::write(day1.join("notes.md"), "old").unwrap();
+        std::fs::write(day2.join("notes.md"), "new").unwrap();
 
-        let result = last_diary_note(&tmp).unwrap();
-        assert!(result.ends_with("080000-new.md"));
+        let result = last_diary_day_dir(&tmp).unwrap();
+        assert!(result.ends_with("15"));
 
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
-    fn last_diary_note_no_diary_dir() {
+    fn last_diary_day_dir_across_months() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_last_day_months");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let day1 = tmp.join("diary/2024/02-february/28");
+        let day2 = tmp.join("diary/2024/03-march/01");
+        std::fs::create_dir_all(&day1).unwrap();
+        std::fs::create_dir_all(&day2).unwrap();
+        std::fs::write(day1.join("notes.md"), "").unwrap();
+        std::fs::write(day2.join("notes.md"), "").unwrap();
+
+        let result = last_diary_day_dir(&tmp).unwrap();
+        assert!(result.ends_with("03-march/01"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn last_diary_day_dir_no_diary() {
         let tmp = std::env::temp_dir().join("ghostmd_test_no_diary");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        assert!(last_diary_note(&tmp).is_none());
+        assert!(last_diary_day_dir(&tmp).is_none());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn pending_items_in_dir_collects_from_all_files() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_pending_dir");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("notes.md"), "- [ ] buy milk\n- [x] done\n").unwrap();
+        std::fs::write(tmp.join("todo.md"), "- [ ] call dentist\n").unwrap();
+
+        let items = pending_items_in_dir(&tmp);
+        assert_eq!(items, vec!["- [ ] buy milk", "- [ ] call dentist"]);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn pending_items_in_dir_empty_dir() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_pending_empty");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        assert!(pending_items_in_dir(&tmp).is_empty());
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

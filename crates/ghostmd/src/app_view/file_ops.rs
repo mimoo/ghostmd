@@ -153,10 +153,9 @@ impl GhostAppView {
         let diary_dir = diary::today_diary_dir(&root);
         std::fs::create_dir_all(&diary_dir).ok();
 
-        // Find pending items from the most recent diary note
-        let pending = diary::last_diary_note(&root)
-            .and_then(|path| std::fs::read_to_string(&path).ok())
-            .map(|content| diary::extract_pending_items(&content))
+        // Collect pending items from all notes in the most recent day folder
+        let pending = diary::last_diary_day_dir(&root)
+            .map(|dir| diary::pending_items_in_dir(&dir))
             .unwrap_or_default();
 
         let name = pick_note_name(&diary_dir);
