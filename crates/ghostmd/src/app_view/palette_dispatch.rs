@@ -15,14 +15,24 @@ impl GhostAppView {
         let m = mod_key();
         vec![
             PaletteCommand { label: "New Note".into(), shortcut_hint: Some(format!("{m}+N")), action_id: "new_note".into() },
+            PaletteCommand { label: "New Daily Note".into(), shortcut_hint: Some(format!("Opt+{m}+N")), action_id: "new_daily_note".into() },
             PaletteCommand { label: "New Workspace".into(), shortcut_hint: Some(format!("{m}+T")), action_id: "new_workspace".into() },
             PaletteCommand { label: "New Window".into(), shortcut_hint: Some(format!("{m}+Shift+N")), action_id: "new_window".into() },
             PaletteCommand { label: "Save".into(), shortcut_hint: Some(format!("{m}+S")), action_id: "save".into() },
             PaletteCommand { label: "Close Pane".into(), shortcut_hint: Some(format!("{m}+W")), action_id: "close_pane".into() },
             PaletteCommand { label: "Restore Workspace".into(), shortcut_hint: Some(format!("{m}+Shift+T")), action_id: "restore_workspace".into() },
+            PaletteCommand { label: "Next Workspace".into(), shortcut_hint: Some("Ctrl+Tab".into()), action_id: "next_workspace".into() },
+            PaletteCommand { label: "Previous Workspace".into(), shortcut_hint: Some("Ctrl+Shift+Tab".into()), action_id: "prev_workspace".into() },
             PaletteCommand { label: "Split Right".into(), shortcut_hint: Some(format!("{m}+D")), action_id: "split_right".into() },
             PaletteCommand { label: "Split Down".into(), shortcut_hint: Some(format!("{m}+Shift+D")), action_id: "split_down".into() },
+            PaletteCommand { label: "Focus Pane Left".into(), shortcut_hint: Some(format!("Opt+{m}+\u{2190}")), action_id: "focus_pane_left".into() },
+            PaletteCommand { label: "Focus Pane Right".into(), shortcut_hint: Some(format!("Opt+{m}+\u{2192}")), action_id: "focus_pane_right".into() },
+            PaletteCommand { label: "Focus Pane Up".into(), shortcut_hint: Some(format!("Opt+{m}+\u{2191}")), action_id: "focus_pane_up".into() },
+            PaletteCommand { label: "Focus Pane Down".into(), shortcut_hint: Some(format!("Opt+{m}+\u{2193}")), action_id: "focus_pane_down".into() },
             PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some(format!("{m}+B")), action_id: "toggle_sidebar".into() },
+            PaletteCommand { label: "File Finder".into(), shortcut_hint: Some(format!("{m}+P")), action_id: "file_finder".into() },
+            PaletteCommand { label: "Content Search".into(), shortcut_hint: Some(format!("{m}+Shift+F")), action_id: "content_search".into() },
+            PaletteCommand { label: "Note Switcher".into(), shortcut_hint: Some(format!("{m}+Shift+A")), action_id: "note_switcher".into() },
             PaletteCommand { label: "Rename File...".into(), shortcut_hint: None, action_id: "rename_file".into() },
             PaletteCommand { label: "Rename Tab...".into(), shortcut_hint: None, action_id: "rename_tab".into() },
             PaletteCommand {
@@ -74,6 +84,7 @@ impl GhostAppView {
     pub(crate) fn dispatch_palette_action(&mut self, action_id: &str, window: &mut Window, cx: &mut Context<Self>) {
         match action_id {
             "new_note" => self.new_note_in_pane(window, cx),
+            "new_daily_note" => self.new_daily_note(window, cx),
             "new_workspace" => self.new_workspace_tab(window, cx),
             "new_window" => self.new_window(window, cx),
             "save" => {
@@ -98,9 +109,28 @@ impl GhostAppView {
                     cx.notify();
                 }
             }
+            "next_workspace" => {
+                if self.workspaces.len() > 1 {
+                    let next = (self.active_workspace + 1) % self.workspaces.len();
+                    self.switch_workspace(next, window, cx);
+                }
+            }
+            "prev_workspace" => {
+                if self.workspaces.len() > 1 {
+                    let prev = if self.active_workspace == 0 { self.workspaces.len() - 1 } else { self.active_workspace - 1 };
+                    self.switch_workspace(prev, window, cx);
+                }
+            }
             "split_right" => self.split(SplitDirection::Vertical, window, cx),
             "split_down" => self.split(SplitDirection::Horizontal, window, cx),
+            "focus_pane_left" => self.focus_pane_direction(-1, 0, window, cx),
+            "focus_pane_right" => self.focus_pane_direction(1, 0, window, cx),
+            "focus_pane_up" => self.focus_pane_direction(0, -1, window, cx),
+            "focus_pane_down" => self.focus_pane_direction(0, 1, window, cx),
             "toggle_sidebar" => { self.sidebar_visible = !self.sidebar_visible; cx.notify(); }
+            "file_finder" => window.dispatch_action(Box::new(keybindings::OpenFileFinder), cx),
+            "content_search" => window.dispatch_action(Box::new(keybindings::OpenContentSearch), cx),
+            "note_switcher" => window.dispatch_action(Box::new(keybindings::OpenNoteSwitcher), cx),
             "rename_file" => {
                 if let Some(path) = self.focused_active_path() {
                     if !self.sidebar_visible {

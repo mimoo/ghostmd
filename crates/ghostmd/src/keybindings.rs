@@ -46,6 +46,7 @@ actions!(
         OpenNoteSwitcher,
         GoBack,
         GoForward,
+        NewDailyNote,
     ]
 );
 
@@ -95,6 +96,8 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         // Navigation history
         GpuiKeyBinding::new("secondary-[", GoBack, None),
         GpuiKeyBinding::new("secondary-]", GoForward, None),
+        // Daily note with pending items
+        GpuiKeyBinding::new("alt-secondary-n", NewDailyNote, None),
         // File tree undo/redo (only when file tree is focused)
         GpuiKeyBinding::new("secondary-z", FileTreeUndo, Some("FileTree")),
         GpuiKeyBinding::new("secondary-shift-z", FileTreeRedo, Some("FileTree")),

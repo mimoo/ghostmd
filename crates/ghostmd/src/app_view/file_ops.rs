@@ -146,6 +146,35 @@ impl GhostAppView {
         self.create_note_at(diary_dir, window, cx);
     }
 
+    /// Create a new daily note carrying over pending items from the last diary note.
+    pub(crate) fn new_daily_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_workspace(window, cx);
+        let root = self.root.clone();
+        let diary_dir = diary::today_diary_dir(&root);
+        std::fs::create_dir_all(&diary_dir).ok();
+
+        // Find pending items from the most recent diary note
+        let pending = diary::last_diary_note(&root)
+            .and_then(|path| std::fs::read_to_string(&path).ok())
+            .map(|content| diary::extract_pending_items(&content))
+            .unwrap_or_default();
+
+        let name = pick_note_name(&diary_dir);
+        let path = diary_dir.join(format!("{}.md", name));
+        let content = if pending.is_empty() {
+            String::new()
+        } else {
+            pending.join("\n") + "\n"
+        };
+        std::fs::write(&path, &content).ok();
+
+        self.file_tree.update(cx, |tree, cx| {
+            tree.refresh(cx);
+            tree.reveal_file(&path, cx);
+        });
+        self.open_file(path, window, cx);
+    }
+
     /// Actually create the note at the given directory.
     /// Creates the file on disk and opens it directly in the editor.
     pub(crate) fn create_note_at(&mut self, parent_dir: PathBuf, window: &mut Window, cx: &mut Context<Self>) {

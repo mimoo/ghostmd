@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- **New Daily Note** (Cmd+Opt+N): creates a diary note pre-filled with pending `- [ ]` items from the last diary note
+- Add missing palette entries for all keyboard shortcuts (file finder, content search, note switcher, next/prev workspace, focus pane directions)
 - Add Go Back / Go Forward to command palette with shortcut hints
 - Fix build: use public accessor methods for `EditorView` cursor instead of accessing private `input_state` field
 

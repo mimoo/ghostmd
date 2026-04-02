@@ -956,6 +956,9 @@ impl Render for GhostAppView {
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NewNote, window, cx| {
                 this.new_note_in_pane(window, cx);
             }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NewDailyNote, window, cx| {
+                this.new_daily_note(window, cx);
+            }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::NewTab, window, cx| {
                 this.new_workspace_tab(window, cx);
             }))

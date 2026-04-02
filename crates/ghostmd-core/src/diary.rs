@@ -88,6 +88,44 @@ pub fn slugify(s: &str) -> String {
     }
 }
 
+/// Find the most recent diary note file by walking the diary directory.
+/// Relies on the `YYYY/MM-month/DD/HHmmss-slug.md` structure for lexicographic ordering.
+pub fn last_diary_note(root: &Path) -> Option<PathBuf> {
+    let diary = root.join("diary");
+    if !diary.is_dir() {
+        return None;
+    }
+
+    let mut notes: Vec<PathBuf> = Vec::new();
+    collect_diary_notes(&diary, &mut notes);
+
+    // Lexicographic sort works because paths are YYYY/MM/DD/HHmmss
+    notes.sort();
+    notes.pop()
+}
+
+fn collect_diary_notes(dir: &Path, notes: &mut Vec<PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_diary_notes(&path, notes);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                notes.push(path);
+            }
+        }
+    }
+}
+
+/// Extract pending checkbox items (`- [ ] ...`) from note content.
+pub fn extract_pending_items(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter(|line| line.trim_start().starts_with("- [ ]"))
+        .map(|line| line.to_string())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,5 +259,66 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
         let dir = diary_dir(root, date);
         assert_eq!(dir, PathBuf::from("/notes/diary/2025/01-january/01"));
+    }
+
+    #[test]
+    fn extract_pending_items_basic() {
+        let content = "# Notes\n- [x] done\n- [ ] buy milk\n- [ ] call dentist\nsome text\n";
+        let items = extract_pending_items(content);
+        assert_eq!(items, vec!["- [ ] buy milk", "- [ ] call dentist"]);
+    }
+
+    #[test]
+    fn extract_pending_items_indented() {
+        let content = "  - [ ] indented item\n- [ ] normal item\n";
+        let items = extract_pending_items(content);
+        assert_eq!(items, vec!["  - [ ] indented item", "- [ ] normal item"]);
+    }
+
+    #[test]
+    fn extract_pending_items_empty() {
+        let items = extract_pending_items("no checkboxes here\n- [x] all done\n");
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn last_diary_note_finds_most_recent() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_last_diary");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let diary = tmp.join("diary/2024/03-march/15");
+        std::fs::create_dir_all(&diary).unwrap();
+        std::fs::write(diary.join("100000-first.md"), "first").unwrap();
+        std::fs::write(diary.join("120000-second.md"), "second").unwrap();
+
+        let result = last_diary_note(&tmp).unwrap();
+        assert!(result.ends_with("120000-second.md"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn last_diary_note_across_days() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_last_diary_days");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let day1 = tmp.join("diary/2024/03-march/14");
+        let day2 = tmp.join("diary/2024/03-march/15");
+        std::fs::create_dir_all(&day1).unwrap();
+        std::fs::create_dir_all(&day2).unwrap();
+        std::fs::write(day1.join("230000-old.md"), "old").unwrap();
+        std::fs::write(day2.join("080000-new.md"), "new").unwrap();
+
+        let result = last_diary_note(&tmp).unwrap();
+        assert!(result.ends_with("080000-new.md"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn last_diary_note_no_diary_dir() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_no_diary");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        assert!(last_diary_note(&tmp).is_none());
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }
