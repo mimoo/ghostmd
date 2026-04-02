@@ -212,7 +212,7 @@ impl EditorView {
     pub fn set_cursor_offset(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.input_state.update(cx, |state, cx| {
             let pos = state.text().offset_to_position(
-                offset.min(state.text().len_bytes())
+                offset.min(state.text().len())
             );
             state.set_cursor_position(pos, window, cx);
         });
