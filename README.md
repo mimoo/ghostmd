@@ -56,23 +56,43 @@ Download the latest `.tar.gz` from [Releases](https://github.com/mimoo/ghostmd/r
 
 ## Keyboard Shortcuts
 
+### Notes & Files
+
 | Action | Binding |
 |--------|---------|
 | New note | Cmd+N |
-| New tab | Cmd+T |
-| Close tab | Cmd+W |
-| Restore closed tab | Cmd+Shift+T |
-| Next tab | Ctrl+Tab |
-| Previous tab | Ctrl+Shift+Tab |
-| Jump to tab 1-9 | Cmd+1..9 |
+| New daily note (with pending items) | Cmd+Opt+N |
+| Save | Cmd+S |
+| Move to trash | Cmd+Backspace |
+| Quit | Cmd+Q |
+
+### Workspaces & Splits
+
+| Action | Binding |
+|--------|---------|
+| New workspace | Cmd+T |
+| New window | Cmd+Shift+N |
+| Close pane | Cmd+W |
+| Restore closed workspace | Cmd+Shift+T |
+| Next workspace | Ctrl+Tab |
+| Previous workspace | Ctrl+Shift+Tab |
+| Jump to workspace 1–9 | Cmd+1..9 |
 | Split right | Cmd+D |
 | Split down | Cmd+Shift+D |
-| Navigate splits | Opt+Cmd+Arrows |
-| Find in file | Cmd+F |
+| Focus pane left/right/up/down | Opt+Cmd+Arrows |
+
+### Search & Navigation
+
+| Action | Binding |
+|--------|---------|
 | File finder | Cmd+P |
-| Agentic search | Cmd+Shift+F |
+| Find in file | Cmd+F |
+| Agentic search (Claude) | Cmd+Shift+F |
+| Note switcher (open notes) | Cmd+Shift+A |
 | Command palette | Cmd+Shift+P |
 | Toggle sidebar | Cmd+B |
+| Go back | Cmd+[ |
+| Go forward | Cmd+] |
 
 ### Emacs Navigation
 
@@ -87,6 +107,10 @@ Download the latest `.tar.gz` from [Releases](https://github.com/mimoo/ghostmd/r
 | Delete forward | C-d |
 | Kill line | C-k |
 | Yank | C-y |
+| Page down | C-v |
+| Page up | Opt-v |
+| Beginning of buffer | Opt-< |
+| End of buffer | Opt-> |
 
 ## Development
 
