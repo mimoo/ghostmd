@@ -619,7 +619,7 @@ impl GhostAppView {
         let pane = ws.panes.get(&ws.focused_pane)?;
         let path = pane.active_path.clone()?;
         let cursor_offset = pane.editor.as_ref().map(|e| {
-            e.read(cx).input_state.read(cx).cursor()
+            e.read(cx).cursor(cx)
         }).unwrap_or(0);
         Some(NavEntry {
             workspace_id: ws.id,
@@ -702,12 +702,7 @@ impl GhostAppView {
             if let Some(editor) = editor {
                 let offset = entry.cursor_offset;
                 editor.update(cx, |e, cx| {
-                    e.input_state.update(cx, |state, cx| {
-                        let pos = state.text().offset_to_position(
-                            offset.min(state.text().len_bytes())
-                        );
-                        state.set_cursor_position(pos, window, cx);
-                    });
+                    e.set_cursor_offset(offset, window, cx);
                 });
             }
 

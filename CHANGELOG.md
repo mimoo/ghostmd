@@ -5,6 +5,7 @@ All notable changes to GhostMD are documented in this file.
 ## [Unreleased]
 
 - Add Go Back / Go Forward to command palette with shortcut hints
+- Fix build: use public accessor methods for `EditorView` cursor instead of accessing private `input_state` field
 
 ## [0.8.0] — 2026-04-01
 

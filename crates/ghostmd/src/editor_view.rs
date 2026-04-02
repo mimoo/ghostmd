@@ -203,6 +203,21 @@ impl EditorView {
         }
     }
 
+    /// Get the current cursor byte offset.
+    pub fn cursor(&self, cx: &App) -> usize {
+        self.input_state.read(cx).cursor()
+    }
+
+    /// Set the cursor to the given byte offset.
+    pub fn set_cursor_offset(&mut self, offset: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.input_state.update(cx, |state, cx| {
+            let pos = state.text().offset_to_position(
+                offset.min(state.text().len_bytes())
+            );
+            state.set_cursor_position(pos, window, cx);
+        });
+    }
+
     /// Get the current text content.
     pub fn text(&self, cx: &App) -> String {
         self.input_state.read(cx).value().to_string()
