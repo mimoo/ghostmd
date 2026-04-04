@@ -146,18 +146,18 @@ impl GhostAppView {
         self.create_note_at(diary_dir, window, cx);
     }
 
-    /// Create a new daily note carrying over pending items from the last diary note.
+    /// Create a new daily note carrying over pending items from the previous day's notes.
     pub(crate) fn new_daily_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.ensure_workspace(window, cx);
         let root = self.root.clone();
         let diary_dir = diary::today_diary_dir(&root);
-        std::fs::create_dir_all(&diary_dir).ok();
 
-        // Collect pending items from all notes in the most recent day folder
-        let pending = diary::last_diary_day_dir(&root)
+        // Find pending items from the most recent previous day (exclude today)
+        let pending = diary::last_diary_day_dir(&root, &diary_dir)
             .map(|dir| diary::pending_items_in_dir(&dir))
             .unwrap_or_default();
 
+        std::fs::create_dir_all(&diary_dir).ok();
         let name = pick_note_name(&diary_dir);
         let path = diary_dir.join(format!("{}.md", name));
         let content = if pending.is_empty() {

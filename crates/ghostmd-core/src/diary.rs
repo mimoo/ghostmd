@@ -88,9 +88,10 @@ pub fn slugify(s: &str) -> String {
     }
 }
 
-/// Find the most recent day folder in the diary directory.
-/// Walks `diary/YYYY/MM-month/DD/` and returns the lexicographically last day directory.
-pub fn last_diary_day_dir(root: &Path) -> Option<PathBuf> {
+/// Find the most recent day folder in the diary directory, excluding `exclude`.
+/// Walks `diary/YYYY/MM-month/DD/` and returns the lexicographically last day directory
+/// that is not `exclude` (typically today's dir, so we carry over from a previous day).
+pub fn last_diary_day_dir(root: &Path, exclude: &Path) -> Option<PathBuf> {
     let diary = root.join("diary");
     if !diary.is_dir() {
         return None;
@@ -101,7 +102,12 @@ pub fn last_diary_day_dir(root: &Path) -> Option<PathBuf> {
 
     // Lexicographic sort works because paths are YYYY/MM-month/DD
     day_dirs.sort();
-    day_dirs.pop()
+    while let Some(dir) = day_dirs.pop() {
+        if dir != exclude {
+            return Some(dir);
+        }
+    }
+    None
 }
 
 /// Recursively collect leaf directories (day folders) at depth 3 from diary root.
@@ -305,17 +311,20 @@ mod tests {
     }
 
     #[test]
-    fn last_diary_day_dir_finds_most_recent() {
+    fn last_diary_day_dir_finds_most_recent_excluding_today() {
         let tmp = std::env::temp_dir().join("ghostmd_test_last_day");
         let _ = std::fs::remove_dir_all(&tmp);
         let day1 = tmp.join("diary/2024/03-march/14");
         let day2 = tmp.join("diary/2024/03-march/15");
+        let today = tmp.join("diary/2024/03-march/16");
         std::fs::create_dir_all(&day1).unwrap();
         std::fs::create_dir_all(&day2).unwrap();
+        std::fs::create_dir_all(&today).unwrap();
         std::fs::write(day1.join("notes.md"), "old").unwrap();
-        std::fs::write(day2.join("notes.md"), "new").unwrap();
+        std::fs::write(day2.join("notes.md"), "- [ ] pending").unwrap();
 
-        let result = last_diary_day_dir(&tmp).unwrap();
+        // Excluding today (16), should find 15
+        let result = last_diary_day_dir(&tmp, &today).unwrap();
         assert!(result.ends_with("15"));
 
         std::fs::remove_dir_all(&tmp).ok();
@@ -326,14 +335,14 @@ mod tests {
         let tmp = std::env::temp_dir().join("ghostmd_test_last_day_months");
         let _ = std::fs::remove_dir_all(&tmp);
         let day1 = tmp.join("diary/2024/02-february/28");
-        let day2 = tmp.join("diary/2024/03-march/01");
+        let today = tmp.join("diary/2024/03-march/01");
         std::fs::create_dir_all(&day1).unwrap();
-        std::fs::create_dir_all(&day2).unwrap();
-        std::fs::write(day1.join("notes.md"), "").unwrap();
-        std::fs::write(day2.join("notes.md"), "").unwrap();
+        std::fs::create_dir_all(&today).unwrap();
+        std::fs::write(day1.join("notes.md"), "- [ ] item").unwrap();
 
-        let result = last_diary_day_dir(&tmp).unwrap();
-        assert!(result.ends_with("03-march/01"));
+        // Excluding today (03/01), should find 02/28
+        let result = last_diary_day_dir(&tmp, &today).unwrap();
+        assert!(result.ends_with("02-february/28"));
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -343,7 +352,21 @@ mod tests {
         let tmp = std::env::temp_dir().join("ghostmd_test_no_diary");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        assert!(last_diary_day_dir(&tmp).is_none());
+        let exclude = tmp.join("diary/2024/03-march/15");
+        assert!(last_diary_day_dir(&tmp, &exclude).is_none());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn last_diary_day_dir_only_today_returns_none() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_only_today");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let today = tmp.join("diary/2024/03-march/15");
+        std::fs::create_dir_all(&today).unwrap();
+        std::fs::write(today.join("notes.md"), "- [ ] item").unwrap();
+
+        assert!(last_diary_day_dir(&tmp, &today).is_none());
+
         std::fs::remove_dir_all(&tmp).ok();
     }
 
