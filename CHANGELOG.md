@@ -4,6 +4,12 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-04-04
+
+- Fix daily note: pending items now correctly pulled from the previous day's notes (was finding today's empty dir instead)
+- Fix build: `len_bytes()` → `len()` on ropey `Rope` type
+- Push Cargo.lock to repo for reproducible CI builds
+
 ## [0.9.0] — 2026-04-02
 
 - **New Daily Note** (Cmd+Opt+N): creates a diary note pre-filled with pending `- [ ]` items from the last diary note
