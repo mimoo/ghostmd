@@ -89,8 +89,8 @@ pub fn slugify(s: &str) -> String {
 }
 
 /// Find the most recent day folder in the diary directory, excluding `exclude`.
-/// Walks `diary/YYYY/MM-month/DD/` and returns the lexicographically last day directory
-/// that is not `exclude` (typically today's dir, so we carry over from a previous day).
+/// Walks `diary/YYYY/{month or MM-month}/DD/` and sorts by parsed date to handle
+/// both old (`march/`) and new (`04-april/`) directory formats.
 pub fn last_diary_day_dir(root: &Path, exclude: &Path) -> Option<PathBuf> {
     let diary = root.join("diary");
     if !diary.is_dir() {
@@ -100,14 +100,46 @@ pub fn last_diary_day_dir(root: &Path, exclude: &Path) -> Option<PathBuf> {
     let mut day_dirs: Vec<PathBuf> = Vec::new();
     collect_day_dirs(&diary, 0, &mut day_dirs);
 
-    // Lexicographic sort works because paths are YYYY/MM-month/DD
-    day_dirs.sort();
+    // Sort by parsed date (not lexicographic) to handle mixed month formats
+    day_dirs.sort_by_key(|p| parse_day_dir_date(p));
     while let Some(dir) = day_dirs.pop() {
         if dir != exclude {
             return Some(dir);
         }
     }
     None
+}
+
+/// Parse a day directory path into a NaiveDate for sorting.
+/// Expects path ending in `YYYY/{month-dir}/DD` where month-dir is either
+/// `march` (old format) or `03-march` (new format).
+fn parse_day_dir_date(path: &Path) -> Option<NaiveDate> {
+    let day: u32 = path.file_name()?.to_str()?.parse().ok()?;
+    let month_dir = path.parent()?.file_name()?.to_str()?;
+    let year: i32 = path.parent()?.parent()?.file_name()?.to_str()?.parse().ok()?;
+    let month = parse_month(month_dir)?;
+    NaiveDate::from_ymd_opt(year, month, day)
+}
+
+/// Parse a month directory name into a month number (1-12).
+/// Handles both `march` and `03-march` formats.
+fn parse_month(s: &str) -> Option<u32> {
+    // Try "MM-month" format first (e.g. "03-march")
+    if let Some((num, _)) = s.split_once('-') {
+        if let Ok(m) = num.parse::<u32>() {
+            if (1..=12).contains(&m) {
+                return Some(m);
+            }
+        }
+    }
+    // Fall back to bare month name (e.g. "march")
+    match s.to_lowercase().as_str() {
+        "january" => Some(1), "february" => Some(2), "march" => Some(3),
+        "april" => Some(4), "may" => Some(5), "june" => Some(6),
+        "july" => Some(7), "august" => Some(8), "september" => Some(9),
+        "october" => Some(10), "november" => Some(11), "december" => Some(12),
+        _ => None,
+    }
 }
 
 /// Recursively collect leaf directories (day folders) at depth 3 from diary root.
@@ -343,6 +375,27 @@ mod tests {
         // Excluding today (03/01), should find 02/28
         let result = last_diary_day_dir(&tmp, &today).unwrap();
         assert!(result.ends_with("02-february/28"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn last_diary_day_dir_mixed_old_and_new_format() {
+        // Old format: "march/DD", new format: "04-april/DD"
+        let tmp = std::env::temp_dir().join("ghostmd_test_mixed_format");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let old_day = tmp.join("diary/2026/march/29");
+        let new_day = tmp.join("diary/2026/04-april/02");
+        let today = tmp.join("diary/2026/04-april/04");
+        std::fs::create_dir_all(&old_day).unwrap();
+        std::fs::create_dir_all(&new_day).unwrap();
+        std::fs::create_dir_all(&today).unwrap();
+        std::fs::write(old_day.join("notes.md"), "- [ ] old item").unwrap();
+        std::fs::write(new_day.join("notes.md"), "- [ ] new item").unwrap();
+
+        // Should find 04-april/02 (April 2) not march/29 (March 29)
+        let result = last_diary_day_dir(&tmp, &today).unwrap();
+        assert!(result.ends_with("04-april/02"), "got: {}", result.display());
 
         std::fs::remove_dir_all(&tmp).ok();
     }

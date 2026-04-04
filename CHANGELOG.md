@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Fix daily note: sort by parsed date instead of lexicographic path to handle mixed old (`march/`) and new (`04-april/`) diary formats
+
 ## [0.9.1] — 2026-04-04
 
 - Fix daily note: pending items now correctly pulled from the previous day's notes (was finding today's empty dir instead)
