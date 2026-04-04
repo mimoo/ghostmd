@@ -640,27 +640,37 @@ impl GhostAppView {
         }
     }
 
-    /// Navigate back in history.
+    /// Navigate back in history, skipping entries whose files were deleted.
     fn go_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // Push current location so we can come back with go_forward
         if let Some(current) = self.capture_nav_location(cx) {
             // Ensure current position is recorded at the top of the stack
             self.nav_history.push(current);
         }
-        let entry = match self.nav_history.go_back() {
-            Some(e) => e.clone(),
-            None => return,
-        };
-        self.navigate_to_entry(entry, window, cx);
+        loop {
+            let entry = match self.nav_history.go_back() {
+                Some(e) => e.clone(),
+                None => return,
+            };
+            if entry.path.exists() {
+                self.navigate_to_entry(entry, window, cx);
+                return;
+            }
+        }
     }
 
-    /// Navigate forward in history.
+    /// Navigate forward in history, skipping entries whose files were deleted.
     fn go_forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let entry = match self.nav_history.go_forward() {
-            Some(e) => e.clone(),
-            None => return,
-        };
-        self.navigate_to_entry(entry, window, cx);
+        loop {
+            let entry = match self.nav_history.go_forward() {
+                Some(e) => e.clone(),
+                None => return,
+            };
+            if entry.path.exists() {
+                self.navigate_to_entry(entry, window, cx);
+                return;
+            }
+        }
     }
 
     /// Restore the app state to a nav history entry.

@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Fix navigation history (Cmd+[/]) recreating deleted files — now skips entries whose files no longer exist on disk
+
 ## [0.9.1] — 2026-04-04
 
 - Fix daily note: pending items now correctly pulled from the previous day's notes (was finding today's empty dir instead)
