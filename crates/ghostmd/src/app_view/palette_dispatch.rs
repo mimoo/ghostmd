@@ -15,7 +15,7 @@ impl GhostAppView {
         let m = mod_key();
         vec![
             PaletteCommand { label: "New Note".into(), shortcut_hint: Some(format!("{m}+N")), action_id: "new_note".into() },
-            PaletteCommand { label: "New Daily Note".into(), shortcut_hint: Some(format!("Opt+{m}+N")), action_id: "new_daily_note".into() },
+            PaletteCommand { label: "New Daily Note (carry forward pending items)".into(), shortcut_hint: Some(format!("Opt+{m}+N")), action_id: "new_daily_note".into() },
             PaletteCommand { label: "New Workspace".into(), shortcut_hint: Some(format!("{m}+T")), action_id: "new_workspace".into() },
             PaletteCommand { label: "New Window".into(), shortcut_hint: Some(format!("{m}+Shift+N")), action_id: "new_window".into() },
             PaletteCommand { label: "Save".into(), shortcut_hint: Some(format!("{m}+S")), action_id: "save".into() },
