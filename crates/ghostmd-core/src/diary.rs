@@ -127,7 +127,8 @@ fn collect_day_dirs(dir: &Path, depth: usize, dirs: &mut Vec<PathBuf>) {
     }
 }
 
-/// Collect all pending checkbox items (`- [ ] ...`) from all `.md` files in a directory.
+/// Collect all pending checkbox items (`- [ ] ...`) with their header hierarchy
+/// from all `.md` files in a directory.
 pub fn pending_items_in_dir(dir: &Path) -> Vec<String> {
     let mut items = Vec::new();
     if let Ok(entries) = std::fs::read_dir(dir) {
@@ -139,11 +140,55 @@ pub fn pending_items_in_dir(dir: &Path) -> Vec<String> {
         paths.sort();
         for path in paths {
             if let Ok(content) = std::fs::read_to_string(&path) {
-                items.extend(extract_pending_items(&content));
+                let file_items = extract_pending_with_headers(&content);
+                if !file_items.is_empty() {
+                    if !items.is_empty() {
+                        items.push(String::new()); // blank line between files
+                    }
+                    items.extend(file_items);
+                }
             }
         }
     }
     items
+}
+
+/// Extract pending items with their full header hierarchy preserved.
+///
+/// Tracks a stack of headings (`#`, `##`, etc.). When a `- [ ]` item is found,
+/// emits any not-yet-emitted headers from the stack first. Headers with no
+/// pending items underneath are skipped entirely.
+pub fn extract_pending_with_headers(content: &str) -> Vec<String> {
+    // Stack of (heading level, heading line, emitted)
+    let mut header_stack: Vec<(usize, String, bool)> = Vec::new();
+    let mut result: Vec<String> = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('#') {
+            let level = trimmed.chars().take_while(|&c| c == '#').count();
+            // Pop headers at same level or deeper
+            while header_stack.last().map(|(l, _, _)| *l >= level).unwrap_or(false) {
+                header_stack.pop();
+            }
+            header_stack.push((level, line.to_string(), false));
+        } else if trimmed.starts_with("- [ ]") {
+            // Emit any unemitted headers from the stack
+            let mut needs_separator = !result.is_empty();
+            for entry in header_stack.iter_mut() {
+                if !entry.2 {
+                    if needs_separator {
+                        result.push(String::new());
+                        needs_separator = false;
+                    }
+                    result.push(entry.1.clone());
+                    entry.2 = true;
+                }
+            }
+            result.push(line.to_string());
+        }
+    }
+    result
 }
 
 /// Extract pending checkbox items (`- [ ] ...`) from note content.
@@ -371,15 +416,84 @@ mod tests {
     }
 
     #[test]
-    fn pending_items_in_dir_collects_from_all_files() {
-        let tmp = std::env::temp_dir().join("ghostmd_test_pending_dir");
+    fn pending_with_headers_full_hierarchy() {
+        let content = "# Work\n## Backend\n- [ ] fix bug\n- [x] deploy\n## Frontend\n- [ ] update CSS\n# Personal\n- [x] done\n";
+        let result = extract_pending_with_headers(content);
+        assert_eq!(result, vec![
+            "# Work",
+            "## Backend",
+            "- [ ] fix bug",
+            "",
+            "## Frontend",
+            "- [ ] update CSS",
+        ]);
+    }
+
+    #[test]
+    fn pending_with_headers_no_headings() {
+        let content = "- [ ] buy milk\n- [x] done\n- [ ] call dentist\n";
+        let result = extract_pending_with_headers(content);
+        assert_eq!(result, vec!["- [ ] buy milk", "- [ ] call dentist"]);
+    }
+
+    #[test]
+    fn pending_with_headers_skips_empty_sections() {
+        let content = "# Has items\n- [ ] yes\n# No items\n- [x] all done\n# Also has items\n- [ ] pending\n";
+        let result = extract_pending_with_headers(content);
+        assert_eq!(result, vec![
+            "# Has items",
+            "- [ ] yes",
+            "",
+            "# Also has items",
+            "- [ ] pending",
+        ]);
+    }
+
+    #[test]
+    fn pending_with_headers_deep_nesting() {
+        let content = "# A\n## B\n### C\n- [ ] deep item\n";
+        let result = extract_pending_with_headers(content);
+        assert_eq!(result, vec!["# A", "## B", "### C", "- [ ] deep item"]);
+    }
+
+    #[test]
+    fn pending_with_headers_sibling_resets() {
+        // When ## changes under same #, only ## should re-emit (# already emitted)
+        let content = "# Top\n## First\n- [ ] a\n## Second\n- [ ] b\n";
+        let result = extract_pending_with_headers(content);
+        assert_eq!(result, vec![
+            "# Top",
+            "## First",
+            "- [ ] a",
+            "",
+            "## Second",
+            "- [ ] b",
+        ]);
+    }
+
+    #[test]
+    fn pending_with_headers_no_pending() {
+        let content = "# Work\n- [x] done\n## Sub\nsome text\n";
+        let result = extract_pending_with_headers(content);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn pending_items_in_dir_with_headers() {
+        let tmp = std::env::temp_dir().join("ghostmd_test_pending_headers");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::write(tmp.join("notes.md"), "- [ ] buy milk\n- [x] done\n").unwrap();
-        std::fs::write(tmp.join("todo.md"), "- [ ] call dentist\n").unwrap();
+        std::fs::write(tmp.join("notes.md"), "# Work\n- [ ] buy milk\n- [x] done\n").unwrap();
+        std::fs::write(tmp.join("todo.md"), "# Errands\n- [ ] call dentist\n").unwrap();
 
         let items = pending_items_in_dir(&tmp);
-        assert_eq!(items, vec!["- [ ] buy milk", "- [ ] call dentist"]);
+        assert_eq!(items, vec![
+            "# Work",
+            "- [ ] buy milk",
+            "",
+            "# Errands",
+            "- [ ] call dentist",
+        ]);
 
         std::fs::remove_dir_all(&tmp).ok();
     }

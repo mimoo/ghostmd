@@ -4,6 +4,7 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Daily note now preserves full header hierarchy (`#` > `##` > `###`) when carrying over pending items
 - Fix navigation history (Cmd+[/]) recreating deleted files — now skips entries whose files no longer exist on disk
 
 ## [0.9.1] — 2026-04-04
