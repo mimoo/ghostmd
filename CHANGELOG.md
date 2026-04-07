@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Auto-select full filename when starting inline rename (double-click or palette) so typing immediately replaces it
+- Drag-and-drop workspace tabs to reorder them (persisted across sessions)
 - Daily note now preserves full header hierarchy (`#` > `##` > `###`) when carrying over pending items
 - Fix navigation history (Cmd+[/]) recreating deleted files — now skips entries whose files no longer exist on disk
 

@@ -853,7 +853,7 @@ impl InputState {
         self.select_to(self.next_boundary(offset), cx);
     }
 
-    pub(super) fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
+    pub fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.selected_range = (0..self.text.len()).into();
         cx.notify();
     }

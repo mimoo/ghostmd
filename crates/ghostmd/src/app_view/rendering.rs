@@ -6,6 +6,31 @@ use gpui_component::resizable::{h_resizable, v_resizable, resizable_panel};
 
 use super::*;
 
+/// Drag payload for tab reordering: carries the workspace index being dragged.
+#[derive(Clone)]
+struct TabDragPayload(usize);
+
+/// Small label shown under the cursor while dragging a tab.
+struct DraggedTab {
+    title: String,
+    fg: Hsla,
+    bg: Hsla,
+}
+
+impl Render for DraggedTab {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(12.0))
+            .py(px(6.0))
+            .text_sm()
+            .bg(self.bg)
+            .text_color(self.fg)
+            .rounded(px(4.0))
+            .shadow_md()
+            .child(self.title.clone())
+    }
+}
+
 impl GhostAppView {
     pub(crate) fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
@@ -37,6 +62,12 @@ impl GhostAppView {
 
             let ws_idx = i;
             let close_idx = i;
+            let drag_idx = i;
+            let drop_idx = i;
+            let drag_title = ws.title.clone();
+            let drag_fg = t.fg;
+            let drag_bg = t.tab_active;
+            let accent = t.accent;
             let mut tab_div = div()
                 .id(ElementId::NamedInteger("ws-tab".into(), i as u64))
                 .group(SharedString::from(format!("tab-{}", i)))
@@ -50,6 +81,19 @@ impl GhostAppView {
                 .bg(tab_bg)
                 .text_color(t.fg)
                 .cursor_pointer()
+                .on_drag(TabDragPayload(drag_idx), move |_payload, _offset, _window, cx| {
+                    cx.new(|_| DraggedTab {
+                        title: drag_title.clone(),
+                        fg: drag_fg,
+                        bg: drag_bg,
+                    })
+                })
+                .drag_over::<TabDragPayload>(move |style, _, _, _| {
+                    style.border_l_2().border_color(accent)
+                })
+                .on_drop(cx.listener(move |this: &mut Self, payload: &TabDragPayload, window, cx| {
+                    this.reorder_workspace(payload.0, drop_idx, window, cx);
+                }))
                 .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                     this.switch_workspace(ws_idx, window, cx);
                 }))

@@ -68,6 +68,31 @@ impl GhostAppView {
         .detach();
     }
 
+    /// Reorder a workspace tab from `from` index to `to` index via drag-and-drop.
+    pub(crate) fn reorder_workspace(&mut self, from: usize, to: usize, _window: &mut Window, cx: &mut Context<Self>) {
+        if from == to || from >= self.workspaces.len() || to >= self.workspaces.len() {
+            return;
+        }
+        let ws = self.workspaces.remove(from);
+        self.workspaces.insert(to, ws);
+        // Keep active_workspace pointing at the same workspace
+        if self.active_workspace == from {
+            self.active_workspace = to;
+        } else if from < to {
+            // Moved right: items in (from..=to) shifted left by 1
+            if self.active_workspace > from && self.active_workspace <= to {
+                self.active_workspace -= 1;
+            }
+        } else {
+            // Moved left: items in (to..from) shifted right by 1
+            if self.active_workspace >= to && self.active_workspace < from {
+                self.active_workspace += 1;
+            }
+        }
+        self.save_session(cx);
+        cx.notify();
+    }
+
     /// Switch to workspace at index.
     pub(crate) fn switch_workspace(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
         if idx < self.workspaces.len() {
