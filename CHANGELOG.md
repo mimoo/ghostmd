@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-04-07
+
 - Tear off a tab into a new window by dragging it outside the tab bar or outside the window
 - Auto-select full filename when starting inline rename (double-click or palette) so typing immediately replaces it
 - Drag-and-drop workspace tabs to reorder them (persisted across sessions)
