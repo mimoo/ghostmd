@@ -68,6 +68,129 @@ impl GhostAppView {
         .detach();
     }
 
+    /// Tear off a workspace tab into a new OS window.
+    pub(crate) fn tear_off_tab(&mut self, ws_idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        // Don't tear off the last tab — keep at least one workspace per window
+        if ws_idx >= self.workspaces.len() || self.workspaces.len() <= 1 {
+            self.tab_drag_active = None;
+            return;
+        }
+        self.tab_drag_active = None;
+
+        // Serialize workspace state before removing
+        let ws = &self.workspaces[ws_idx];
+        let session_ws = SessionWorkspace {
+            title: ws.title.clone(),
+            split_root: ws.split_root.to_session(&ws.panes),
+            focused_pane_idx: {
+                let leaves = ws.split_root.leaves();
+                leaves.iter().position(|&id| id == ws.focused_pane).unwrap_or(0)
+            },
+        };
+
+        // Save editors before removing
+        let editors: Vec<Entity<EditorView>> = self.workspaces[ws_idx].panes.values()
+            .filter_map(|p| p.editor.clone())
+            .collect();
+        for editor in &editors {
+            editor.update(cx, |e, cx| { e.save(cx).ok(); });
+        }
+
+        // Remove workspace from current window
+        self.workspaces.remove(ws_idx);
+        if self.active_workspace >= self.workspaces.len() {
+            self.active_workspace = self.workspaces.len() - 1;
+        } else if ws_idx < self.active_workspace {
+            self.active_workspace -= 1;
+        }
+
+        let focused = self.workspaces[self.active_workspace].focused_pane;
+        self.focus_pane_editor(focused, window, cx);
+        self.sync_file_tree_selection(cx);
+        self.save_session(cx);
+        cx.notify();
+
+        // Open new window with the torn-off workspace
+        let root = self.root.clone();
+        let theme = self.active_theme;
+        cx.spawn(async move |_this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
+            cx.update(|cx: &mut App| {
+                let bounds = Bounds::centered(None, size(px(1200.), px(800.)), cx);
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        focus: true,
+                        titlebar: Some(TitlebarOptions {
+                            appears_transparent: true,
+                            traffic_light_position: Some(gpui::point(px(9.0), px(9.0))),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    |window, cx| {
+                        let app_view = cx.new(|cx| {
+                            let mut view = GhostAppView::new(root, false, window, cx);
+
+                            // Replace the default empty workspace with the torn-off one
+                            view.workspaces.clear();
+
+                            let ws_id = view.next_workspace_id;
+                            view.next_workspace_id += 1;
+
+                            let mut panes = HashMap::new();
+                            let mut editors_out = Vec::new();
+                            let split_root = restore_split_node(
+                                &session_ws.split_root,
+                                &mut view.next_pane_id,
+                                &mut panes,
+                                &mut editors_out,
+                                view.syntax_highlight,
+                                window,
+                                cx,
+                            );
+
+                            let leaves = split_root.leaves();
+                            let focused_pane = if session_ws.focused_pane_idx < leaves.len() {
+                                leaves[session_ws.focused_pane_idx]
+                            } else {
+                                leaves.first().copied().unwrap_or(0)
+                            };
+
+                            view.workspaces.push(Workspace {
+                                id: ws_id,
+                                title: session_ws.title,
+                                split_root,
+                                panes,
+                                focused_pane,
+                                pane_focus_history: Vec::new(),
+                            });
+                            view.active_workspace = 0;
+
+                            // Subscribe to restored editors for cross-pane sync
+                            for editor in editors_out {
+                                view.subscribe_editor(&editor, window, cx);
+                            }
+
+                            // Apply the same theme
+                            view.active_theme = theme;
+                            view.theme = crate::theme::ResolvedTheme::from_name(theme);
+                            view.file_tree.update(cx, |tree, _cx| {
+                                tree.set_theme(theme);
+                            });
+
+                            // Focus the restored workspace
+                            view.focus_pane_editor(focused_pane, window, cx);
+
+                            view
+                        });
+                        cx.new(|cx| Root::new(app_view, window, cx))
+                    },
+                ).ok();
+            }).ok();
+        })
+        .detach();
+    }
+
     /// Reorder a workspace tab from `from` index to `to` index via drag-and-drop.
     pub(crate) fn reorder_workspace(&mut self, from: usize, to: usize, _window: &mut Window, cx: &mut Context<Self>) {
         if from == to || from >= self.workspaces.len() || to >= self.workspaces.len() {

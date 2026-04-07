@@ -35,6 +35,14 @@ use crate::theme::{ResolvedTheme, ThemeName};
 // Rename mode
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Tab drag-and-drop payload
+// ---------------------------------------------------------------------------
+
+/// Drag payload for tab reordering / tear-off: carries the workspace index being dragged.
+#[derive(Clone)]
+pub(crate) struct TabDragPayload(pub(crate) usize);
+
 #[derive(Clone, PartialEq)]
 pub(crate) enum RenameMode {
     Tab,
@@ -175,6 +183,8 @@ pub struct GhostAppView {
     pub(crate) note_switcher_all: Vec<NoteSwitcherResult>,
     pub(crate) note_switcher_selected: usize,
     pub(crate) note_switcher_scroll: ScrollHandle,
+    // Tab drag state: tracks which workspace tab is being dragged (for tear-off detection)
+    pub(crate) tab_drag_active: Option<usize>,
 }
 
 impl GhostAppView {
@@ -490,6 +500,7 @@ impl GhostAppView {
             note_switcher_all: Vec::new(),
             note_switcher_selected: 0,
             note_switcher_scroll: ScrollHandle::new(),
+            tab_drag_active: None,
         };
 
         // Set up file watcher for external changes
@@ -1250,6 +1261,21 @@ impl Render for GhostAppView {
                     cx.notify();
                 }
             }))
+            // Catch tab drops outside the tab bar (content area, sidebar, etc.) → tear off into new window
+            .on_drop(cx.listener(|this: &mut Self, payload: &TabDragPayload, window, cx| {
+                if this.tab_drag_active.take().is_some() {
+                    this.tear_off_tab(payload.0, window, cx);
+                }
+            }))
+            // Catch tab drags that end outside the window → tear off
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _event: &MouseUpEvent, window, cx| {
+                    if let Some(idx) = this.tab_drag_active.take() {
+                        this.tear_off_tab(idx, window, cx);
+                    }
+                }),
+            )
             // Layout: flex_col with titlebar spacer then main content
             .child({
                 // Titlebar spacer — prevents content from overlapping traffic lights

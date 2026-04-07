@@ -6,10 +6,6 @@ use gpui_component::resizable::{h_resizable, v_resizable, resizable_panel};
 
 use super::*;
 
-/// Drag payload for tab reordering: carries the workspace index being dragged.
-#[derive(Clone)]
-struct TabDragPayload(usize);
-
 /// Small label shown under the cursor while dragging a tab.
 struct DraggedTab {
     title: String,
@@ -34,8 +30,10 @@ impl Render for DraggedTab {
 impl GhostAppView {
     pub(crate) fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
+        let entity = cx.entity().clone();
 
         let mut tabs = div()
+            .id("tab-bar")
             .w_full()
             .h(px(36.0))
             .flex()
@@ -44,7 +42,11 @@ impl GhostAppView {
             .bg(t.bg)
             .border_b_1()
             .border_color(t.border)
-            .overflow_x_hidden();
+            .overflow_x_hidden()
+            // Dropping a tab on empty tab bar area cancels the drag (no tear-off)
+            .on_drop(cx.listener(|this: &mut Self, _payload: &TabDragPayload, _window, _cx| {
+                this.tab_drag_active = None;
+            }));
 
         for (i, ws) in self.workspaces.iter().enumerate() {
             let is_active = i == self.active_workspace;
@@ -81,17 +83,24 @@ impl GhostAppView {
                 .bg(tab_bg)
                 .text_color(t.fg)
                 .cursor_pointer()
-                .on_drag(TabDragPayload(drag_idx), move |_payload, _offset, _window, cx| {
-                    cx.new(|_| DraggedTab {
-                        title: drag_title.clone(),
-                        fg: drag_fg,
-                        bg: drag_bg,
-                    })
+                .on_drag(TabDragPayload(drag_idx), {
+                    let entity = entity.clone();
+                    move |_payload, _offset, _window, cx| {
+                        entity.update(cx, |this, _cx| {
+                            this.tab_drag_active = Some(drag_idx);
+                        });
+                        cx.new(|_| DraggedTab {
+                            title: drag_title.clone(),
+                            fg: drag_fg,
+                            bg: drag_bg,
+                        })
+                    }
                 })
                 .drag_over::<TabDragPayload>(move |style, _, _, _| {
                     style.border_l_2().border_color(accent)
                 })
                 .on_drop(cx.listener(move |this: &mut Self, payload: &TabDragPayload, window, cx| {
+                    this.tab_drag_active = None;
                     this.reorder_workspace(payload.0, drop_idx, window, cx);
                 }))
                 .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
