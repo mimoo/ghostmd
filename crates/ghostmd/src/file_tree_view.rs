@@ -38,6 +38,9 @@ pub struct ItemMoved {
     pub new_path: PathBuf,
 }
 
+/// Event emitted when the diary "+" button is clicked.
+pub struct NewDailyNoteRequested;
+
 /// Drag payload containing the path being dragged.
 #[derive(Clone)]
 struct TreeDragPayload(PathBuf);
@@ -95,6 +98,7 @@ impl EventEmitter<OpenInFinderRequested> for FileTreeView {}
 impl EventEmitter<MoveToTrashRequested> for FileTreeView {}
 impl EventEmitter<ContextMenuRequested> for FileTreeView {}
 impl EventEmitter<ItemMoved> for FileTreeView {}
+impl EventEmitter<NewDailyNoteRequested> for FileTreeView {}
 
 impl FileTreeView {
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -519,8 +523,10 @@ impl Render for FileTreeView {
             let indent = *depth as f32 * 16.0;
             let is_editing = editing_path.as_ref() == Some(&node_path);
 
+            let is_diary_root = *depth == 0 && name == "diary";
+
             // Insert separator after diary subtree
-            if *depth == 0 && name == "diary" {
+            if is_diary_root {
                 in_diary = true;
             } else if *depth == 0 && in_diary && !diary_separator_shown {
                 in_diary = false;
@@ -579,8 +585,11 @@ impl Render for FileTreeView {
                     .into_any_element()
             };
 
+            let row_group = SharedString::from(format!("tree-row-{}", i));
+            let row_group_hover = row_group.clone();
             let row = div()
                 .id(ElementId::NamedInteger("tree-row".into(), i as u64))
+                .group(row_group)
                 .w_full()
                 .flex()
                 .flex_row()
@@ -660,7 +669,24 @@ impl Render for FileTreeView {
                             }))
                         })
                         .child(label_child),
-                );
+                )
+                .when(is_diary_root, |d| {
+                    d.child(
+                        div()
+                            .id(ElementId::NamedInteger("diary-add".into(), i as u64))
+                            .px(px(6.0))
+                            .text_xs()
+                            .text_color(hint_fg)
+                            .opacity(0.0)
+                            .group_hover(row_group_hover.clone(), |s| s.opacity(1.0))
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this: &mut Self, _event: &ClickEvent, _window, cx| {
+                                cx.emit(NewDailyNoteRequested);
+                                cx.stop_propagation();
+                            }))
+                            .child("+"),
+                    )
+                });
 
             list = list.child(row);
         }

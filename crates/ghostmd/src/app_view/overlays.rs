@@ -237,9 +237,6 @@ impl GhostAppView {
             Some(OverlayKind::AgenticSearch) => {
                 self.agentic_loading = false;
             }
-            Some(OverlayKind::LocationPicker) => {
-                self.location_picker_options.clear();
-            }
             Some(OverlayKind::NoteSwitcher) => {
                 self.note_switcher_results.clear();
                 self.note_switcher_all.clear();

@@ -6,6 +6,8 @@ All notable changes to GhostMD are documented in this file.
 
 - Auto-select full filename when starting inline rename (double-click or palette) so typing immediately replaces it
 - Drag-and-drop workspace tabs to reorder them (persisted across sessions)
+- Cmd+N now creates a note in the selected directory (or root if nothing selected), removing the location picker
+- Rename "New Daily Note" to "Quick Note" in command palette; add `+` button on diary folder in sidebar
 - Daily note now preserves full header hierarchy (`#` > `##` > `###`) when carrying over pending items
 - Fix navigation history (Cmd+[/]) recreating deleted files — now skips entries whose files no longer exist on disk
 

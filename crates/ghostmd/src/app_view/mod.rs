@@ -25,7 +25,7 @@ use gpui_component::input::{InputEvent, InputState};
 use gpui_component::resizable::{h_resizable, resizable_panel};
 
 use crate::editor_view::{EditorEvent, EditorView};
-use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
+use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, NewDailyNoteRequested, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
 use crate::palette::CommandPalette;
 use crate::search::FileFinder;
@@ -49,7 +49,6 @@ pub(crate) enum OverlayKind {
     Palette,
     FileFinder,
     AgenticSearch,
-    LocationPicker,
     NoteSwitcher,
 }
 
@@ -145,9 +144,6 @@ pub struct GhostAppView {
     pub(crate) agentic_cache: Vec<(String, Vec<AgenticMatch>)>,
     // Folder move mode (file finder shows folders instead of files)
     pub(crate) folder_move_source: Option<PathBuf>,
-    // Location picker (shown when creating a new note with a folder selected)
-    pub(crate) location_picker_options: Vec<(String, PathBuf)>,
-    pub(crate) location_picker_selected: usize,
     // Scroll handles for overlays
     pub(crate) palette_scroll: ScrollHandle,
     pub(crate) finder_scroll: ScrollHandle,
@@ -258,6 +254,11 @@ impl GhostAppView {
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ContextMenuRequested, _window, cx| {
             this.tree_context_menu = Some((event.0.clone(), event.1));
             cx.notify();
+        })
+        .detach();
+
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, _event: &NewDailyNoteRequested, window, cx| {
+            this.new_daily_note(window, cx);
         })
         .detach();
 
@@ -468,8 +469,6 @@ impl GhostAppView {
             agentic_scroll: ScrollHandle::new(),
             agentic_cache: Vec::new(),
             folder_move_source: None,
-            location_picker_options: Vec::new(),
-            location_picker_selected: 0,
             palette_scroll: ScrollHandle::new(),
             finder_scroll: ScrollHandle::new(),
             update_available: None,
@@ -949,7 +948,6 @@ impl Render for GhostAppView {
         let show_palette = self.overlay_is(OverlayKind::Palette);
         let show_file_finder = self.overlay_is(OverlayKind::FileFinder);
         let show_agentic_search = self.overlay_is(OverlayKind::AgenticSearch);
-        let show_location_picker = self.overlay_is(OverlayKind::LocationPicker);
         let show_note_switcher = self.overlay_is(OverlayKind::NoteSwitcher);
 
         // Context menu overlay data
@@ -1142,12 +1140,6 @@ impl Render for GhostAppView {
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteUp, window, cx| {
                 match &this.active_overlay {
-                    Some(OverlayKind::LocationPicker) => {
-                        if this.location_picker_selected > 0 {
-                            this.location_picker_selected -= 1;
-                        }
-                        cx.notify();
-                    }
                     Some(OverlayKind::FileFinder) => {
                         this.file_finder.select_prev();
                         this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
@@ -1175,12 +1167,6 @@ impl Render for GhostAppView {
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteDown, window, cx| {
                 match &this.active_overlay {
-                    Some(OverlayKind::LocationPicker) => {
-                        if this.location_picker_selected + 1 < this.location_picker_options.len() {
-                            this.location_picker_selected += 1;
-                        }
-                        cx.notify();
-                    }
                     Some(OverlayKind::FileFinder) => {
                         this.file_finder.select_next();
                         this.finder_scroll.scroll_to_item(this.file_finder.selected_index);
@@ -1208,7 +1194,6 @@ impl Render for GhostAppView {
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::PaletteConfirm, window, cx| {
                 match &this.active_overlay {
-                    Some(OverlayKind::LocationPicker) => this.confirm_location_picker(window, cx),
                     Some(OverlayKind::NoteSwitcher) => this.confirm_note_switcher(window, cx),
                     Some(OverlayKind::Palette) if this.rename_mode.is_some() => {
                         // In rename mode, forward Enter to the input so the
@@ -1364,7 +1349,6 @@ impl Render for GhostAppView {
                                             .child(self.render_split_node(&split_root, &ws_clone, cx))
                                             .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
                                             .when(show_agentic_search, |d| d.child(self.render_agentic_search(cx)))
-                                            .when(show_location_picker, |d| d.child(self.render_location_picker(cx)))
                                             .when(show_note_switcher, |d| d.child(self.render_note_switcher(cx)))
                                             .when(show_palette, |d| d.child(self.render_command_palette(cx))),
                                     ),
