@@ -101,6 +101,7 @@ Key patterns:
 | Shortcut | Action |
 |----------|--------|
 | cmd-n | New note (shows location picker if folder selected) |
+| cmd-option-n | New daily note (carries over pending `- [ ]` items from last diary note) |
 | cmd-shift-n | New OS window |
 | cmd-t | New workspace tab |
 | cmd-w | Close pane; last pane closes workspace |
@@ -130,3 +131,4 @@ Key patterns:
 - NEVER use `git restore` or `git checkout` to discard changes - other agents may be working concurrently and their changes could be lost
 - NEVER use `git commit -a` - always stage specific files to avoid committing adjacent changes from other agents
 - After every committed change, update `CHANGELOG.md` under the `[Unreleased]` section with a concise description of what changed. When bumping a version, move unreleased entries under the new version heading with the date.
+- **Always run `cargo check` (or `cargo test -p ghostmd-core` if GPUI Metal shaders fail locally) after making changes** to catch compilation errors before committing. CI runs on Linux and will reject broken builds.
