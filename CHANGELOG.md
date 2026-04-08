@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Quick note (Cmd+Opt+N) only carries over pending `- [ ]` items for the first note of the day
+
 ## [0.10.0] — 2026-04-07
 
 - Tear off a tab into a new window by dragging it outside the tab bar or outside the window
