@@ -549,42 +549,49 @@ impl GhostAppView {
         })
         .detach();
 
-        // Check for updates in the background
+        // Check for updates periodically (on launch, then every 4 hours)
         cx.spawn(async |this: WeakEntity<GhostAppView>, cx: &mut AsyncApp| {
-            let result = cx.background_executor().spawn(async {
-                let output = std::process::Command::new("curl")
-                    .args(["-fsSL", "--max-time", "5", "https://api.github.com/repos/mimoo/ghostmd/releases/latest"])
-                    .output()
-                    .ok()?;
-                if !output.status.success() { return None; }
-                let body = String::from_utf8(output.stdout).ok()?;
-                let tag = body.lines()
-                    .find(|l| l.contains("\"tag_name\""))?
-                    .split('"')
-                    .nth(3)?
-                    .to_string();
-                Some(tag)
-            }).await;
+            loop {
+                let result = cx.background_executor().spawn(async {
+                    let output = std::process::Command::new("curl")
+                        .args(["-fsSL", "--max-time", "5", "https://api.github.com/repos/mimoo/ghostmd/releases/latest"])
+                        .output()
+                        .ok()?;
+                    if !output.status.success() { return None; }
+                    let body = String::from_utf8(output.stdout).ok()?;
+                    let tag = body.lines()
+                        .find(|l| l.contains("\"tag_name\""))?
+                        .split('"')
+                        .nth(3)?
+                        .to_string();
+                    Some(tag)
+                }).await;
 
-            if let Some(latest_tag) = result {
-                let current = env!("CARGO_PKG_VERSION");
-                let latest_ver = latest_tag.trim_start_matches('v');
-                let parse_ver = |s: &str| -> Option<(u32, u32, u32)> {
-                    let mut parts = s.split('.');
-                    Some((
-                        parts.next()?.parse().ok()?,
-                        parts.next()?.parse().ok()?,
-                        parts.next()?.parse().ok()?,
-                    ))
-                };
-                if let (Some(latest), Some(cur)) = (parse_ver(latest_ver), parse_ver(current)) {
-                    if latest > cur {
-                        let _ = this.update(cx, |this, cx| {
-                            this.update_available = Some(latest_tag);
-                            cx.notify();
-                        });
+                if let Some(latest_tag) = result {
+                    let current = env!("CARGO_PKG_VERSION");
+                    let latest_ver = latest_tag.trim_start_matches('v');
+                    let parse_ver = |s: &str| -> Option<(u32, u32, u32)> {
+                        let mut parts = s.split('.');
+                        Some((
+                            parts.next()?.parse().ok()?,
+                            parts.next()?.parse().ok()?,
+                            parts.next()?.parse().ok()?,
+                        ))
+                    };
+                    if let (Some(latest), Some(cur)) = (parse_ver(latest_ver), parse_ver(current)) {
+                        if latest > cur {
+                            if this.update(cx, |this, cx| {
+                                this.update_available = Some(latest_tag);
+                                cx.notify();
+                            }).is_err() {
+                                break;
+                            }
+                        }
                     }
                 }
+
+                // Wait 4 hours before checking again
+                cx.background_executor().timer(Duration::from_secs(4 * 60 * 60)).await;
             }
         })
         .detach();

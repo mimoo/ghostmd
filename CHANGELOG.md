@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Check for updates every 4 hours instead of only at launch
+
 ## [0.10.1] — 2026-04-08
 
 - Quick note (Cmd+Opt+N) only carries over pending `- [ ]` items for the first note of the day
