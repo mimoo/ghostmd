@@ -341,6 +341,7 @@ impl GhostAppView {
                 }
             };
 
+            let click_idx = i;
             list = list.child(
                 div()
                     .id(ElementId::NamedInteger("finder-item".into(), i as u64))
@@ -350,6 +351,24 @@ impl GhostAppView {
                     .bg(bg)
                     .text_color(t.fg)
                     .text_sm()
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                        this.file_finder.selected_index = click_idx;
+                        if let Some(source) = this.folder_move_source.take() {
+                            if let Some(target_dir) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                                this.active_overlay = None;
+                                this.file_finder.close();
+                                this.move_file_to_dir(source, &target_dir, cx);
+                                let focused = this.active_ws().focused_pane;
+                                this.focus_pane_editor(focused, window, cx);
+                                cx.notify();
+                            }
+                        } else if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                            this.active_overlay = None;
+                            this.file_finder.close();
+                            this.open_file(path, window, cx);
+                        }
+                    }))
                     .child(display),
             );
         }

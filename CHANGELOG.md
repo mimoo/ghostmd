@@ -5,6 +5,7 @@ All notable changes to GhostMD are documented in this file.
 ## [Unreleased]
 
 - Check for updates every 4 hours instead of only at launch
+- File finder (Cmd+P) results are now clickable
 
 ## [0.10.1] — 2026-04-08
 
