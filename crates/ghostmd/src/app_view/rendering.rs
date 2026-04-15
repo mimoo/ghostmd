@@ -242,7 +242,8 @@ impl GhostAppView {
                         .child(div().text_color(t.fg).child(file_part));
 
                     let reveal_path = active_path.cloned();
-                    let title_bar = div()
+                    let ctx_path = active_path.cloned();
+                    let mut title_bar = div()
                         .id(ElementId::NamedInteger("pane-title".into(), pid as u64))
                         .w_full()
                         .h(px(24.0))
@@ -262,6 +263,20 @@ impl GhostAppView {
                             }
                         }))
                         .child(title_row);
+                    if let Some(p) = ctx_path {
+                        title_bar = title_bar.on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
+                                this.tab_context_menu = None;
+                                // Ensure the sidebar is visible so inline rename (if chosen)
+                                // is actually on screen.
+                                this.sidebar_visible = true;
+                                this.tree_context_menu = Some((p.clone(), event.position));
+                                cx.stop_propagation();
+                                cx.notify();
+                            }),
+                        );
+                    }
 
                     pane_div = pane_div.child(title_bar);
 
@@ -1032,6 +1047,43 @@ impl GhostAppView {
                 }))
                 .child("Open in Finder"),
         );
+
+        let copy_path = path.to_path_buf();
+        menu = menu.child(
+            div()
+                .id("ctx-copy-path")
+                .px(px(12.0))
+                .py(px(6.0))
+                .text_sm()
+                .text_color(t.fg)
+                .cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                    this.tree_context_menu = None;
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy_path.display().to_string()));
+                    cx.notify();
+                }))
+                .child("Copy Path"),
+        );
+
+        if let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) {
+            menu = menu.child(
+                div()
+                    .id("ctx-copy-name")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(t.fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.selection))
+                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
+                        this.tree_context_menu = None;
+                        cx.write_to_clipboard(ClipboardItem::new_string(name.clone()));
+                        cx.notify();
+                    }))
+                    .child("Copy Name"),
+            );
+        }
 
         if !is_root {
             menu = menu.child(
