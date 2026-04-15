@@ -276,6 +276,7 @@ impl FileTreeView {
         self.editing_is_new = false;
         self.editing_is_note = path.is_file();
         self.panel.tree.reveal_path(path);
+        self.focus_handle.focus(window);
         self.rename_input.update(cx, |state, cx| {
             state.set_value(&name, window, cx);
             state.focus(window, cx);
@@ -310,6 +311,7 @@ impl FileTreeView {
         self.selected_paths.insert(temp_path.clone());
         self.last_clicked = Some(temp_path.clone());
         let name_owned = name.to_string();
+        self.focus_handle.focus(window);
         self.rename_input.update(cx, |state, cx| {
             state.set_value(&name_owned, window, cx);
             state.focus(window, cx);
@@ -342,6 +344,7 @@ impl FileTreeView {
         self.selected_paths.clear();
         self.selected_paths.insert(temp_path.clone());
         self.last_clicked = Some(temp_path.clone());
+        self.focus_handle.focus(window);
         self.rename_input.update(cx, |state, cx| {
             state.set_value(name, window, cx);
             state.focus(window, cx);
@@ -712,6 +715,14 @@ impl Render for FileTreeView {
             .border_r_1()
             .border_color(border_color)
             .track_focus(&self.focus_handle)
+            // Any click inside the tree should move focus to the tree, so that
+            // pending keyboard input (e.g. typing into the inline-rename input
+            // that was just opened) doesn't get stolen by the active editor pane.
+            .capture_any_mouse_down(cx.listener(|this: &mut Self, _event: &MouseDownEvent, window, _cx| {
+                if !this.focus_handle.is_focused(window) {
+                    this.focus_handle.focus(window);
+                }
+            }))
             .flex()
             .flex_col()
             .child(

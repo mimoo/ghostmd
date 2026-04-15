@@ -4,6 +4,7 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Clicking anywhere in the file tree sidebar now moves keyboard focus to the tree; fixes typing being stolen by the active editor pane when editing an inline rename / new-folder name
 - Right-click on a workspace tab opens a context menu (Rename, AI Rename, Move to New Window, Close Other Tabs, Close Tab)
 - Check for updates every 4 hours instead of only at launch
 - File finder (Cmd+P) results are now clickable
