@@ -143,6 +143,8 @@ pub struct GhostAppView {
     pub(crate) theme: ResolvedTheme,
     // Context menu (from file tree right-click)
     pub(crate) tree_context_menu: Option<(PathBuf, Point<Pixels>)>,
+    // Tab context menu (right-click on a workspace tab): (workspace index, position)
+    pub(crate) tab_context_menu: Option<(usize, Point<Pixels>)>,
     // Agentic search (cmd-shift-f)
     pub(crate) agentic_input: Entity<InputState>,
     pub(crate) agentic_results: Vec<AgenticMatch>,
@@ -472,6 +474,7 @@ impl GhostAppView {
             active_theme,
             theme: ResolvedTheme::from_name(active_theme),
             tree_context_menu: None,
+            tab_context_menu: None,
             agentic_input,
             agentic_results: Vec::new(),
             agentic_loading: false,
@@ -970,6 +973,7 @@ impl Render for GhostAppView {
 
         // Context menu overlay data
         let ctx_menu = self.tree_context_menu.clone();
+        let tab_ctx_menu = self.tab_context_menu;
 
         let mut root = div()
             .id("ghost-app")
@@ -1148,8 +1152,9 @@ impl Render for GhostAppView {
                     }
                 } else if this.active_overlay.is_some() {
                     this.dismiss_overlays(window, cx);
-                } else if this.tree_context_menu.is_some() {
+                } else if this.tree_context_menu.is_some() || this.tab_context_menu.is_some() {
                     this.tree_context_menu = None;
+                    this.tab_context_menu = None;
                     cx.notify();
                 } else {
                     // Forward to editor so the built-in search panel can close on Escape
@@ -1263,8 +1268,9 @@ impl Render for GhostAppView {
             }))
             // Dismiss context menu on click (using on_click so menu item handlers fire first)
             .on_click(cx.listener(|this: &mut Self, _, _window, cx| {
-                if this.tree_context_menu.is_some() {
+                if this.tree_context_menu.is_some() || this.tab_context_menu.is_some() {
                     this.tree_context_menu = None;
+                    this.tab_context_menu = None;
                     cx.notify();
                 }
             }))
@@ -1432,6 +1438,11 @@ impl Render for GhostAppView {
         // Context menu overlay (rendered at root level for correct z-order and positioning)
         if let Some((ref path, position)) = ctx_menu {
             root = root.child(self.render_context_menu(path, position, cx));
+        }
+        if let Some((ws_idx, position)) = tab_ctx_menu {
+            if ws_idx < self.workspaces.len() {
+                root = root.child(self.render_tab_context_menu(ws_idx, position, cx));
+            }
         }
 
         root

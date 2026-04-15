@@ -401,6 +401,20 @@ impl GhostAppView {
         cx.notify();
     }
 
+    /// Close every workspace except the one at `keep_idx`.
+    pub(crate) fn close_other_workspaces(&mut self, keep_idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if keep_idx >= self.workspaces.len() { return; }
+        // Identify the kept workspace by its stable id, then close every other from the tail.
+        let keep_id = self.workspaces[keep_idx].id;
+        let mut i = self.workspaces.len();
+        while i > 0 {
+            i -= 1;
+            if self.workspaces[i].id != keep_id {
+                self.close_workspace(i, window, cx);
+            }
+        }
+    }
+
     /// Close workspace at given index.
     pub(crate) fn close_workspace(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
         if idx >= self.workspaces.len() {

@@ -106,6 +106,12 @@ impl GhostAppView {
                 .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                     this.switch_workspace(ws_idx, window, cx);
                 }))
+                .on_mouse_down(MouseButton::Right, cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
+                    this.tree_context_menu = None;
+                    this.tab_context_menu = Some((ws_idx, event.position));
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
                 .child(display)
                 .child(
                     div()
@@ -806,6 +812,110 @@ impl GhostAppView {
                             ),
                     ),
             )
+    }
+
+    pub(crate) fn render_tab_context_menu(&self, ws_idx: usize, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
+        let t = &self.theme;
+        let multi = self.workspaces.len() > 1;
+
+        let mut menu = div()
+            .absolute()
+            .top(position.y)
+            .left(position.x)
+            .bg(t.sidebar_bg)
+            .border_1()
+            .border_color(t.border)
+            .rounded(px(4.0))
+            .shadow_lg()
+            .min_w(px(180.0))
+            .flex()
+            .flex_col();
+
+        menu = menu.child(
+            div()
+                .id("tab-ctx-rename")
+                .px(px(12.0))
+                .py(px(6.0))
+                .text_sm()
+                .text_color(t.fg)
+                .cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                    this.tab_context_menu = None;
+                    this.switch_workspace(ws_idx, window, cx);
+                    this.enter_rename_mode(RenameMode::Tab, window, cx);
+                }))
+                .child("Rename Tab"),
+        );
+
+        menu = menu.child(
+            div()
+                .id("tab-ctx-ai-rename")
+                .px(px(12.0))
+                .py(px(6.0))
+                .text_sm()
+                .text_color(t.fg)
+                .cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                    this.tab_context_menu = None;
+                    this.switch_workspace(ws_idx, window, cx);
+                    this.ai_rename_tab(cx);
+                }))
+                .child("AI: Rename Tab"),
+        );
+
+        if multi {
+            menu = menu.child(
+                div()
+                    .id("tab-ctx-tearoff")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(t.fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.selection))
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.tab_context_menu = None;
+                        this.tear_off_tab(ws_idx, window, cx);
+                    }))
+                    .child("Move Tab to New Window"),
+            );
+
+            menu = menu.child(
+                div()
+                    .id("tab-ctx-close-others")
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_sm()
+                    .text_color(t.fg)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.selection))
+                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                        this.tab_context_menu = None;
+                        this.close_other_workspaces(ws_idx, window, cx);
+                    }))
+                    .child("Close Other Tabs"),
+            );
+        }
+
+        menu = menu.child(
+            div()
+                .id("tab-ctx-close")
+                .px(px(12.0))
+                .py(px(6.0))
+                .text_sm()
+                .text_color(t.error)
+                .cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                    this.tab_context_menu = None;
+                    this.close_workspace(ws_idx, window, cx);
+                }))
+                .child("Close Tab"),
+        );
+
+        menu
     }
 
     pub(crate) fn render_context_menu(&self, path: &Path, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
