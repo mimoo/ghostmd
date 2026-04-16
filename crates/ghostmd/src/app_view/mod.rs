@@ -1104,6 +1104,10 @@ impl Render for GhostAppView {
                         state.set_value("", window, cx);
                         state.focus(window, cx);
                     });
+                    let input = this.file_finder_input.clone();
+                    cx.defer_in(window, move |_this, window, cx| {
+                        input.update(cx, |state, cx| state.focus(window, cx));
+                    });
                 }
                 cx.notify();
             }))
@@ -1124,6 +1128,10 @@ impl Render for GhostAppView {
                     this.palette_input.update(cx, |state, cx| {
                         state.set_value("", window, cx);
                         state.focus(window, cx);
+                    });
+                    let input = this.palette_input.clone();
+                    cx.defer_in(window, move |_this, window, cx| {
+                        input.update(cx, |state, cx| state.focus(window, cx));
                     });
                 }
                 cx.notify();

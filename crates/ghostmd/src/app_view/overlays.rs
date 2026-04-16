@@ -38,6 +38,10 @@ impl GhostAppView {
             state.focus(window, cx);
         });
         cx.notify();
+        let input = self.agentic_input.clone();
+        cx.defer_in(window, move |_this, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
+        });
     }
 
     pub(crate) fn close_agentic_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -62,6 +66,10 @@ impl GhostAppView {
             state.focus(window, cx);
         });
         cx.notify();
+        let input = self.note_switcher_input.clone();
+        cx.defer_in(window, move |_this, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
+        });
     }
 
     pub(crate) fn close_note_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {

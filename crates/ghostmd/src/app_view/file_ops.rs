@@ -242,6 +242,10 @@ impl GhostAppView {
             state.focus(window, cx);
         });
         cx.notify();
+        let input = self.file_finder_input.clone();
+        cx.defer_in(window, move |_this, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
+        });
     }
 
     /// Move a file or folder to the macOS Trash and update the UI.

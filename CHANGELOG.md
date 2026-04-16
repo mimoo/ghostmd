@@ -4,6 +4,7 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Overlays (file finder, command palette, agentic search, note switcher, rename mode) now reliably grab keyboard focus when opened so typing goes into the overlay input, not the editor
 - Right-click on a pane's title bar opens the file context menu (Rename, New Note, Open in Finder, Copy Path/Name, Move to Trash)
 - Add "Copy Path" and "Copy Name" to the file tree context menu
 - Clicking anywhere in the file tree sidebar now moves keyboard focus to the tree; fixes typing being stolen by the active editor pane when editing an inline rename / new-folder name

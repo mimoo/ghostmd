@@ -253,7 +253,9 @@ impl GhostAppView {
             state.focus(window, cx);
         });
         cx.notify();
-        cx.defer_in(window, |_this: &mut Self, window, cx| {
+        let input = self.palette_input.clone();
+        cx.defer_in(window, move |_this: &mut Self, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
             window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
         });
     }
