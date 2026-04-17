@@ -145,6 +145,8 @@ pub struct GhostAppView {
     pub(crate) tree_context_menu: Option<(PathBuf, Point<Pixels>)>,
     // Tab context menu (right-click on a workspace tab): (workspace index, position)
     pub(crate) tab_context_menu: Option<(usize, Point<Pixels>)>,
+    // Keyboard-selected index in whichever context menu is open
+    pub(crate) context_menu_selected: usize,
     // Agentic search (cmd-shift-f)
     pub(crate) agentic_input: Entity<InputState>,
     pub(crate) agentic_results: Vec<AgenticMatch>,
@@ -265,6 +267,7 @@ impl GhostAppView {
         // Subscribe to context menu requests from the tree
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &ContextMenuRequested, _window, cx| {
             this.tree_context_menu = Some((event.0.clone(), event.1));
+            this.context_menu_selected = 0;
             cx.notify();
         })
         .detach();
@@ -475,6 +478,7 @@ impl GhostAppView {
             theme: ResolvedTheme::from_name(active_theme),
             tree_context_menu: None,
             tab_context_menu: None,
+            context_menu_selected: 0,
             agentic_input,
             agentic_results: Vec::new(),
             agentic_loading: false,
@@ -1191,6 +1195,12 @@ impl Render for GhostAppView {
                         cx.notify();
                     }
                     Some(OverlayKind::Palette) => this.palette_move_up(cx),
+                    None if this.tree_context_menu.is_some() || this.tab_context_menu.is_some() => {
+                        if this.context_menu_selected > 0 {
+                            this.context_menu_selected -= 1;
+                        }
+                        cx.notify();
+                    }
                     None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveUp), cx);
                     }
@@ -1218,6 +1228,18 @@ impl Render for GhostAppView {
                         cx.notify();
                     }
                     Some(OverlayKind::Palette) => this.palette_move_down(cx),
+                    None if this.tree_context_menu.is_some() || this.tab_context_menu.is_some() => {
+                        let max = if let Some((ref path, _)) = this.tree_context_menu {
+                            this.tree_menu_entries(path).len()
+                        } else if let Some((ws_idx, _)) = this.tab_context_menu {
+                            let _ = ws_idx;
+                            this.tab_menu_entries().len()
+                        } else { 0 };
+                        if max > 0 && this.context_menu_selected + 1 < max {
+                            this.context_menu_selected += 1;
+                        }
+                        cx.notify();
+                    }
                     None => {
                         window.dispatch_action(Box::new(gpui_component::input::MoveDown), cx);
                     }
@@ -1240,8 +1262,36 @@ impl Render for GhostAppView {
                             this.run_agentic_search(window, cx);
                         }
                     }
+                    None if this.tab_context_menu.is_some() => {
+                        let entries = this.tab_menu_entries();
+                        if let Some((ws_idx, _)) = this.tab_context_menu {
+                            if let Some(entry) = entries.get(this.context_menu_selected) {
+                                this.dispatch_tab_menu(ws_idx, entry.id, window, cx);
+                            }
+                        }
+                    }
+                    None if this.tree_context_menu.is_some() => {
+                        let path = this.tree_context_menu.as_ref().map(|(p, _)| p.clone());
+                        if let Some(path) = path {
+                            let entries = this.tree_menu_entries(&path);
+                            if let Some(entry) = entries.get(this.context_menu_selected) {
+                                this.dispatch_tree_menu(&path, entry.id, window, cx);
+                            }
+                        }
+                    }
                     _ => {
                         window.dispatch_action(Box::new(gpui_component::input::Enter { secondary: false }), cx);
+                    }
+                }
+            }))
+            // Cmd+Enter: open file finder result in a new split pane
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FinderConfirmSplit, window, cx| {
+                if this.overlay_is(OverlayKind::FileFinder) && this.folder_move_source.is_none() {
+                    if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                        this.active_overlay = None;
+                        this.file_finder.close();
+                        this.split(SplitDirection::Vertical, window, cx);
+                        this.open_file(path, window, cx);
                     }
                 }
             }))

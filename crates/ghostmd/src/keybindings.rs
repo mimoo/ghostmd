@@ -47,6 +47,7 @@ actions!(
         GoBack,
         GoForward,
         NewDailyNote,
+        FinderConfirmSplit,
     ]
 );
 
@@ -98,6 +99,7 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("secondary-]", GoForward, None),
         // Daily note with pending items
         GpuiKeyBinding::new("alt-secondary-n", NewDailyNote, None),
+        GpuiKeyBinding::new("secondary-enter", FinderConfirmSplit, None),
         // File tree undo/redo (only when file tree is focused)
         GpuiKeyBinding::new("secondary-z", FileTreeUndo, Some("FileTree")),
         GpuiKeyBinding::new("secondary-shift-z", FileTreeRedo, Some("FileTree")),

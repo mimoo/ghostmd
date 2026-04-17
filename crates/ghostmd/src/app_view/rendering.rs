@@ -1,10 +1,18 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gpui::*;
 use gpui_component::input::Input;
 use gpui_component::resizable::{h_resizable, v_resizable, resizable_panel};
 
 use super::*;
+
+/// A single entry in a context menu (used for both tab and tree menus).
+pub(crate) struct ContextMenuEntry {
+    pub id: &'static str,
+    pub label: String,
+    pub shortcut: Option<&'static str>,
+    pub color: Hsla,
+}
 
 /// Small label shown under the cursor while dragging a tab.
 struct DraggedTab {
@@ -109,6 +117,7 @@ impl GhostAppView {
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
                     this.tree_context_menu = None;
                     this.tab_context_menu = Some((ws_idx, event.position));
+                    this.context_menu_selected = 0;
                     cx.stop_propagation();
                     cx.notify();
                 }))
@@ -272,6 +281,7 @@ impl GhostAppView {
                                 // is actually on screen.
                                 this.sidebar_visible = true;
                                 this.tree_context_menu = Some((p.clone(), event.position));
+                                this.context_menu_selected = 0;
                                 cx.stop_propagation();
                                 cx.notify();
                             }),
@@ -322,6 +332,74 @@ impl GhostAppView {
         }
     }
 
+    /// Shared overlay shell: backdrop + centered card with input header and optional footer.
+    fn overlay_shell(
+        &self,
+        bg_id: &'static str,
+        card_id: &'static str,
+        width: f32,
+        input: &Entity<InputState>,
+        body: AnyElement,
+        footer: Option<AnyElement>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let t = &self.theme;
+        let mut card = div()
+            .id(card_id)
+            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
+                cx.stop_propagation();
+            }))
+            .w(px(width))
+            .bg(t.sidebar_bg)
+            .border_1()
+            .border_color(t.border)
+            .rounded(px(8.0))
+            .shadow_lg()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .px(px(8.0))
+                    .py(px(6.0))
+                    .border_b_1()
+                    .border_color(t.border)
+                    .child(Input::new(input).appearance(false).w_full()),
+            )
+            .child(body);
+        if let Some(f) = footer {
+            card = card.child(f);
+        }
+        div()
+            .id(bg_id)
+            .absolute()
+            .inset_0()
+            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                this.dismiss_overlays(window, cx);
+            }))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(60.0))
+                    .left_0()
+                    .right_0()
+                    .flex()
+                    .justify_center()
+                    .child(card),
+            )
+    }
+
+    /// Render a footer line for an overlay.
+    fn overlay_footer(&self, text: String) -> AnyElement {
+        let t = &self.theme;
+        div()
+            .px(px(12.0))
+            .py(px(4.0))
+            .text_xs()
+            .text_color(t.hint)
+            .child(text)
+            .into_any_element()
+    }
+
     pub(crate) fn render_file_finder(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let t = &self.theme;
         let root_prefix = self.root.to_string_lossy().to_string();
@@ -340,7 +418,6 @@ impl GhostAppView {
             let is_selected = i == self.file_finder.selected_index;
             let bg = if is_selected { t.selection } else { t.sidebar_bg };
 
-            // Strip root prefix for display
             let full_path = result.path().to_string_lossy().to_string();
             let display_path = full_path
                 .strip_prefix(&root_prefix)
@@ -354,11 +431,11 @@ impl GhostAppView {
                     let line_preview = m.line_text.trim();
                     let truncated = if line_preview.chars().count() > 60 {
                         let end: String = line_preview.chars().take(60).collect();
-                        format!("{}…", end)
+                        format!("{}...", end)
                     } else {
                         line_preview.to_string()
                     };
-                    format!("{}:{} — {}", display_path, m.line_number, truncated)
+                    format!("{}:{} -- {}", display_path, m.line_number, truncated)
                 }
             };
 
@@ -394,64 +471,21 @@ impl GhostAppView {
             );
         }
 
-        let count_text = if self.folder_move_source.is_some() {
-            format!("{} folders", self.file_finder.result_count())
+        let footer_text = if self.folder_move_source.is_some() {
+            format!("{} folders  |  Enter: select  Esc: cancel", self.file_finder.result_count())
         } else {
-            format!("{} files", self.file_finder.result_count())
+            format!("{} files  |  Enter: open  {}+Enter: open in split", self.file_finder.result_count(), if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })
         };
 
-        div()
-            .id("finder-dismiss-bg")
-            .absolute()
-            .inset_0()
-            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                this.close_file_finder(window, cx);
-            }))
-            .child(
-                div()
-                    .absolute()
-                    .top(px(60.0))
-                    .left_0()
-                    .right_0()
-                    .flex()
-                    .justify_center()
-                    .child(
-                        div()
-                            .id("finder-card")
-                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
-                                cx.stop_propagation();
-                            }))
-                            .w(px(500.0))
-                            .bg(t.sidebar_bg)
-                            .border_1()
-                            .border_color(t.border)
-                            .rounded(px(8.0))
-                            .shadow_lg()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(6.0))
-                                    .border_b_1()
-                                    .border_color(t.border)
-                                    .child(
-                                        Input::new(&self.file_finder_input)
-                                            .appearance(false)
-                                            .w_full(),
-                                    ),
-                            )
-                            .child(list)
-                            .child(
-                                div()
-                                    .px(px(12.0))
-                                    .py(px(4.0))
-                                    .text_xs()
-                                    .text_color(t.hint)
-                                    .child(count_text),
-                            ),
-                    ),
-            )
+        self.overlay_shell(
+            "finder-dismiss-bg",
+            "finder-card",
+            500.0,
+            &self.file_finder_input,
+            list.into_any_element(),
+            Some(self.overlay_footer(footer_text)),
+            cx,
+        )
     }
 
     pub(crate) fn render_agentic_search(&self, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -468,18 +502,12 @@ impl GhostAppView {
 
         if self.agentic_loading {
             results_div = results_div.child(
-                div()
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .text_sm()
-                    .text_color(t.accent)
-                    .child("Searching with Claude..."),
+                div().px(px(12.0)).py(px(8.0)).text_sm().text_color(t.accent).child("Searching with Claude..."),
             );
         } else {
             for (i, m) in self.agentic_results.iter().enumerate() {
                 let selected = i == self.agentic_selected;
                 let is_error = m.file.is_empty();
-
                 let display_path = if is_error {
                     m.quote.clone()
                 } else {
@@ -488,104 +516,31 @@ impl GhostAppView {
                         .unwrap_or(&m.file)
                         .trim_start_matches('/')
                         .to_string();
-                    if m.line > 0 {
-                        format!("{}:{}", short, m.line)
-                    } else {
-                        short
-                    }
+                    if m.line > 0 { format!("{}:{}", short, m.line) } else { short }
                 };
-
                 let idx = i;
                 let row = div()
                     .id(ElementId::NamedInteger("agentic-line".into(), i as u64))
-                    .w_full()
-                    .px(px(12.0))
-                    .py(px(4.0))
+                    .w_full().px(px(12.0)).py(px(4.0))
                     .when(selected, |d| d.bg(t.selection))
-                    .rounded(px(4.0))
-                    .cursor_pointer()
+                    .rounded(px(4.0)).cursor_pointer()
                     .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                         this.open_agentic_result(idx, window, cx);
                     }))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if is_error { t.accent } else { t.fg })
-                            .child(display_path),
-                    )
+                    .child(div().text_sm().text_color(if is_error { t.accent } else { t.fg }).child(display_path))
                     .when(!is_error && !m.quote.is_empty(), |d| {
-                        let quote = m.quote.chars().take(120).collect::<String>();
-                        d.child(
-                            div()
-                                .text_xs()
-                                .text_color(t.hint)
-                                .child(quote),
-                        )
+                        d.child(div().text_xs().text_color(t.hint).child(m.quote.chars().take(120).collect::<String>()))
                     });
                 results_div = results_div.child(row);
             }
         }
 
-        let status = if self.agentic_loading {
-            "Running...".to_string()
-        } else if self.agentic_results.is_empty() {
-            "Press Enter to search".to_string()
-        } else {
-            format!("{} results", self.agentic_results.len())
-        };
+        let status = if self.agentic_loading { "Running...".into() }
+            else if self.agentic_results.is_empty() { "Press Enter to search".into() }
+            else { format!("{} results", self.agentic_results.len()) };
 
-        div()
-            .id("agentic-dismiss-bg")
-            .absolute()
-            .inset_0()
-            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                this.close_agentic_search(window, cx);
-            }))
-            .child(
-                div()
-                    .absolute()
-                    .top(px(60.0))
-                    .left_0()
-                    .right_0()
-                    .flex()
-                    .justify_center()
-                    .child(
-                        div()
-                            .id("agentic-card")
-                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
-                                cx.stop_propagation();
-                            }))
-                            .w(px(600.0))
-                            .bg(t.sidebar_bg)
-                            .border_1()
-                            .border_color(t.border)
-                            .rounded(px(8.0))
-                            .shadow_lg()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(6.0))
-                                    .border_b_1()
-                                    .border_color(t.border)
-                                    .child(
-                                        Input::new(&self.agentic_input)
-                                            .appearance(false)
-                                            .w_full(),
-                                    ),
-                            )
-                            .child(results_div)
-                            .child(
-                                div()
-                                    .px(px(12.0))
-                                    .py(px(4.0))
-                                    .text_xs()
-                                    .text_color(t.hint)
-                                    .child(status),
-                            ),
-                    ),
-            )
+        self.overlay_shell("agentic-dismiss-bg", "agentic-card", 600.0, &self.agentic_input,
+            results_div.into_any_element(), Some(self.overlay_footer(status)), cx)
     }
 
     pub(crate) fn render_command_palette(&self, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -600,44 +555,21 @@ impl GhostAppView {
         let mut body = div().flex().flex_col();
 
         if is_rename {
-            // Rename mode: show label + input only
-            body = body.child(
-                div()
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(t.hint)
-                    .child(rename_label),
-            );
+            body = body.child(div().px(px(12.0)).py(px(6.0)).text_sm().text_color(t.hint).child(rename_label));
         } else {
-            // Normal palette: show filtered command list
             let filtered = self.palette.filtered_commands();
-
             let mut list = div()
-                .id("palette-list")
-                .flex()
-                .flex_col()
-                .max_h(px(300.0))
-                .overflow_y_scroll()
-                .track_scroll(&self.palette_scroll);
+                .id("palette-list").flex().flex_col().max_h(px(300.0))
+                .overflow_y_scroll().track_scroll(&self.palette_scroll);
 
             for (i, cmd) in filtered.iter().enumerate() {
                 let is_selected = i == self.palette.selected_index;
                 let bg = if is_selected { t.selection } else { t.sidebar_bg };
                 let action_id = cmd.action_id.clone();
-
                 let mut row = div()
                     .id(ElementId::NamedInteger("palette-item".into(), i as u64))
-                    .w_full()
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .flex()
-                    .flex_row()
-                    .justify_between()
-                    .bg(bg)
-                    .text_color(t.fg)
-                    .text_sm()
-                    .cursor_pointer()
+                    .w_full().px(px(12.0)).py(px(6.0)).flex().flex_row().justify_between()
+                    .bg(bg).text_color(t.fg).text_sm().cursor_pointer()
                     .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
                         this.active_overlay = None;
                         this.palette.close();
@@ -647,293 +579,88 @@ impl GhostAppView {
                         cx.notify();
                     }))
                     .child(cmd.label.clone());
-
                 if let Some(hint) = &cmd.shortcut_hint {
-                    row = row.child(
-                        div()
-                            .text_color(t.hint)
-                            .text_xs()
-                            .child(hint.clone()),
-                    );
+                    row = row.child(div().text_color(t.hint).text_xs().child(hint.clone()));
                 }
-
                 list = list.child(row);
             }
             body = body.child(list);
         }
 
-        // Overlay container — full-screen backdrop with nested card
-        div()
-            .id("palette-dismiss-bg")
-            .absolute()
-            .inset_0()
-            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                this.close_palette(window, cx);
-            }))
-            .child(
-                div()
-                    .absolute()
-                    .top(px(60.0))
-                    .left_0()
-                    .right_0()
-                    .flex()
-                    .justify_center()
-                    .child(
-                        div()
-                            .id("palette-card")
-                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
-                                cx.stop_propagation();
-                            }))
-                            .w(px(400.0))
-                            .bg(t.sidebar_bg)
-                            .border_1()
-                            .border_color(t.border)
-                            .rounded(px(8.0))
-                            .shadow_lg()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(6.0))
-                                    .border_b_1()
-                                    .border_color(t.border)
-                                    .child(
-                                        Input::new(&self.palette_input)
-                                            .appearance(false)
-                                            .w_full(),
-                                    ),
-                            )
-                            .child(body),
-                    ),
-            )
+        self.overlay_shell("palette-dismiss-bg", "palette-card", 400.0, &self.palette_input,
+            body.into_any_element(), None, cx)
     }
 
     pub(crate) fn render_note_switcher(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let t = &self.theme;
-
         let mut list = div()
-            .id("note-switcher-results")
-            .flex()
-            .flex_col()
-            .max_h(px(400.0))
-            .overflow_y_scroll()
-            .track_scroll(&self.note_switcher_scroll);
+            .id("note-switcher-results").flex().flex_col().max_h(px(400.0))
+            .overflow_y_scroll().track_scroll(&self.note_switcher_scroll);
 
         let max_display = 50.min(self.note_switcher_results.len());
         for i in 0..max_display {
             let result = &self.note_switcher_results[i];
             let is_selected = i == self.note_switcher_selected;
             let bg = if is_selected { t.selection } else { t.sidebar_bg };
-
             let idx = i;
             let mut row = div()
                 .id(ElementId::NamedInteger("note-switch-item".into(), i as u64))
-                .w_full()
-                .px(px(12.0))
-                .py(px(4.0))
-                .bg(bg)
-                .cursor_pointer()
+                .w_full().px(px(12.0)).py(px(4.0)).bg(bg).cursor_pointer()
                 .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                     this.note_switcher_selected = idx;
                     this.confirm_note_switcher(window, cx);
                 }))
                 .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(t.fg)
-                                .child(result.filename.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(t.hint)
-                                .child(result.ws_title.clone()),
-                        ),
+                    div().flex().flex_row().items_center().gap(px(8.0))
+                        .child(div().text_sm().text_color(t.fg).child(result.filename.clone()))
+                        .child(div().text_xs().text_color(t.hint).child(result.ws_title.clone())),
                 );
-
             if let Some(ref snippet) = result.content_snippet {
                 if !result.is_title_match {
-                    row = row.child(
-                        div()
-                            .text_xs()
-                            .text_color(t.hint)
-                            .px(px(0.0))
-                            .child(snippet.clone()),
-                    );
+                    row = row.child(div().text_xs().text_color(t.hint).child(snippet.clone()));
                 }
             }
-
             list = list.child(row);
         }
 
-        let count_text = format!("{} open notes", self.note_switcher_results.len());
+        let footer = format!("{} open notes", self.note_switcher_results.len());
+        self.overlay_shell("note-switcher-dismiss-bg", "note-switcher-card", 500.0,
+            &self.note_switcher_input, list.into_any_element(), Some(self.overlay_footer(footer)), cx)
+    }
 
-        div()
-            .id("note-switcher-dismiss-bg")
-            .absolute()
-            .inset_0()
-            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                this.close_note_switcher(window, cx);
-            }))
-            .child(
-                div()
-                    .absolute()
-                    .top(px(60.0))
-                    .left_0()
-                    .right_0()
-                    .flex()
-                    .justify_center()
-                    .child(
-                        div()
-                            .id("note-switcher-card")
-                            .on_click(cx.listener(|_this: &mut Self, _, _window, cx| {
-                                cx.stop_propagation();
-                            }))
-                            .w(px(500.0))
-                            .bg(t.sidebar_bg)
-                            .border_1()
-                            .border_color(t.border)
-                            .rounded(px(8.0))
-                            .shadow_lg()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .px(px(8.0))
-                                    .py(px(6.0))
-                                    .border_b_1()
-                                    .border_color(t.border)
-                                    .child(
-                                        Input::new(&self.note_switcher_input)
-                                            .appearance(false)
-                                            .w_full(),
-                                    ),
-                            )
-                            .child(list)
-                            .child(
-                                div()
-                                    .px(px(12.0))
-                                    .py(px(4.0))
-                                    .text_xs()
-                                    .text_color(t.hint)
-                                    .child(count_text),
-                            ),
-                    ),
-            )
+    pub(crate) fn tab_menu_entries(&self) -> Vec<ContextMenuEntry> {
+        let t = &self.theme;
+        let multi = self.workspaces.len() > 1;
+        let mut items = vec![
+            ContextMenuEntry { id: "rename", label: "Rename Tab".into(), shortcut: None, color: t.fg },
+            ContextMenuEntry { id: "ai-rename", label: "AI: Rename Tab".into(), shortcut: None, color: t.fg },
+        ];
+        if multi {
+            items.push(ContextMenuEntry { id: "tearoff", label: "Move to New Window".into(), shortcut: None, color: t.fg });
+            items.push(ContextMenuEntry { id: "close-others", label: "Close Other Tabs".into(), shortcut: None, color: t.fg });
+        }
+        items.push(ContextMenuEntry { id: "close", label: "Close Tab".into(), shortcut: Some("\u{2318}W"), color: t.error });
+        items
+    }
+
+    pub(crate) fn dispatch_tab_menu(&mut self, ws_idx: usize, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.tab_context_menu = None;
+        match id {
+            "rename" => { self.switch_workspace(ws_idx, window, cx); self.enter_rename_mode(RenameMode::Tab, window, cx); }
+            "ai-rename" => { self.switch_workspace(ws_idx, window, cx); self.ai_rename_tab(cx); }
+            "tearoff" => self.tear_off_tab(ws_idx, window, cx),
+            "close-others" => self.close_other_workspaces(ws_idx, window, cx),
+            "close" => self.close_workspace(ws_idx, window, cx),
+            _ => {}
+        }
     }
 
     pub(crate) fn render_tab_context_menu(&self, ws_idx: usize, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
-        let t = &self.theme;
-        let multi = self.workspaces.len() > 1;
-
-        let mut menu = div()
-            .absolute()
-            .top(position.y)
-            .left(position.x)
-            .bg(t.sidebar_bg)
-            .border_1()
-            .border_color(t.border)
-            .rounded(px(4.0))
-            .shadow_lg()
-            .min_w(px(180.0))
-            .flex()
-            .flex_col();
-
-        menu = menu.child(
-            div()
-                .id("tab-ctx-rename")
-                .px(px(12.0))
-                .py(px(6.0))
-                .text_sm()
-                .text_color(t.fg)
-                .cursor_pointer()
-                .hover(|s| s.bg(t.selection))
-                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                    this.tab_context_menu = None;
-                    this.switch_workspace(ws_idx, window, cx);
-                    this.enter_rename_mode(RenameMode::Tab, window, cx);
-                }))
-                .child("Rename Tab"),
-        );
-
-        menu = menu.child(
-            div()
-                .id("tab-ctx-ai-rename")
-                .px(px(12.0))
-                .py(px(6.0))
-                .text_sm()
-                .text_color(t.fg)
-                .cursor_pointer()
-                .hover(|s| s.bg(t.selection))
-                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                    this.tab_context_menu = None;
-                    this.switch_workspace(ws_idx, window, cx);
-                    this.ai_rename_tab(cx);
-                }))
-                .child("AI: Rename Tab"),
-        );
-
-        if multi {
-            menu = menu.child(
-                div()
-                    .id("tab-ctx-tearoff")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(t.fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(t.selection))
-                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                        this.tab_context_menu = None;
-                        this.tear_off_tab(ws_idx, window, cx);
-                    }))
-                    .child("Move Tab to New Window"),
-            );
-
-            menu = menu.child(
-                div()
-                    .id("tab-ctx-close-others")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(t.fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(t.selection))
-                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                        this.tab_context_menu = None;
-                        this.close_other_workspaces(ws_idx, window, cx);
-                    }))
-                    .child("Close Other Tabs"),
-            );
-        }
-
-        menu = menu.child(
-            div()
-                .id("tab-ctx-close")
-                .px(px(12.0))
-                .py(px(6.0))
-                .text_sm()
-                .text_color(t.error)
-                .cursor_pointer()
-                .hover(|s| s.bg(t.selection))
-                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                    this.tab_context_menu = None;
-                    this.close_workspace(ws_idx, window, cx);
-                }))
-                .child("Close Tab"),
-        );
-
-        menu
+        let entries = self.tab_menu_entries();
+        self.render_menu_from_entries(&entries, position, "tab-ctx", ws_idx, cx)
     }
 
-    pub(crate) fn render_context_menu(&self, path: &Path, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn tree_menu_entries(&self, path: &Path) -> Vec<ContextMenuEntry> {
         let t = &self.theme;
         let is_file = path.is_file();
         let is_dir = path.is_dir();
@@ -941,168 +668,140 @@ impl GhostAppView {
         let diary_dir = self.root.join("diary");
         let is_diary_path = path.starts_with(&diary_dir);
 
-        let context_dir = if is_dir {
-            path.to_path_buf()
-        } else {
-            path.parent().unwrap_or(&self.root).to_path_buf()
-        };
-
-        let rename_path = path.to_path_buf();
-        let new_note_dir = context_dir.clone();
-        let new_folder_dir = context_dir;
-        let finder_path = path.to_path_buf();
-        let trash_path = path.to_path_buf();
-
-        let mut menu = div()
-            .absolute()
-            .top(position.y)
-            .left(position.x)
-            .bg(t.sidebar_bg)
-            .border_1()
-            .border_color(t.border)
-            .rounded(px(4.0))
-            .shadow_lg()
-            .min_w(px(160.0))
-            .flex()
-            .flex_col();
-
-        let rename_enabled = if is_file {
-            !is_diary_path
-        } else if is_dir {
-            !is_root && *path != diary_dir && !is_diary_path
-        } else {
-            false
-        };
+        let rename_enabled = if is_file { !is_diary_path }
+            else if is_dir { !is_root && *path != diary_dir && !is_diary_path }
+            else { false };
         let show_rename = rename_enabled || (is_dir && !is_root && (is_diary_path || *path == diary_dir));
+
+        let context_dir = if is_dir { path.to_path_buf() } else { path.parent().unwrap_or(&self.root).to_path_buf() };
+        let new_folder_in_diary = context_dir.starts_with(&diary_dir);
+
+        let mut items = Vec::new();
         if show_rename {
-            menu = menu.child(
-                div()
-                    .id("ctx-rename")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(if rename_enabled { t.fg } else { t.hint })
-                    .when(rename_enabled, |d| {
-                        d.cursor_pointer()
-                            .hover(|s| s.bg(t.selection))
-                            .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                                this.tree_context_menu = None;
-                                this.file_tree.update(cx, |tree, cx| {
-                                    tree.start_rename(&rename_path, window, cx);
-                                });
-                            }))
-                    })
-                    .child("Rename"),
-            );
+            items.push(ContextMenuEntry {
+                id: "rename", label: "Rename".into(), shortcut: None,
+                color: if rename_enabled { t.fg } else { t.hint },
+            });
         }
-
-        menu = menu.child(
-            div()
-                .id("ctx-new-note")
-                .px(px(12.0))
-                .py(px(6.0))
-                .text_sm()
-                .text_color(t.fg)
-                .cursor_pointer()
-                .hover(|s| s.bg(t.selection))
-                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                    this.tree_context_menu = None;
-                    this.new_note_in_dir(new_note_dir.clone(), window, cx);
-                }))
-                .child("New Note"),
-        );
-
-        let new_folder_in_diary = new_folder_dir.starts_with(&diary_dir);
+        items.push(ContextMenuEntry { id: "new-note", label: "New Note".into(), shortcut: Some("\u{2318}N"), color: t.fg });
         if !new_folder_in_diary {
-            menu = menu.child(
-                div()
-                    .id("ctx-new-folder")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(t.fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(t.selection))
-                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                        this.tree_context_menu = None;
-                        this.create_new_folder(new_folder_dir.clone(), window, cx);
-                    }))
-                    .child("New Folder"),
-            );
+            items.push(ContextMenuEntry { id: "new-folder", label: "New Folder".into(), shortcut: None, color: t.fg });
         }
-
-        menu = menu.child(
-            div()
-                .id("ctx-open-finder")
-                .px(px(12.0))
-                .py(px(6.0))
-                .text_sm()
-                .text_color(t.fg)
-                .cursor_pointer()
-                .hover(|s| s.bg(t.selection))
-                .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
-                    this.tree_context_menu = None;
-                    std::process::Command::new("open").arg("-R").arg(&finder_path).spawn().ok();
-                    cx.notify();
-                }))
-                .child("Open in Finder"),
-        );
-
-        let copy_path = path.to_path_buf();
-        menu = menu.child(
-            div()
-                .id("ctx-copy-path")
-                .px(px(12.0))
-                .py(px(6.0))
-                .text_sm()
-                .text_color(t.fg)
-                .cursor_pointer()
-                .hover(|s| s.bg(t.selection))
-                .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
-                    this.tree_context_menu = None;
-                    cx.write_to_clipboard(ClipboardItem::new_string(copy_path.display().to_string()));
-                    cx.notify();
-                }))
-                .child("Copy Path"),
-        );
-
-        if let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) {
-            menu = menu.child(
-                div()
-                    .id("ctx-copy-name")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(t.fg)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(t.selection))
-                    .on_click(cx.listener(move |this: &mut Self, _event, _window, cx| {
-                        this.tree_context_menu = None;
-                        cx.write_to_clipboard(ClipboardItem::new_string(name.clone()));
-                        cx.notify();
-                    }))
-                    .child("Copy Name"),
-            );
+        if is_file && !is_diary_path {
+            items.push(ContextMenuEntry { id: "duplicate", label: "Duplicate".into(), shortcut: None, color: t.fg });
         }
-
+        items.push(ContextMenuEntry { id: "open-finder", label: "Open in Finder".into(), shortcut: None, color: t.fg });
+        items.push(ContextMenuEntry { id: "copy-path", label: "Copy Path".into(), shortcut: None, color: t.fg });
+        if path.file_name().is_some() {
+            items.push(ContextMenuEntry { id: "copy-name", label: "Copy Name".into(), shortcut: None, color: t.fg });
+        }
         if !is_root {
-            menu = menu.child(
-                div()
-                    .id("ctx-move-to-trash")
-                    .px(px(12.0))
-                    .py(px(6.0))
-                    .text_sm()
-                    .text_color(t.error)
-                    .cursor_pointer()
-                    .hover(|s| s.bg(t.selection))
-                    .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
-                        this.tree_context_menu = None;
-                        this.move_to_trash(trash_path.clone(), window, cx);
-                    }))
-                    .child("Move to Trash"),
-            );
+            items.push(ContextMenuEntry { id: "trash", label: "Move to Trash".into(), shortcut: Some("\u{2318}\u{232b}"), color: t.error });
         }
+        items
+    }
 
+    pub(crate) fn dispatch_tree_menu(&mut self, path: &Path, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let path = path.to_path_buf();
+        self.tree_context_menu = None;
+        let context_dir = if path.is_dir() { path.clone() } else { path.parent().unwrap_or(&self.root).to_path_buf() };
+        match id {
+            "rename" => {
+                self.file_tree.update(cx, |tree, cx| tree.start_rename(&path, window, cx));
+            }
+            "new-note" => self.new_note_in_dir(context_dir, window, cx),
+            "new-folder" => self.create_new_folder(context_dir, window, cx),
+            "duplicate" => self.duplicate_file(&path, window, cx),
+            "open-finder" => { std::process::Command::new("open").arg("-R").arg(&path).spawn().ok(); cx.notify(); }
+            "copy-path" => { cx.write_to_clipboard(ClipboardItem::new_string(path.display().to_string())); cx.notify(); }
+            "copy-name" => {
+                if let Some(n) = path.file_name() {
+                    cx.write_to_clipboard(ClipboardItem::new_string(n.to_string_lossy().to_string()));
+                }
+                cx.notify();
+            }
+            "trash" => self.move_to_trash(path, window, cx),
+            _ => {}
+        }
+    }
+
+    pub(crate) fn render_context_menu(&self, path: &Path, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
+        let entries = self.tree_menu_entries(path);
+        let path_owned = path.to_path_buf();
+        self.render_menu_from_entries_tree(&entries, position, &path_owned, cx)
+    }
+
+    /// Shared renderer for context menu entries (tab menu — dispatches by ws_idx).
+    fn render_menu_from_entries(
+        &self,
+        entries: &[ContextMenuEntry],
+        position: Point<Pixels>,
+        id_prefix: &'static str,
+        ws_idx: usize,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let t = &self.theme;
+        let selected = self.context_menu_selected;
+        let mut menu = div()
+            .absolute().top(position.y).left(position.x)
+            .bg(t.sidebar_bg).border_1().border_color(t.border)
+            .rounded(px(4.0)).shadow_lg().min_w(px(180.0)).py(px(4.0))
+            .flex().flex_col();
+        for (i, entry) in entries.iter().enumerate() {
+            let is_sel = i == selected;
+            let bg = if is_sel { t.selection } else { t.sidebar_bg };
+            let entry_id = entry.id;
+            let mut row = div()
+                .id(ElementId::NamedInteger(id_prefix.into(), i as u64))
+                .px(px(12.0)).py(px(4.0)).flex().flex_row().justify_between()
+                .bg(bg).text_sm().text_color(entry.color).cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                    this.dispatch_tab_menu(ws_idx, entry_id, window, cx);
+                }))
+                .child(entry.label.clone());
+            if let Some(hint) = entry.shortcut {
+                row = row.child(div().text_xs().text_color(t.hint).pl(px(16.0)).child(hint));
+            }
+            menu = menu.child(row);
+        }
+        menu
+    }
+
+    /// Shared renderer for context menu entries (tree menu — dispatches by path).
+    fn render_menu_from_entries_tree(
+        &self,
+        entries: &[ContextMenuEntry],
+        position: Point<Pixels>,
+        path: &PathBuf,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let t = &self.theme;
+        let selected = self.context_menu_selected;
+        let mut menu = div()
+            .absolute().top(position.y).left(position.x)
+            .bg(t.sidebar_bg).border_1().border_color(t.border)
+            .rounded(px(4.0)).shadow_lg().min_w(px(180.0)).py(px(4.0))
+            .flex().flex_col();
+        for (i, entry) in entries.iter().enumerate() {
+            let is_sel = i == selected;
+            let bg = if is_sel { t.selection } else { t.sidebar_bg };
+            let entry_id = entry.id;
+            let p = path.clone();
+            let mut row = div()
+                .id(ElementId::NamedInteger("tree-ctx".into(), i as u64))
+                .px(px(12.0)).py(px(4.0)).flex().flex_row().justify_between()
+                .bg(bg).text_sm().text_color(entry.color).cursor_pointer()
+                .hover(|s| s.bg(t.selection))
+                .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
+                    this.dispatch_tree_menu(&p, entry_id, window, cx);
+                }))
+                .child(entry.label.clone());
+            if let Some(hint) = entry.shortcut {
+                row = row.child(div().text_xs().text_color(t.hint).pl(px(16.0)).child(hint));
+            }
+            menu = menu.child(row);
+        }
         menu
     }
 }

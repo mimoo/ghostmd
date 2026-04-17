@@ -203,6 +203,23 @@ impl GhostAppView {
         cx.notify();
     }
 
+    /// Duplicate a file: copy it next to the original with a unique name, then open it.
+    pub(crate) fn duplicate_file(&mut self, path: &std::path::Path, window: &mut Window, cx: &mut Context<Self>) {
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        let parent = path.parent().unwrap_or(std::path::Path::new("."));
+        let new_path = unique_path(&parent.join(format!("{}-copy{}", stem, ext)));
+        if std::fs::copy(path, &new_path).is_ok() {
+            super::file_undo::push_undo(
+                &mut self.file_undo_stack,
+                &mut self.file_redo_stack,
+                super::file_undo::FileOp::Create { path: new_path.clone(), is_dir: false },
+            );
+            self.file_tree.update(cx, |tree, cx| tree.refresh(cx));
+            self.open_file(new_path, window, cx);
+        }
+    }
+
     /// Move a file to a target directory, updating editor paths and tree.
     pub(crate) fn move_file_to_dir(&mut self, source: PathBuf, target_dir: &std::path::Path, cx: &mut Context<Self>) {
         // Skip if the file is already in the target directory

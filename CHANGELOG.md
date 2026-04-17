@@ -4,6 +4,10 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Context menus (tab and tree) now support keyboard navigation (arrow keys + Enter) and show shortcut hints
+- Cmd+Enter in the file finder opens the selected file in a new split pane
+- "Duplicate" option in the tree context menu for files (copies with "-copy" suffix)
+- Extract shared overlay shell for file finder, command palette, agentic search, and note switcher (reduces ~120 lines of duplicated backdrop/card/input boilerplate)
 - Overlays (file finder, command palette, agentic search, note switcher, rename mode) now reliably grab keyboard focus when opened so typing goes into the overlay input, not the editor
 - Right-click on a pane's title bar opens the file context menu (Rename, New Note, Open in Finder, Copy Path/Name, Move to Trash)
 - Add "Copy Path" and "Copy Name" to the file tree context menu
