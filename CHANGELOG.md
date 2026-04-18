@@ -4,15 +4,17 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
-- Context menus (tab and tree) now support keyboard navigation (arrow keys + Enter) and show shortcut hints
-- Cmd+Enter in the file finder opens the selected file in a new split pane
-- "Duplicate" option in the tree context menu for files (copies with "-copy" suffix)
-- Extract shared overlay shell for file finder, command palette, agentic search, and note switcher (reduces ~120 lines of duplicated backdrop/card/input boilerplate)
-- Overlays (file finder, command palette, agentic search, note switcher, rename mode) now reliably grab keyboard focus when opened so typing goes into the overlay input, not the editor
-- Right-click on a pane's title bar opens the file context menu (Rename, New Note, Open in Finder, Copy Path/Name, Move to Trash)
-- Add "Copy Path" and "Copy Name" to the file tree context menu
-- Clicking anywhere in the file tree sidebar now moves keyboard focus to the tree; fixes typing being stolen by the active editor pane when editing an inline rename / new-folder name
+## [0.11.0] — 2026-04-18
+
 - Right-click on a workspace tab opens a context menu (Rename, AI Rename, Move to New Window, Close Other Tabs, Close Tab)
+- Right-click on a pane's title bar opens the file context menu (Rename, New Note, Open in Finder, Copy Path/Name, Move to Trash)
+- Context menus (tab and tree) now support keyboard navigation (arrow keys + Enter) and show shortcut hints
+- "Copy Path" and "Copy Name" added to the file tree context menu
+- "Duplicate" option in the tree context menu for files (copies with "-copy" suffix)
+- Cmd+Enter in the file finder opens the selected file in a new split pane
+- Overlays (file finder, command palette, agentic search, note switcher) now reliably grab keyboard focus when opened
+- Clicking anywhere in the file tree sidebar now moves keyboard focus to the tree; fixes typing going to the editor pane when editing inline rename / new-folder names
+- Extract shared overlay shell (reduces ~120 lines of duplicated boilerplate)
 - Check for updates every 4 hours instead of only at launch
 - File finder (Cmd+P) results are now clickable
 
