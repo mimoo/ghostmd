@@ -633,9 +633,10 @@ impl GhostAppView {
         let multi = self.workspaces.len() > 1;
         let mut items = vec![
             ContextMenuEntry { id: "rename", label: "Rename Tab".into(), shortcut: None, color: t.fg },
-            ContextMenuEntry { id: "ai-rename", label: "AI: Rename Tab".into(), shortcut: None, color: t.fg },
+            ContextMenuEntry { id: "ai-rename", label: "AI: Rename Tab".into(), shortcut: None, color: t.accent },
         ];
         if multi {
+            items.push(ContextMenuEntry { id: "ai-rename-all", label: "AI: Rename All Tabs".into(), shortcut: None, color: t.accent });
             items.push(ContextMenuEntry { id: "tearoff", label: "Move to New Window".into(), shortcut: None, color: t.fg });
             items.push(ContextMenuEntry { id: "close-others", label: "Close Other Tabs".into(), shortcut: None, color: t.fg });
         }
@@ -648,6 +649,7 @@ impl GhostAppView {
         match id {
             "rename" => { self.switch_workspace(ws_idx, window, cx); self.enter_rename_mode(RenameMode::Tab, window, cx); }
             "ai-rename" => { self.switch_workspace(ws_idx, window, cx); self.ai_rename_tab(cx); }
+            "ai-rename-all" => { self.ai_rename_all_tabs(cx); }
             "tearoff" => self.tear_off_tab(ws_idx, window, cx),
             "close-others" => self.close_other_workspaces(ws_idx, window, cx),
             "close" => self.close_workspace(ws_idx, window, cx),
@@ -690,6 +692,10 @@ impl GhostAppView {
         if is_file && !is_diary_path {
             items.push(ContextMenuEntry { id: "duplicate", label: "Duplicate".into(), shortcut: None, color: t.fg });
         }
+        if is_file {
+            items.push(ContextMenuEntry { id: "ai-rename", label: "AI: Rename File".into(), shortcut: None, color: t.accent });
+            items.push(ContextMenuEntry { id: "ai-suggest-folder", label: "AI: Suggest Folder".into(), shortcut: None, color: t.accent });
+        }
         items.push(ContextMenuEntry { id: "open-finder", label: "Open in Finder".into(), shortcut: None, color: t.fg });
         items.push(ContextMenuEntry { id: "copy-path", label: "Copy Path".into(), shortcut: None, color: t.fg });
         if path.file_name().is_some() {
@@ -712,6 +718,14 @@ impl GhostAppView {
             "new-note" => self.new_note_in_dir(context_dir, window, cx),
             "new-folder" => self.create_new_folder(context_dir, window, cx),
             "duplicate" => self.duplicate_file(&path, window, cx),
+            "ai-rename" => {
+                self.open_file(path, window, cx);
+                self.ai_rename_file(cx);
+            }
+            "ai-suggest-folder" => {
+                self.open_file(path, window, cx);
+                self.ai_suggest_folder(cx);
+            }
             "open-finder" => { std::process::Command::new("open").arg("-R").arg(&path).spawn().ok(); cx.notify(); }
             "copy-path" => { cx.write_to_clipboard(ClipboardItem::new_string(path.display().to_string())); cx.notify(); }
             "copy-name" => {

@@ -4,6 +4,9 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- AI commands (Rename File, Suggest Folder) now available in the file tree and pane title bar right-click menus
+- AI: Rename All Tabs added to the tab right-click menu
+
 ## [0.11.0] — 2026-04-18
 
 - Right-click on a workspace tab opens a context menu (Rename, AI Rename, Move to New Window, Close Other Tabs, Close Tab)
