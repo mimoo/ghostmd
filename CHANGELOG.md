@@ -4,8 +4,11 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-04-19
+
 - AI commands (Rename File, Suggest Folder) now available in the file tree and pane title bar right-click menus
 - AI: Rename All Tabs added to the tab right-click menu
+- Update dependencies
 
 ## [0.11.0] — 2026-04-18
 
