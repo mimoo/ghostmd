@@ -361,7 +361,7 @@ impl FileTreeView {
     }
 
     /// Finish inline rename: apply the new name on disk.
-    fn finish_rename(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn finish_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(old_path) = self.editing_path.clone() else { return };
         let new_name = self.rename_input.read(cx).value().to_string().trim().to_string();
         let is_new = self.editing_is_new;
@@ -380,6 +380,7 @@ impl FileTreeView {
                 }
             }
             self.panel.refresh().ok();
+            self.focus_handle.focus(window);
             cx.notify();
             return;
         }
@@ -429,6 +430,9 @@ impl FileTreeView {
             }
             self.panel.refresh().ok();
         }
+        // After inline rename/create, refocus the tree so keyboard shortcuts
+        // (e.g. cmd-N) keep working without requiring a click first.
+        self.focus_handle.focus(window);
         cx.notify();
     }
 

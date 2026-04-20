@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Fix: Cmd+N (and other shortcuts) now work immediately after creating/renaming a folder or file in the sidebar — no click required
+
 ## [0.11.1] — 2026-04-19
 
 - AI commands (Rename File, Suggest Folder) now available in the file tree and pane title bar right-click menus
