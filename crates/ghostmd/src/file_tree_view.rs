@@ -467,7 +467,7 @@ impl FileTreeView {
     }
 
     /// Cancel inline rename.
-    pub fn cancel_rename(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn cancel_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(old_path) = self.editing_path.take() {
             if self.editing_is_new {
                 if old_path.is_dir() {
@@ -481,6 +481,7 @@ impl FileTreeView {
         self.editing_is_new = false;
         self.editing_is_note = false;
         self.editing_error = None;
+        self.focus_handle.focus(window);
         cx.notify();
     }
 }

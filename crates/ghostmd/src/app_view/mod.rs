@@ -1167,6 +1167,10 @@ impl Render for GhostAppView {
                 } else if this.tree_context_menu.is_some() || this.tab_context_menu.is_some() {
                     this.tree_context_menu = None;
                     this.tab_context_menu = None;
+                    if !this.workspaces.is_empty() {
+                        let focused = this.active_ws().focused_pane;
+                        this.focus_pane_editor(focused, window, cx);
+                    }
                     cx.notify();
                 } else {
                     // Forward to editor so the built-in search panel can close on Escape
@@ -1325,10 +1329,14 @@ impl Render for GhostAppView {
                 this.focus_pane_direction(0, -1, window, cx);
             }))
             // Dismiss context menu on click (using on_click so menu item handlers fire first)
-            .on_click(cx.listener(|this: &mut Self, _, _window, cx| {
+            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
                 if this.tree_context_menu.is_some() || this.tab_context_menu.is_some() {
                     this.tree_context_menu = None;
                     this.tab_context_menu = None;
+                    if !this.workspaces.is_empty() {
+                        let focused = this.active_ws().focused_pane;
+                        this.focus_pane_editor(focused, window, cx);
+                    }
                     cx.notify();
                 }
             }))
