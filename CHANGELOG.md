@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+## [0.11.2] — 2026-04-21
+
 - Fix: Cmd+N (and other shortcuts) now work immediately after creating/renaming a folder or file in the sidebar — no click required
 - Fix: focus is properly restored after dismissing context menus (Escape or click-away) and canceling inline renames
 
