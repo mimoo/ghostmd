@@ -199,7 +199,7 @@ impl GhostAppView {
             }
         }
 
-        title_matches.sort_by(|a, b| b.0.cmp(&a.0));
+        title_matches.sort_by_key(|m| std::cmp::Reverse(m.0));
         // Don't need to sort content_matches since they all have score 0
 
         self.note_switcher_results = Vec::new();

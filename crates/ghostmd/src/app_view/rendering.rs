@@ -336,6 +336,7 @@ impl GhostAppView {
     }
 
     /// Shared overlay shell: backdrop + centered card with input header and optional footer.
+    #[allow(clippy::too_many_arguments)]
     fn overlay_shell(
         &self,
         bg_id: &'static str,
@@ -790,7 +791,7 @@ impl GhostAppView {
         &self,
         entries: &[ContextMenuEntry],
         position: Point<Pixels>,
-        path: &PathBuf,
+        path: &Path,
         cx: &mut Context<Self>,
     ) -> Div {
         let t = &self.theme;
@@ -804,7 +805,7 @@ impl GhostAppView {
             let is_sel = i == selected;
             let bg = if is_sel { t.selection } else { t.sidebar_bg };
             let entry_id = entry.id;
-            let p = path.clone();
+            let p = path.to_path_buf();
             let mut row = div()
                 .id(ElementId::NamedInteger("tree-ctx".into(), i as u64))
                 .px(px(12.0)).py(px(4.0)).flex().flex_row().justify_between()

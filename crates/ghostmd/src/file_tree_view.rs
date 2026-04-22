@@ -115,21 +115,16 @@ impl FileTreeView {
                 InputEvent::PressEnter { .. } => {
                     this.finish_rename(window, cx);
                 }
-                InputEvent::Change => {
-                    // Clear error when user edits the name
-                    if this.editing_error.is_some() {
-                        this.editing_error = None;
-                        cx.notify();
-                    }
+                InputEvent::Change if this.editing_error.is_some() => {
+                    this.editing_error = None;
+                    cx.notify();
                 }
-                InputEvent::Blur => {
-                    if this.editing_path.is_some() {
-                        if this.editing_error.is_some() {
-                            // If there's an error showing, cancel instead of retrying
-                            this.cancel_rename(window, cx);
-                        } else {
-                            this.finish_rename(window, cx);
-                        }
+                InputEvent::Blur if this.editing_path.is_some() => {
+                    if this.editing_error.is_some() {
+                        // If there's an error showing, cancel instead of retrying
+                        this.cancel_rename(window, cx);
+                    } else {
+                        this.finish_rename(window, cx);
                     }
                 }
                 _ => {}
@@ -688,7 +683,7 @@ impl Render for FileTreeView {
                             .opacity(0.0)
                             .group_hover(row_group_hover.clone(), |s| s.opacity(1.0))
                             .cursor_pointer()
-                            .on_click(cx.listener(|this: &mut Self, _event: &ClickEvent, _window, cx| {
+                            .on_click(cx.listener(|_this: &mut Self, _event: &ClickEvent, _window, cx| {
                                 cx.emit(NewDailyNoteRequested);
                                 cx.stop_propagation();
                             }))

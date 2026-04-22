@@ -111,17 +111,13 @@ impl GhostAppView {
                     cx.notify();
                 }
             }
-            "next_workspace" => {
-                if self.workspaces.len() > 1 {
-                    let next = (self.active_workspace + 1) % self.workspaces.len();
-                    self.switch_workspace(next, window, cx);
-                }
+            "next_workspace" if self.workspaces.len() > 1 => {
+                let next = (self.active_workspace + 1) % self.workspaces.len();
+                self.switch_workspace(next, window, cx);
             }
-            "prev_workspace" => {
-                if self.workspaces.len() > 1 {
-                    let prev = if self.active_workspace == 0 { self.workspaces.len() - 1 } else { self.active_workspace - 1 };
-                    self.switch_workspace(prev, window, cx);
-                }
+            "prev_workspace" if self.workspaces.len() > 1 => {
+                let prev = if self.active_workspace == 0 { self.workspaces.len() - 1 } else { self.active_workspace - 1 };
+                self.switch_workspace(prev, window, cx);
             }
             "split_right" => self.split(SplitDirection::Vertical, window, cx),
             "split_down" => self.split(SplitDirection::Horizontal, window, cx),

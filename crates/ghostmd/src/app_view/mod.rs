@@ -324,34 +324,30 @@ impl GhostAppView {
         // Subscribe to file finder input changes
         cx.subscribe_in(&file_finder_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
             match event {
-                InputEvent::Change => {
-                    if this.overlay_is(OverlayKind::FileFinder) {
-                        let value = this.file_finder_input.read(cx).value().to_string();
-                        if this.folder_move_source.is_some() {
-                            this.file_finder.set_folder_query(&value);
-                        } else {
-                            this.file_finder.set_query(&value);
-                        }
-                        cx.notify();
+                InputEvent::Change if this.overlay_is(OverlayKind::FileFinder) => {
+                    let value = this.file_finder_input.read(cx).value().to_string();
+                    if this.folder_move_source.is_some() {
+                        this.file_finder.set_folder_query(&value);
+                    } else {
+                        this.file_finder.set_query(&value);
                     }
+                    cx.notify();
                 }
-                InputEvent::PressEnter { .. } => {
-                    if this.overlay_is(OverlayKind::FileFinder) {
-                        if let Some(source) = this.folder_move_source.take() {
-                            // Folder move mode: move file to selected directory
-                            if let Some(target_dir) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
-                                this.active_overlay = None;
-                                this.file_finder.close();
-                                this.move_file_to_dir(source, &target_dir, cx);
-                                let focused = this.active_ws().focused_pane;
-                                this.focus_pane_editor(focused, window, cx);
-                                cx.notify();
-                            }
-                        } else if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                InputEvent::PressEnter { .. } if this.overlay_is(OverlayKind::FileFinder) => {
+                    if let Some(source) = this.folder_move_source.take() {
+                        // Folder move mode: move file to selected directory
+                        if let Some(target_dir) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
                             this.active_overlay = None;
                             this.file_finder.close();
-                            this.open_file(path, window, cx);
+                            this.move_file_to_dir(source, &target_dir, cx);
+                            let focused = this.active_ws().focused_pane;
+                            this.focus_pane_editor(focused, window, cx);
+                            cx.notify();
                         }
+                    } else if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
+                        this.active_overlay = None;
+                        this.file_finder.close();
+                        this.open_file(path, window, cx);
                     }
                 }
                 _ => {}
@@ -374,17 +370,13 @@ impl GhostAppView {
         let note_switcher_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search open notes..."));
         cx.subscribe_in(&note_switcher_input, window, |this: &mut Self, _entity: &Entity<InputState>, event: &InputEvent, window, cx| {
             match event {
-                InputEvent::Change => {
-                    if this.overlay_is(OverlayKind::NoteSwitcher) {
-                        let value = this.note_switcher_input.read(cx).value().to_string();
-                        this.filter_note_switcher(&value, cx);
-                        cx.notify();
-                    }
+                InputEvent::Change if this.overlay_is(OverlayKind::NoteSwitcher) => {
+                    let value = this.note_switcher_input.read(cx).value().to_string();
+                    this.filter_note_switcher(&value, cx);
+                    cx.notify();
                 }
-                InputEvent::PressEnter { .. } => {
-                    if this.overlay_is(OverlayKind::NoteSwitcher) {
-                        this.confirm_note_switcher(window, cx);
-                    }
+                InputEvent::PressEnter { .. } if this.overlay_is(OverlayKind::NoteSwitcher) => {
+                    this.confirm_note_switcher(window, cx);
                 }
                 _ => {}
             }
@@ -586,13 +578,13 @@ impl GhostAppView {
                         ))
                     };
                     if let (Some(latest), Some(cur)) = (parse_ver(latest_ver), parse_ver(current)) {
-                        if latest > cur {
-                            if this.update(cx, |this, cx| {
+                        let updated = latest > cur
+                            && this.update(cx, |this, cx| {
                                 this.update_available = Some(latest_tag);
                                 cx.notify();
-                            }).is_err() {
-                                break;
-                            }
+                            }).is_err();
+                        if updated {
+                            break;
                         }
                     }
                 }
