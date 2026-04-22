@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use gpui::*;
 use gpui_component::input::Input;
