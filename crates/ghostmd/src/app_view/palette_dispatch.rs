@@ -32,6 +32,8 @@ impl GhostAppView {
             PaletteCommand { label: "Toggle Sidebar".into(), shortcut_hint: Some(format!("{m}+B")), action_id: "toggle_sidebar".into() },
             PaletteCommand { label: "File Finder".into(), shortcut_hint: Some(format!("{m}+P")), action_id: "file_finder".into() },
             PaletteCommand { label: "Content Search".into(), shortcut_hint: Some(format!("{m}+Shift+F")), action_id: "content_search".into() },
+            PaletteCommand { label: "Find in File".into(), shortcut_hint: Some(format!("{m}+F")), action_id: "find_in_file".into() },
+            PaletteCommand { label: "Replace in File".into(), shortcut_hint: Some(format!("Opt+{m}+F")), action_id: "replace_in_file".into() },
             PaletteCommand { label: "Note Switcher".into(), shortcut_hint: Some(format!("{m}+Shift+A")), action_id: "note_switcher".into() },
             PaletteCommand { label: "Rename File...".into(), shortcut_hint: None, action_id: "rename_file".into() },
             PaletteCommand { label: "Rename Tab...".into(), shortcut_hint: None, action_id: "rename_tab".into() },
@@ -130,6 +132,8 @@ impl GhostAppView {
             "toggle_sidebar" => { self.sidebar_visible = !self.sidebar_visible; cx.notify(); }
             "file_finder" => window.dispatch_action(Box::new(keybindings::OpenFileFinder), cx),
             "content_search" => window.dispatch_action(Box::new(keybindings::OpenContentSearch), cx),
+            "find_in_file" => self.open_find_in_file(false, window, cx),
+            "replace_in_file" => self.open_find_in_file(true, window, cx),
             "note_switcher" => window.dispatch_action(Box::new(keybindings::OpenNoteSwitcher), cx),
             "rename_file" => {
                 if let Some(path) = self.focused_active_path() {
@@ -240,6 +244,22 @@ impl GhostAppView {
             }
             cx.notify();
         }
+    }
+
+    /// Open the find-in-file (or find+replace) panel on the focused editor.
+    ///
+    /// Deferred so it runs after `palette_confirm`'s post-dispatch refocus,
+    /// otherwise the palette would steal focus back from the search input.
+    pub(crate) fn open_find_in_file(&mut self, replace_mode: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() { return; }
+        let editor = {
+            let ws = self.active_ws();
+            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+        };
+        let Some(editor) = editor else { return; };
+        cx.defer_in(window, move |_this: &mut Self, window, cx| {
+            editor.update(cx, |e, cx| e.open_search(replace_mode, window, cx));
+        });
     }
 
     /// Enter rename mode for tab (via palette).

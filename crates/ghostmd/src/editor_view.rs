@@ -223,6 +223,13 @@ impl EditorView {
         self.input_state.read(cx).value().to_string()
     }
 
+    /// Open the find-in-file (or find+replace) panel on this editor.
+    pub fn open_search(&mut self, replace_mode: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.input_state.update(cx, |state, cx| {
+            state.open_search_panel(replace_mode, window, cx);
+        });
+    }
+
     /// Update content from another editor showing the same file (no event emitted).
     pub fn sync_content(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
         self.skip_next_change = true;

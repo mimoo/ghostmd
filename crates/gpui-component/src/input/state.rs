@@ -85,6 +85,7 @@ actions!(
         Escape,
         ToggleCodeActions,
         Search,
+        Replace,
         GoToDefinition,
     ]
 );
@@ -216,6 +217,10 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("cmd-f", Search, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-f", Search, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-alt-f", Replace, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-alt-f", Replace, Some(CONTEXT)),
     ]);
 
     search::init(cx);

@@ -15,7 +15,7 @@ use crate::{
     button::{Button, ButtonVariants},
     h_flex,
     input::{
-        Enter, Escape, IndentInline, Input, InputEvent, InputState, RopeExt as _, Search,
+        Enter, Escape, IndentInline, Input, InputEvent, InputState, Replace, RopeExt as _, Search,
         movement::MoveDirection,
     },
     label::Label,
@@ -81,8 +81,8 @@ impl SearchMatcher {
         self.matched_ranges = Rc::new(new_ranges);
         if !self.replacing {
             self.current_match_ix = 0;
-            self.replacing = false;
         }
+        self.replacing = false;
     }
 
     /// Update the search query and reset the current match index.
@@ -196,6 +196,26 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.open_search_panel(false, window, cx);
+    }
+
+    pub(super) fn on_action_replace(
+        &mut self,
+        _: &Replace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_search_panel(true, window, cx);
+    }
+
+    /// Open the find/replace panel. Pass `replace_mode = true` to open with the
+    /// replace row expanded. No-op if the input is not `searchable`.
+    pub fn open_search_panel(
+        &mut self,
+        replace_mode: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.searchable {
             return;
         }
@@ -211,7 +231,7 @@ impl InputState {
         search_panel.update(cx, |this, cx| {
             this.editor = editor;
             this.matcher.update(&text);
-            this.show(&selected_text, window, cx);
+            this.show(&selected_text, replace_mode, window, cx);
         });
         self.search_panel = Some(search_panel);
         cx.notify();
@@ -254,10 +274,14 @@ impl SearchPanel {
     pub(super) fn show(
         &mut self,
         selected_text: &Rope,
+        replace_mode: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.open = true;
+        if replace_mode {
+            self.replace_mode = true;
+        }
         self.search_input.read(cx).focus_handle.focus(window);
 
         self.search_input.update(cx, |this, cx| {
