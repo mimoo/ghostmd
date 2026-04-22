@@ -111,8 +111,11 @@ impl GhostAppView {
                     this.tab_drag_active = None;
                     this.reorder_workspace(payload.0, drop_idx, window, cx);
                 }))
-                .on_click(cx.listener(move |this: &mut Self, _event, window, cx| {
+                .on_click(cx.listener(move |this: &mut Self, event: &ClickEvent, window, cx| {
                     this.switch_workspace(ws_idx, window, cx);
+                    if event.click_count() >= 2 {
+                        this.enter_rename_mode(RenameMode::Tab, window, cx);
+                    }
                 }))
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
                     this.tree_context_menu = None;

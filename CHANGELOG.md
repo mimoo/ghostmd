@@ -4,6 +4,9 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Double-click a workspace tab to rename it
+- Tab rename input now auto-selects the name so typing immediately replaces it
+
 ## [0.11.2] — 2026-04-21
 
 - Fix: Cmd+N (and other shortcuts) now work immediately after creating/renaming a folder or file in the sidebar — no click required
