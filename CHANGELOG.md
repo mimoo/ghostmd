@@ -4,6 +4,7 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- New "→" button on the diary row: jumps to today's `notes.md` if it exists, otherwise opens the most recently modified file in today's folder, otherwise creates a new daily note (carrying over pending items)
 - Double-click a workspace tab to rename it
 - Tab rename input now auto-selects the name so typing immediately replaces it
 - Fix: find-in-file (Cmd+F) Next/Prev now correctly scrolls when cycling wraps around (was pinned to viewport edge after wrapping)

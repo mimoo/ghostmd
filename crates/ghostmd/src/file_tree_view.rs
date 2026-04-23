@@ -41,6 +41,9 @@ pub struct ItemMoved {
 /// Event emitted when the diary "+" button is clicked.
 pub struct NewDailyNoteRequested;
 
+/// Event emitted when the diary "jump to today" button is clicked.
+pub struct OpenTodayNoteRequested;
+
 /// Drag payload containing the path being dragged.
 #[derive(Clone)]
 struct TreeDragPayload(PathBuf);
@@ -99,6 +102,7 @@ impl EventEmitter<MoveToTrashRequested> for FileTreeView {}
 impl EventEmitter<ContextMenuRequested> for FileTreeView {}
 impl EventEmitter<ItemMoved> for FileTreeView {}
 impl EventEmitter<NewDailyNoteRequested> for FileTreeView {}
+impl EventEmitter<OpenTodayNoteRequested> for FileTreeView {}
 
 impl FileTreeView {
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -675,6 +679,21 @@ impl Render for FileTreeView {
                 )
                 .when(is_diary_root, |d| {
                     d.child(
+                        div()
+                            .id(ElementId::NamedInteger("diary-today".into(), i as u64))
+                            .px(px(6.0))
+                            .text_xs()
+                            .text_color(hint_fg)
+                            .opacity(0.0)
+                            .group_hover(row_group_hover.clone(), |s| s.opacity(1.0))
+                            .cursor_pointer()
+                            .on_click(cx.listener(|_this: &mut Self, _event: &ClickEvent, _window, cx| {
+                                cx.emit(OpenTodayNoteRequested);
+                                cx.stop_propagation();
+                            }))
+                            .child("\u{2192}"),
+                    )
+                    .child(
                         div()
                             .id(ElementId::NamedInteger("diary-add".into(), i as u64))
                             .px(px(6.0))

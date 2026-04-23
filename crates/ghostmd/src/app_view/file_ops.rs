@@ -125,6 +125,44 @@ impl GhostAppView {
         self.create_note_at(target_dir, window, cx);
     }
 
+    /// Jump to today's diary note:
+    /// - open `notes.md` if it exists,
+    /// - else open the most recently modified `.md` in today's folder,
+    /// - else create a new daily note (carrying over pending items from yesterday).
+    pub(crate) fn open_today_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_workspace(window, cx);
+        let diary_dir = diary::today_diary_dir(&self.root);
+
+        let notes_md = diary_dir.join("notes.md");
+        if notes_md.is_file() {
+            self.file_tree.update(cx, |tree, cx| {
+                tree.reveal_file(&notes_md, cx);
+            });
+            self.open_file(notes_md, window, cx);
+            return;
+        }
+
+        let latest = std::fs::read_dir(&diary_dir)
+            .ok()
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                    .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
+                    .map(|e| e.path())
+            })
+            .unwrap_or(None);
+
+        if let Some(path) = latest {
+            self.file_tree.update(cx, |tree, cx| {
+                tree.reveal_file(&path, cx);
+            });
+            self.open_file(path, window, cx);
+        } else {
+            self.new_daily_note(window, cx);
+        }
+    }
+
     /// Create a new daily note. Only carries over pending items from the previous day
     /// if this is the first note for today (no existing .md files in today's diary dir).
     pub(crate) fn new_daily_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {

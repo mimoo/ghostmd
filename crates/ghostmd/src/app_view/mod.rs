@@ -25,7 +25,7 @@ use gpui_component::input::{InputEvent, InputState};
 use gpui_component::resizable::{h_resizable, resizable_panel};
 
 use crate::editor_view::{EditorEvent, EditorView};
-use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, NewDailyNoteRequested, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
+use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, NewDailyNoteRequested, OpenTodayNoteRequested, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
 use crate::palette::CommandPalette;
 use crate::search::FileFinder;
@@ -274,6 +274,11 @@ impl GhostAppView {
 
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, _event: &NewDailyNoteRequested, window, cx| {
             this.new_daily_note(window, cx);
+        })
+        .detach();
+
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, _event: &OpenTodayNoteRequested, window, cx| {
+            this.open_today_note(window, cx);
         })
         .detach();
 
