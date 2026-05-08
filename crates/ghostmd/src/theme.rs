@@ -602,7 +602,7 @@ fn apply_theme_colors(ghost: &GhostTheme, theme: &mut Theme) {
     theme.colors.background = rgb_to_hsla(ghost.bg.0, ghost.bg.1, ghost.bg.2);
     theme.colors.foreground = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
     theme.colors.border = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
-    theme.colors.selection = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
+    theme.colors.selection = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2).alpha(0.3);
     theme.colors.caret = rgb_to_hsla(ghost.cursor.0, ghost.cursor.1, ghost.cursor.2);
     theme.colors.accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
     theme.colors.danger = rgb_to_hsla(ghost.error.0, ghost.error.1, ghost.error.2);
