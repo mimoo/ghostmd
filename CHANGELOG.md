@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Fix: file tree right-click context menus no longer get truncated near the bottom or right edge of the window — they flip up/shift left to stay fully visible
+
 ## [0.11.3] — 2026-05-08
 
 - New "→" button on the diary row: jumps to today's `notes.md` if it exists, otherwise opens the most recently modified file in today's folder, otherwise creates a new daily note (carrying over pending items)

@@ -946,7 +946,7 @@ impl Focusable for GhostAppView {
 }
 
 impl Render for GhostAppView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = &self.theme;
         let sidebar_visible = self.sidebar_visible;
         let has_workspaces = !self.workspaces.is_empty();
@@ -1500,11 +1500,11 @@ impl Render for GhostAppView {
 
         // Context menu overlay (rendered at root level for correct z-order and positioning)
         if let Some((ref path, position)) = ctx_menu {
-            root = root.child(self.render_context_menu(path, position, cx));
+            root = root.child(self.render_context_menu(path, position, window, cx));
         }
         if let Some((ws_idx, position)) = tab_ctx_menu {
             if ws_idx < self.workspaces.len() {
-                root = root.child(self.render_tab_context_menu(ws_idx, position, cx));
+                root = root.child(self.render_tab_context_menu(ws_idx, position, window, cx));
             }
         }
 

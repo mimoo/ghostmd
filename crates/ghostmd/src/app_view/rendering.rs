@@ -14,6 +14,42 @@ pub(crate) struct ContextMenuEntry {
     pub color: Hsla,
 }
 
+/// Approximate height of one context-menu row (text_sm + py(4)). Used for off-screen flipping.
+const CONTEXT_MENU_ROW_HEIGHT: f32 = 24.0;
+/// Vertical padding of the menu container (py(4) top + py(4) bottom).
+const CONTEXT_MENU_OUTER_PAD: f32 = 8.0;
+/// Approximate width of a context menu (min_w is 180 but rows with shortcuts can be wider).
+const CONTEXT_MENU_WIDTH: f32 = 240.0;
+/// Minimum gap to keep between the menu edge and the window edge.
+const CONTEXT_MENU_EDGE_GAP: f32 = 4.0;
+
+/// Shift the menu's top-left so it stays inside the window. If the menu would overflow
+/// the bottom edge, flip it so its bottom is at `position.y` (matches native popup behavior).
+pub(crate) fn clamp_menu_position(
+    position: Point<Pixels>,
+    entry_count: usize,
+    window: &Window,
+) -> Point<Pixels> {
+    let viewport = window.viewport_size();
+    let menu_height = px(CONTEXT_MENU_OUTER_PAD + entry_count as f32 * CONTEXT_MENU_ROW_HEIGHT);
+    let menu_width = px(CONTEXT_MENU_WIDTH);
+    let gap = px(CONTEXT_MENU_EDGE_GAP);
+
+    let max_y = viewport.height - menu_height - gap;
+    let y = if position.y + menu_height + gap > viewport.height {
+        // Flip upward so the menu opens above the cursor.
+        let flipped = position.y - menu_height;
+        flipped.max(gap).min(max_y.max(gap))
+    } else {
+        position.y
+    };
+
+    let max_x = viewport.width - menu_width - gap;
+    let x = position.x.min(max_x.max(gap));
+
+    Point::new(x, y)
+}
+
 /// Small label shown under the cursor while dragging a tab.
 struct DraggedTab {
     title: String,
@@ -661,8 +697,9 @@ impl GhostAppView {
         }
     }
 
-    pub(crate) fn render_tab_context_menu(&self, ws_idx: usize, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn render_tab_context_menu(&self, ws_idx: usize, position: Point<Pixels>, window: &Window, cx: &mut Context<Self>) -> Div {
         let entries = self.tab_menu_entries();
+        let position = clamp_menu_position(position, entries.len(), window);
         self.render_menu_from_entries(&entries, position, "tab-ctx", ws_idx, cx)
     }
 
@@ -743,8 +780,9 @@ impl GhostAppView {
         }
     }
 
-    pub(crate) fn render_context_menu(&self, path: &Path, position: Point<Pixels>, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn render_context_menu(&self, path: &Path, position: Point<Pixels>, window: &Window, cx: &mut Context<Self>) -> Div {
         let entries = self.tree_menu_entries(path);
+        let position = clamp_menu_position(position, entries.len(), window);
         let path_owned = path.to_path_buf();
         self.render_menu_from_entries_tree(&entries, position, &path_owned, cx)
     }
