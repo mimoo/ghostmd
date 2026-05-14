@@ -5,6 +5,7 @@ All notable changes to GhostMD are documented in this file.
 ## [Unreleased]
 
 - Fix: file tree right-click context menus no longer get truncated near the bottom or right edge of the window — they flip up/shift left to stay fully visible
+- When a file open in a pane is deleted from disk (externally or otherwise), the pane title now shows a "⚠ deleted" marker with the path struck through, and a red banner appears above the editor noting the file is missing. Saving recreates the file and clears the warning.
 
 ## [0.11.3] — 2026-05-08
 

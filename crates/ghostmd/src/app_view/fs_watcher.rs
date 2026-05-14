@@ -62,16 +62,29 @@ impl GhostAppView {
 
         // Flag open editors whose file changed externally
         for path in changed_files {
+            let exists = path.exists();
             for ws in &self.workspaces {
                 for pane in ws.panes.values() {
                     if pane.active_path.as_ref() == Some(&path) {
                         if let Some(editor) = &pane.editor {
-                            editor.update(cx, |e, _cx| {
+                            editor.update(cx, |e, cx| {
                                 // Skip if we wrote this file recently (our own save)
                                 let own_save = e.last_save
                                     .is_some_and(|t| t.elapsed().as_millis() < 2000);
-                                if !e.dirty && !own_save {
-                                    e.needs_reload = true;
+                                if !exists {
+                                    // File was deleted externally — flag it so the UI can show the missing state.
+                                    if !e.missing {
+                                        e.missing = true;
+                                        cx.notify();
+                                    }
+                                } else {
+                                    if e.missing {
+                                        e.missing = false;
+                                    }
+                                    if !e.dirty && !own_save {
+                                        e.needs_reload = true;
+                                        cx.notify();
+                                    }
                                 }
                             });
                         }

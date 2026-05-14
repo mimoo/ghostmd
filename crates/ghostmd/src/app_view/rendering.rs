@@ -247,6 +247,10 @@ impl GhostAppView {
                         .and_then(|p| p.editor.as_ref())
                         .map(|e| e.read(cx).dirty)
                         .unwrap_or(false);
+                    let pane_missing = pane
+                        .and_then(|p| p.editor.as_ref())
+                        .map(|e| e.read(cx).missing)
+                        .unwrap_or(false);
 
                     let (dir_part, file_part) = active_path
                         .map(|p| {
@@ -279,15 +283,27 @@ impl GhostAppView {
                         }
                     });
 
-                    let mut title_row = div().flex().flex_row();
+                    let mut title_row = div().flex().flex_row().items_center().gap(px(6.0));
+                    if pane_missing {
+                        title_row = title_row.child(
+                            div().text_color(t.error).child("⚠ deleted"),
+                        );
+                    }
                     if let Some((old_path_str, fade)) = move_old {
                         title_row = title_row
                             .child(div().text_color(t.error.opacity(fade)).child(old_path_str))
                             .child(div().text_color(t.pane_title_fg).child(" → "));
                     }
-                    title_row = title_row
-                        .child(div().text_color(t.pane_title_fg).child(dir_part))
-                        .child(div().text_color(t.fg).child(file_part));
+                    let path_row = if pane_missing {
+                        div().flex().flex_row().line_through().text_color(t.error)
+                            .child(div().child(dir_part))
+                            .child(div().child(file_part))
+                    } else {
+                        div().flex().flex_row()
+                            .child(div().text_color(t.pane_title_fg).child(dir_part))
+                            .child(div().text_color(t.fg).child(file_part))
+                    };
+                    title_row = title_row.child(path_row);
 
                     let reveal_path = active_path.cloned();
                     let ctx_path = active_path.cloned();

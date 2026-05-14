@@ -83,6 +83,9 @@ pub struct EditorView {
     pub highlight_start: Option<Instant>,
     /// Whether syntax highlighting is enabled for this editor.
     pub syntax_highlight: bool,
+    /// True when the file on disk has been removed externally. Cleared on successful save
+    /// (which recreates the file) or when the file reappears via reload.
+    pub missing: bool,
 }
 
 impl EditorView {
@@ -149,6 +152,7 @@ impl EditorView {
             pending_scroll: None,
             highlight_start: None,
             syntax_highlight,
+            missing: false,
         }
     }
 
@@ -165,6 +169,7 @@ impl EditorView {
         self.last_save = None;
         self.pending_scroll = None;
         self.highlight_start = None;
+        self.missing = !path.exists();
 
         // Load new content, suppressing the Change event
         self.skip_next_change = true;
@@ -189,6 +194,8 @@ impl EditorView {
         note.save(&text)?;
         self.dirty = false;
         self.last_save = Some(Instant::now());
+        // Save recreated the file on disk, so it's no longer missing.
+        self.missing = false;
         Ok(())
     }
 
@@ -357,6 +364,8 @@ impl Render for EditorView {
                 self.input_state.update(cx, |state, cx| {
                     state.set_value(content, window, cx);
                 });
+                // File came back / was reloaded successfully, so it's no longer missing.
+                self.missing = false;
             }
         }
         // Retry deferred scroll (layout may now be available)
@@ -388,6 +397,8 @@ impl Render for EditorView {
             .flex_1()
             .min_h(px(0.0))
             .overflow_hidden()
+            .flex()
+            .flex_col()
             .track_focus(&self.focus_handle);
 
         if highlight_opacity > 0.0 {
@@ -398,16 +409,44 @@ impl Render for EditorView {
                 .rounded(px(4.0));
         }
 
-        container
-            .capture_any_mouse_down(|event: &MouseDownEvent, _window, cx| {
-                if event.button == MouseButton::Right {
-                    cx.stop_propagation();
-                }
-            })
-            .child(
-                Input::new(&self.input_state)
-                    .appearance(false)
-                    .h_full(),
-            )
+        let missing = self.missing;
+        let path_display = self.path.display().to_string();
+        let mut content = container.capture_any_mouse_down(|event: &MouseDownEvent, _window, cx| {
+            if event.button == MouseButton::Right {
+                cx.stop_propagation();
+            }
+        });
+
+        if missing {
+            content = content.child(
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .bg(hsla(0.0, 0.55, 0.45, 0.18))
+                    .border_b_1()
+                    .border_color(hsla(0.0, 0.55, 0.45, 0.5))
+                    .text_sm()
+                    .text_color(hsla(0.0, 0.55, 0.65, 1.0))
+                    .child(div().child("⚠"))
+                    .child(div().flex_1().child(format!(
+                        "This file no longer exists on disk: {}",
+                        path_display
+                    )))
+                    .child(div().text_xs().opacity(0.85).child("Saving will recreate it")),
+            );
+        }
+
+        content.child(
+            div()
+                .flex_1()
+                .min_h(px(0.0))
+                .w_full()
+                .child(Input::new(&self.input_state).appearance(false).h_full()),
+        )
     }
 }
