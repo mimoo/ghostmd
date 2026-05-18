@@ -6,12 +6,12 @@ GhostMD is a native macOS note-taking app written in Rust using GPUI (GPU-accele
 
 ## Architecture
 
-Cargo workspace with two crates:
+Cargo workspace with two crates (`crates/ghostmd`, `crates/ghostmd-core`). The workspace root `Cargo.toml` patches `gpui-component` to the vendored `crates/gpui-component/`. There is also a separate Swift iOS companion app at `ghostmd-ios/` (see below) — not part of the Cargo workspace.
 
 - **`crates/ghostmd-core/`** — Pure business logic, zero UI dependencies. All data structures and algorithms live here.
   - `buffer.rs` — Rope-based text buffer (ropey 2.0.0-beta.1) with branching undo tree (undo 0.44)
   - `note.rs` — Note CRUD and auto-save
-  - `diary.rs` — Date-based diary path generation (`diary/YYYY/month-name/DD/`)
+  - `diary.rs` — Date-based diary path generation (`diary/YYYY/MM-monthname/DD/`)
   - `tree.rs` — File tree model with recursive scan
   - `search.rs` — Fuzzy file search (nucleo-matcher) + full-text content search (grep-searcher)
   - `path_utils.rs` — Collision-safe path generation (`unique_path()` appends `-2`, `-3`, ...)
@@ -28,6 +28,8 @@ Cargo workspace with two crates:
     - `session.rs` — Session persistence (save/restore workspaces to JSON)
     - `split_node.rs` — `SplitNode` binary tree with directional navigation
     - `fs_watcher.rs` — File system watcher for external changes (notify crate)
+    - `nav_history.rs` — Back/forward navigation stack (cursor + path + workspace/pane id). Max 100 entries, dedupes when cursor moves <50 bytes, truncates forward branch on new push. `navigating_history` flag prevents recursive pushes during navigation. Not persisted across sessions.
+    - `file_undo.rs` — In-memory undo/redo for file ops (`Delete`, `DeleteBatch`, `Rename`, `Move`, `Create`). Backs up entire directory trees recursively as `(path, bytes)` pairs. Max 50 entries. `reverse_op()` morphs `Create` into `Delete`. Used by trash and file-tree rename/move.
   - `editor_view.rs` — GPUI view wrapping `InputState` for editing a single note. Tracks path, dirty flag, auto-save timing
   - `file_tree_view.rs` — GPUI view for the sidebar file tree (renders `FileTreePanel`)
   - `app.rs` — Legacy root state machine. `#![allow(dead_code)]` — fully superseded by `GhostAppView`'s direct `root` and `sidebar_visible` fields
@@ -38,7 +40,7 @@ Cargo workspace with two crates:
   - `splits.rs` — Legacy flat split pane layout. `#[cfg(test)]` only
   - `palette.rs` — Command palette state machine (filtering, selection)
   - `ai.rs` — AI manager for suggestion storage/retrieval. `#[cfg(test)]` only
-  - `theme.rs` — Multi-theme support (`GhostTheme`, `ResolvedTheme` pre-converted HSLA cache) with `rgb_to_hsla` converter
+  - `theme.rs` — Multi-theme support (`GhostTheme`, `ResolvedTheme` pre-converted HSLA cache) with `rgb_to_hsla` converter. ~23 themes; default is `RosePine`. Each theme defines 13 color slots (bg, fg, selection, cursor, line_number, sidebar_bg, tab_active/inactive, accent, error, border, pane_title_bg/fg).
   - `keybindings.rs` — GPUI action definitions and keyboard shortcut registration
   - `assets.rs` — Asset loading (fonts)
   - `main.rs` — Application entry point, window creation
@@ -69,7 +71,7 @@ Requires Rust 1.75+ and Xcode with Metal Toolchain on macOS.
 - **ropey 2.0.0-beta.1** uses byte indices, not char indices. All buffer operations work in bytes.
 - **undo 0.44** uses `Action` trait (not `Edit`). Methods: `apply`, `undo`, `merge` returning `Merged`.
 - **GPUI dependencies** require pinning `core-foundation = "=0.10.0"` and `core-text = "=21.0.0"` to avoid conflicts.
-- **Diary paths** use lowercase month names: `diary/2026/march/03/HHMMSS-slug.md`.
+- **Diary paths** use `MM-monthname` with lowercase month names: `diary/2026/03-march/15/HHMMSS-slug.md` (zero-padded DD).
 - **String truncation** must use `chars().take(n)` not byte slicing `&s[..n]` — byte slicing panics on multi-byte UTF-8.
 - **Dead code policy**: No crate-level `#![allow(dead_code)]`. Each module/item that is tested but not yet wired to GPUI gets its own `#[allow(dead_code)]` or module-level `#![allow(dead_code)]`. When wiring new features, remove the corresponding allows.
 - **Modules with `#![allow(dead_code)]`** (entirely unwired / test-only): `ai.rs`, `app.rs`, `editor.rs`, `splits.rs`, `search.rs` (the state machine; the `FileFinder` is wired separately). All other dead code is suppressed per-item.
@@ -77,6 +79,14 @@ Requires Rust 1.75+ and Xcode with Metal Toolchain on macOS.
 - **gpui-component features**: The `tree-sitter-languages` feature MUST be enabled on the `gpui-component` dependency for syntax highlighting to work. Without it, `code_editor("markdown")` silently falls back to a plain JSON grammar.
 - **Testing with custom workspace**: Set `GHOSTMD_ROOT=/tmp/ghostmd-test cargo run` to use a test directory instead of `~/Documents/ghostmd/`. Useful for testing without touching personal notes.
 - **Same-file multi-pane sync**: Each pane has its own independent `EditorView`/`InputState`. Edits in one pane only appear in another pane showing the same file after auto-save triggers the file watcher reload — there is no live in-memory sync yet.
+- **`EditorView` reload gotcha**: `skip_next_change` suppresses the `Change` event fired during external file reloads — otherwise reload would mark the buffer dirty and trigger auto-save loops.
+- **`ContentSearch` is regex, not literal**: `grep-regex` interprets the query as a regex pattern. Callers must escape special chars (`search.rs` in `crates/ghostmd/` has a regex-escape helper for literal matching).
+- **`ContentSearch` is uncached** — each call walks the entire tree. `FuzzySearch` caches file paths and must be refreshed via `refresh_cache()`.
+- **`unique_path()` caps at 100** — if 99 collision-suffixed candidates exist it returns the original path unmodified. Don't rely on it for unbounded collision avoidance.
+- **`tree.rs` pins `diary/` first** — after every scan the diary dir is moved to index 0. Collapsed state is preserved across rescans. `.ghostmd/`, `.gitignore`, `.DS_Store` are filtered out.
+- **`diary::slugify()` is ASCII-only** — non-ASCII alphanum is stripped, which can reduce a CJK or accent-heavy title to `untitled`. Diary timestamps use `Local::now()`, not UTC. Full diary path: `diary/YYYY/MM-monthname/DD/HHMMSS-slug.md` (zero-padded DD, lowercase month).
+- **Two distinct history stacks**: `nav_history` (workspace-level back/forward across panes, cmd-`[` / cmd-`]`) is separate from `Pane.path_history` (per-pane fallback used when the open file is deleted/moved). Don't conflate them.
+- **`OverlayKind` variants**: `Palette`, `FileFinder`, `AgenticSearch`, `NoteSwitcher` (plus location picker and context menu, which are not part of the enum). Always exactly one or zero overlays open.
 
 ## App Structure (app_view/)
 
@@ -96,6 +106,17 @@ Key patterns:
 - **ResolvedTheme**: Use `self.theme.fg`, `self.theme.accent`, etc. instead of calling `rgb_to_hsla()` per render. Rebuilt automatically on theme switch.
 - **Collision avoidance**: Use `ghostmd_core::path_utils::unique_path()` for safe file/folder creation — appends `-2`, `-3`, etc.
 
+## iOS Companion App (`ghostmd-ios/`)
+
+Separate Swift / SwiftUI app, not part of the Cargo workspace. Targets iOS 17+. Generated from `project.yml` via XcodeGen (the `.xcodeproj/` is gitignored and regenerated). It shares notes with the macOS app via the filesystem only — it reads/writes the same `.md` files in `Documents/ghostmd/` (or the iCloud ubiquity container if available). No IPC with the Rust app. UI hides `.ghostmd/` and non-markdown files. Most logic lives in `GhostMD/NoteStore.swift`; models are intentionally thin.
+
+## Ancillary directories
+
+- **`scripts/`** — `bundle-macos.sh` (build the macOS `.app` from the cargo binary), `install.sh` (cross-platform installer that fetches the latest GitHub release).
+- **`docs/`** — `index.html`, deployed to GitHub Pages by `.github/workflows/pages.yml`.
+- **`assets/`** — App icons (`AppIcon.icns`, `icon.png`) and JetBrains Mono font files (embedded via `rust_embed` in `assets.rs`).
+- **`.github/workflows/`** — `ci.yml` (test on macOS + Linux), `release.yml` (build macOS binaries on `v*` tags), `auto-tag.yml` (tags on version bump), `pages.yml` (docs site).
+
 ## Keybindings
 
 | Shortcut | Action |
@@ -114,9 +135,13 @@ Key patterns:
 | cmd-s | Save |
 | cmd-b | Toggle sidebar |
 | cmd-p | File finder |
+| cmd-enter (in file finder) | Open selected file in a new split |
 | cmd-shift-f | Agentic search (Claude-powered) |
 | cmd-shift-p | Command palette |
+| cmd-shift-a | Open note switcher (search open notes) |
 | cmd-f | Find in file |
+| cmd-[ / cmd-] | Navigate back / forward (nav history) |
+| cmd-z / cmd-shift-z (file tree focused) | Undo / redo file ops (delete, rename, move, create) |
 | cmd-backspace | Move to trash |
 | cmd-q | Quit |
 
