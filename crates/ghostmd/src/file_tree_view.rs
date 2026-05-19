@@ -209,6 +209,28 @@ impl FileTreeView {
         cx.notify();
     }
 
+    /// Reveal a directory: expand ancestors, expand the directory itself if it
+    /// was collapsed, and select it. Used when the user picks a folder from the
+    /// fuzzy finder.
+    pub fn reveal_dir(&mut self, path: &Path, cx: &mut Context<Self>) {
+        self.panel.tree.reveal_path(path);
+        let should_expand = self
+            .panel
+            .tree
+            .find_node(path)
+            .map(|n| n.is_dir() && !n.is_expanded())
+            .unwrap_or(false);
+        if should_expand {
+            self.panel.tree.toggle_dir(path);
+        }
+        self.selected_paths.clear();
+        self.selected_paths.insert(path.to_path_buf());
+        self.anchor_path = Some(path.to_path_buf());
+        self.last_clicked = Some(path.to_path_buf());
+        self.scroll_to_path(path);
+        cx.notify();
+    }
+
     // ── Keyboard navigation ──────────────────────────────────────────
 
     /// Index of the currently keyboard-selected row in the flattened tree, or

@@ -31,13 +31,18 @@ impl FuzzySearch {
         }
     }
 
-    /// Walks the root directory and rebuilds the file cache.
+    /// Walks the root directory and rebuilds the cache with files and folders.
+    /// The root itself is excluded; subdirectories are included so they can be
+    /// fuzzy-matched and revealed in the file tree from the finder.
     pub fn refresh_cache(&mut self) -> Result<()> {
         self.file_cache.clear();
         let walker = ignore::WalkBuilder::new(&self.root).build();
         for entry in walker {
             let entry = entry?;
-            if entry.file_type().is_some_and(|ft| ft.is_file()) {
+            let Some(ft) = entry.file_type() else { continue };
+            if ft.is_file() {
+                self.file_cache.push(entry.into_path());
+            } else if ft.is_dir() && entry.path() != self.root.as_path() {
                 self.file_cache.push(entry.into_path());
             }
         }
@@ -215,14 +220,15 @@ mod tests {
     }
 
     #[test]
-    fn cached_count_reflects_files() {
+    fn cached_count_reflects_files_and_dirs() {
         let tmp = TempDir::new().unwrap();
         create_search_files(&tmp);
 
         let mut search = FuzzySearch::new(tmp.path().to_path_buf());
         search.refresh_cache().unwrap();
 
-        assert_eq!(search.cached_count(), 3);
+        // 3 files (notes/hello.md, notes/rust.md, readme.md) + 1 dir (notes)
+        assert_eq!(search.cached_count(), 4);
     }
 
     #[test]

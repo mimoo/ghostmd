@@ -483,10 +483,18 @@ impl GhostAppView {
 
             // Split "13/april/meeting.md" → ("meeting.md", "13/april") so we can render
             // the filename bright and the parent path dim.
-            let (name_part, parent_part) = match display_path.rfind('/') {
+            let (mut name_part, parent_part) = match display_path.rfind('/') {
                 Some(idx) => (display_path[idx + 1..].to_string(), display_path[..idx].to_string()),
                 None => (display_path.clone(), String::new()),
             };
+            // Mark directories with a trailing slash so they're distinguishable from
+            // similarly-named files. The path comes from the FS cache, so an is_dir()
+            // syscall here is cheap (already cached by the kernel from the walk).
+            let is_folder = matches!(result, crate::search::FinderResult::File(_))
+                && result.path().is_dir();
+            if is_folder && !name_part.ends_with('/') {
+                name_part.push('/');
+            }
 
             let line_suffix: Option<String> = match result {
                 crate::search::FinderResult::File(_) => None,
@@ -551,10 +559,8 @@ impl GhostAppView {
                                 this.focus_pane_editor(focused, window, cx);
                                 cx.notify();
                             }
-                        } else if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
-                            this.active_overlay = None;
-                            this.file_finder.close();
-                            this.open_file(path, window, cx);
+                        } else {
+                            this.confirm_finder_selection(window, cx);
                         }
                     }))
                     .child(name_row),
@@ -564,7 +570,7 @@ impl GhostAppView {
         let footer_text = if self.folder_move_source.is_some() {
             format!("{} folders  |  Enter: select  Esc: cancel", self.file_finder.result_count())
         } else {
-            format!("{} files  |  Enter: open  {}+Enter: open in split", self.file_finder.result_count(), if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })
+            format!("{} results  |  Enter: open  {}+Enter: open in split", self.file_finder.result_count(), if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })
         };
 
         self.overlay_shell(

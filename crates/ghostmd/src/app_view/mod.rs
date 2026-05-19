@@ -358,10 +358,8 @@ impl GhostAppView {
                             this.focus_pane_editor(focused, window, cx);
                             cx.notify();
                         }
-                    } else if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
-                        this.active_overlay = None;
-                        this.file_finder.close();
-                        this.open_file(path, window, cx);
+                    } else {
+                        this.confirm_finder_selection(window, cx);
                     }
                 }
                 _ => {}
@@ -1300,14 +1298,20 @@ impl Render for GhostAppView {
                     }
                 }
             }))
-            // Cmd+Enter: open file finder result in a new split pane
+            // Cmd+Enter: open file finder result in a new split pane (folders fall
+            // back to "reveal in tree" since there's nothing to open in a split).
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FinderConfirmSplit, window, cx| {
                 if this.overlay_is(OverlayKind::FileFinder) && this.folder_move_source.is_none() {
                     if let Some(path) = this.file_finder.selected_path().map(|p| p.to_path_buf()) {
-                        this.active_overlay = None;
-                        this.file_finder.close();
-                        this.split(SplitDirection::Vertical, window, cx);
-                        this.open_file(path, window, cx);
+                        if path.is_dir() {
+                            this.confirm_finder_selection(window, cx);
+                        } else {
+                            this.active_overlay = None;
+                            this.file_finder.close();
+                            this.clear_finder_match_highlights(cx);
+                            this.split(SplitDirection::Vertical, window, cx);
+                            this.open_file(path, window, cx);
+                        }
                     }
                 }
             }))

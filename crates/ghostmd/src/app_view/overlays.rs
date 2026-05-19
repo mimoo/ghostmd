@@ -42,6 +42,29 @@ impl GhostAppView {
         });
     }
 
+    /// Confirm the currently-selected finder result. Folders reveal+focus the
+    /// tree; files open in the active pane. Returns true if a result was
+    /// confirmed (so callers can skip their default action).
+    pub(crate) fn confirm_finder_selection(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(path) = self.file_finder.selected_path().map(|p| p.to_path_buf()) else {
+            return false;
+        };
+        self.active_overlay = None;
+        self.file_finder.close();
+        self.clear_finder_match_highlights(cx);
+        if path.is_dir() {
+            self.file_tree.update(cx, |tree, cx| tree.reveal_dir(&path, cx));
+            self.focus_file_tree(window, cx);
+        } else {
+            self.open_file(path, window, cx);
+        }
+        true
+    }
+
     /// Move keyboard focus into the sidebar file tree. Auto-shows the sidebar
     /// if hidden and ensures a row is selected so arrow keys have somewhere to
     /// start from.
