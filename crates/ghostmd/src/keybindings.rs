@@ -48,6 +48,14 @@ actions!(
         GoForward,
         NewDailyNote,
         FinderConfirmSplit,
+        FocusTree,
+        FocusEditorFromTree,
+        TreeMoveUp,
+        TreeMoveDown,
+        TreeMoveLeft,
+        TreeMoveRight,
+        TreeOpen,
+        TreeOpenInSplit,
     ]
 );
 
@@ -103,6 +111,16 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         // File tree undo/redo (only when file tree is focused)
         GpuiKeyBinding::new("secondary-z", FileTreeUndo, Some("FileTree")),
         GpuiKeyBinding::new("secondary-shift-z", FileTreeRedo, Some("FileTree")),
+        // File tree focus / navigation
+        GpuiKeyBinding::new("alt-secondary-b", FocusTree, None),
+        GpuiKeyBinding::new("up", TreeMoveUp, Some("FileTree")),
+        GpuiKeyBinding::new("down", TreeMoveDown, Some("FileTree")),
+        GpuiKeyBinding::new("left", TreeMoveLeft, Some("FileTree")),
+        GpuiKeyBinding::new("right", TreeMoveRight, Some("FileTree")),
+        GpuiKeyBinding::new("enter", TreeOpen, Some("FileTree")),
+        GpuiKeyBinding::new("secondary-enter", TreeOpenInSplit, Some("FileTree")),
+        GpuiKeyBinding::new("escape", FocusEditorFromTree, Some("FileTree")),
+        GpuiKeyBinding::new("alt-secondary-right", FocusEditorFromTree, Some("FileTree")),
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),

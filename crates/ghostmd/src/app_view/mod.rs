@@ -25,7 +25,7 @@ use gpui_component::input::{InputEvent, InputState};
 use gpui_component::resizable::{h_resizable, resizable_panel};
 
 use crate::editor_view::{EditorEvent, EditorView};
-use crate::file_tree_view::{FileSelected, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, NewDailyNoteRequested, OpenTodayNoteRequested, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
+use crate::file_tree_view::{FileSelected, FileOpenInSplit, FileTreeView, ItemRenamed, ItemMoved, NewItemCreated, NewDailyNoteRequested, OpenTodayNoteRequested, OpenInFinderRequested, MoveToTrashRequested, ContextMenuRequested};
 use crate::keybindings;
 use crate::palette::CommandPalette;
 use crate::search::FileFinder;
@@ -198,6 +198,14 @@ impl GhostAppView {
         // Subscribe to file selection events from the tree (with window access)
         cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &FileSelected, window, cx| {
             this.open_file(event.0.clone(), window, cx);
+        })
+        .detach();
+
+        // Cmd-Enter in the tree opens the file in a new vertical split.
+        cx.subscribe_in(&file_tree, window, |this: &mut Self, _entity, event: &FileOpenInSplit, window, cx| {
+            let path = event.0.clone();
+            this.split(SplitDirection::Vertical, window, cx);
+            this.open_file(path, window, cx);
         })
         .detach();
 
@@ -1068,8 +1076,14 @@ impl Render for GhostAppView {
                     this.switch_workspace(prev, window, cx);
                 }
             }))
-            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::ToggleSidebar, _window, cx| {
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::ToggleSidebar, window, cx| {
                 this.sidebar_visible = !this.sidebar_visible;
+                if !this.sidebar_visible && !this.workspaces.is_empty() {
+                    // If tree had focus, return it to the editor pane so arrow
+                    // keys go somewhere visible.
+                    let focused = this.active_ws().focused_pane;
+                    this.focus_pane_editor(focused, window, cx);
+                }
                 cx.notify();
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::OpenFileFinder, window, cx| {
@@ -1318,7 +1332,31 @@ impl Render for GhostAppView {
                 this.focus_pane_direction(1, 0, window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FocusPaneLeft, window, cx| {
-                this.focus_pane_direction(-1, 0, window, cx);
+                // If focus is already in the tree, ignore — alt-cmd-right exits.
+                let tree_handle = this.file_tree.read(cx).focus_handle(cx);
+                if tree_handle.is_focused(window) {
+                    return;
+                }
+                // Try to move within the editor splits first. If there's no pane
+                // to the left of the focused pane, fall through to the sidebar.
+                let has_left = !this.workspaces.is_empty() && {
+                    let ws = this.active_ws();
+                    ws.split_root.find_left(ws.focused_pane).is_some()
+                };
+                if has_left {
+                    this.focus_pane_direction(-1, 0, window, cx);
+                } else if this.sidebar_visible {
+                    this.focus_file_tree(window, cx);
+                }
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FocusTree, window, cx| {
+                this.focus_file_tree(window, cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FocusEditorFromTree, window, cx| {
+                if !this.workspaces.is_empty() {
+                    let focused = this.active_ws().focused_pane;
+                    this.focus_pane_editor(focused, window, cx);
+                }
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::FocusPaneDown, window, cx| {
                 this.focus_pane_direction(0, 1, window, cx);

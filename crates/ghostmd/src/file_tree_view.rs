@@ -8,10 +8,14 @@ use gpui_component::input::{Input, InputEvent, InputState};
 use ghostmd_core::path_utils::unique_path;
 
 use crate::file_tree::FileTreePanel;
+use crate::keybindings;
 use crate::theme::{rgb_to_hsla, GhostTheme, ThemeName};
 
 /// Event emitted when a file is selected in the tree.
 pub struct FileSelected(pub PathBuf);
+
+/// Event emitted when the user wants to open the selected file in a new split.
+pub struct FileOpenInSplit(pub PathBuf);
 
 /// Event emitted when a file/folder has been renamed inline.
 pub struct ItemRenamed {
@@ -102,6 +106,7 @@ pub struct FileTreeView {
 }
 
 impl EventEmitter<FileSelected> for FileTreeView {}
+impl EventEmitter<FileOpenInSplit> for FileTreeView {}
 impl EventEmitter<ItemRenamed> for FileTreeView {}
 impl EventEmitter<NewItemCreated> for FileTreeView {}
 impl EventEmitter<OpenInFinderRequested> for FileTreeView {}
@@ -202,6 +207,172 @@ impl FileTreeView {
         self.last_clicked = Some(path.to_path_buf());
         self.scroll_to_path(path);
         cx.notify();
+    }
+
+    // ── Keyboard navigation ──────────────────────────────────────────
+
+    /// Index of the currently keyboard-selected row in the flattened tree, or
+    /// `None` if no keyboard selection is set. Uses `last_clicked` as the
+    /// cursor — mouse clicks and arrow keys share the same single-selection.
+    fn keyboard_cursor_index(&self) -> Option<usize> {
+        let flat = self.panel.tree.flatten();
+        let cur = self.last_clicked.as_ref()?;
+        flat.iter().position(|(_, n)| n.path() == cur.as_path())
+    }
+
+    /// Set the single keyboard selection to the row at `index` in the flat list.
+    fn set_keyboard_selection(&mut self, index: usize, cx: &mut Context<Self>) {
+        let path = self
+            .panel
+            .tree
+            .flatten()
+            .get(index)
+            .map(|(_, node)| node.path().to_path_buf());
+        if let Some(path) = path {
+            self.selected_paths.clear();
+            self.selected_paths.insert(path.clone());
+            self.anchor_path = Some(path.clone());
+            self.last_clicked = Some(path.clone());
+            self.scroll_to_path(&path);
+            cx.notify();
+        }
+    }
+
+    /// Move the cursor down one visible row.
+    pub fn nav_move_down(&mut self, cx: &mut Context<Self>) {
+        let len = self.panel.tree.flatten().len();
+        if len == 0 {
+            return;
+        }
+        let next = match self.keyboard_cursor_index() {
+            Some(i) if i + 1 < len => i + 1,
+            Some(_) => return, // already at bottom; don't wrap
+            None => 0,
+        };
+        self.set_keyboard_selection(next, cx);
+    }
+
+    /// Move the cursor up one visible row.
+    pub fn nav_move_up(&mut self, cx: &mut Context<Self>) {
+        let len = self.panel.tree.flatten().len();
+        if len == 0 {
+            return;
+        }
+        let prev = match self.keyboard_cursor_index() {
+            Some(0) => return, // already at top; don't wrap
+            Some(i) => i - 1,
+            None => 0,
+        };
+        self.set_keyboard_selection(prev, cx);
+    }
+
+    /// Left arrow: if on an expanded directory, collapse it. Otherwise, jump
+    /// the cursor to the parent directory.
+    pub fn nav_move_left(&mut self, cx: &mut Context<Self>) {
+        let Some(cur_path) = self.last_clicked.clone() else {
+            self.nav_select_first(cx);
+            return;
+        };
+        // Snapshot: (is_expanded_dir, parent_index)
+        let snapshot: Option<(bool, Option<usize>)> = {
+            let flat = self.panel.tree.flatten();
+            let node = flat
+                .iter()
+                .find(|(_, n)| n.path() == cur_path.as_path())
+                .map(|(_, n)| (n.is_dir(), n.is_expanded()))?;
+            let is_expanded_dir = node.0 && node.1;
+            let parent_idx = cur_path
+                .parent()
+                .filter(|p| *p != self.panel.tree.root.as_path())
+                .and_then(|parent| {
+                    flat.iter()
+                        .position(|(_, n)| n.path() == parent)
+                });
+            Some((is_expanded_dir, parent_idx))
+        };
+        let Some((is_expanded_dir, parent_idx)) = snapshot else { return };
+        if is_expanded_dir {
+            self.panel.tree.toggle_dir(&cur_path);
+            cx.notify();
+        } else if let Some(idx) = parent_idx {
+            self.set_keyboard_selection(idx, cx);
+        }
+    }
+
+    /// Right arrow: if on a collapsed directory, expand it. If on an expanded
+    /// directory, move into its first child. On files, no-op.
+    pub fn nav_move_right(&mut self, cx: &mut Context<Self>) {
+        let Some(cur_path) = self.last_clicked.clone() else {
+            self.nav_select_first(cx);
+            return;
+        };
+        // Snapshot: (is_dir, is_expanded, first_child_idx_if_any)
+        let snapshot: Option<(bool, bool, Option<usize>)> = {
+            let flat = self.panel.tree.flatten();
+            let cur_idx = flat
+                .iter()
+                .position(|(_, n)| n.path() == cur_path.as_path())?;
+            let (cur_depth, cur_node) = flat[cur_idx];
+            let first_child_idx = flat.get(cur_idx + 1).and_then(|(child_depth, _)| {
+                if *child_depth > cur_depth {
+                    Some(cur_idx + 1)
+                } else {
+                    None
+                }
+            });
+            Some((cur_node.is_dir(), cur_node.is_expanded(), first_child_idx))
+        };
+        let Some((is_dir, is_expanded, first_child_idx)) = snapshot else { return };
+        if !is_dir {
+            return;
+        }
+        if !is_expanded {
+            self.panel.tree.toggle_dir(&cur_path);
+            cx.notify();
+        } else if let Some(idx) = first_child_idx {
+            self.set_keyboard_selection(idx, cx);
+        }
+    }
+
+    /// Enter: open the file in the current pane (emit FileSelected) or toggle
+    /// directory expansion.
+    pub fn nav_open(&mut self, cx: &mut Context<Self>) {
+        let Some(cur_path) = self.last_clicked.clone() else { return };
+        if cur_path.is_dir() {
+            self.panel.tree.toggle_dir(&cur_path);
+            cx.notify();
+        } else {
+            cx.emit(FileSelected(cur_path));
+        }
+    }
+
+    /// Cmd-Enter: open the file in a new split. No-op on directories.
+    pub fn nav_open_in_split(&mut self, cx: &mut Context<Self>) {
+        let Some(cur_path) = self.last_clicked.clone() else { return };
+        if cur_path.is_file() {
+            cx.emit(FileOpenInSplit(cur_path));
+        }
+    }
+
+    /// Select the first row of the tree (used when entering tree with no
+    /// existing cursor).
+    pub fn nav_select_first(&mut self, cx: &mut Context<Self>) {
+        if !self.panel.tree.flatten().is_empty() {
+            self.set_keyboard_selection(0, cx);
+        }
+    }
+
+    /// Ensure a keyboard cursor exists. Called when the tree gains focus so the
+    /// user immediately sees a selection to act on.
+    pub fn ensure_keyboard_cursor(&mut self, cx: &mut Context<Self>) {
+        if self.last_clicked.is_none() {
+            self.nav_select_first(cx);
+        }
+    }
+
+    /// Move keyboard focus into the file tree.
+    pub fn focus(&self, window: &mut Window) {
+        self.focus_handle.focus(window);
     }
 
     /// Get the currently selected path (primary/last-clicked, for single-file operations).
@@ -782,6 +953,24 @@ impl Render for FileTreeView {
             .border_r_1()
             .border_color(border_color)
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this: &mut Self, _: &keybindings::TreeMoveUp, _window, cx| {
+                this.nav_move_up(cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _: &keybindings::TreeMoveDown, _window, cx| {
+                this.nav_move_down(cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _: &keybindings::TreeMoveLeft, _window, cx| {
+                this.nav_move_left(cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _: &keybindings::TreeMoveRight, _window, cx| {
+                this.nav_move_right(cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _: &keybindings::TreeOpen, _window, cx| {
+                this.nav_open(cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _: &keybindings::TreeOpenInSplit, _window, cx| {
+                this.nav_open_in_split(cx);
+            }))
             // Any click inside the tree should move focus to the tree, so that
             // pending keyboard input (e.g. typing into the inline-rename input
             // that was just opened) doesn't get stolen by the active editor pane.

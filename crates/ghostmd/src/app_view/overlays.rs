@@ -42,6 +42,22 @@ impl GhostAppView {
         });
     }
 
+    /// Move keyboard focus into the sidebar file tree. Auto-shows the sidebar
+    /// if hidden and ensures a row is selected so arrow keys have somewhere to
+    /// start from.
+    pub(crate) fn focus_file_tree(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.sidebar_visible {
+            self.sidebar_visible = true;
+        }
+        self.dismiss_overlays(window, cx);
+        self.file_tree.update(cx, |tree, cx| {
+            tree.ensure_keyboard_cursor(cx);
+        });
+        let handle = self.file_tree.read(cx).focus_handle(cx);
+        handle.focus(window);
+        cx.notify();
+    }
+
     /// Close the command palette and refocus the editor.
     pub(crate) fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.active_overlay = None;
