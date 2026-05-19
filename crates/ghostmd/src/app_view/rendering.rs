@@ -524,7 +524,7 @@ impl GhostAppView {
             if !parent_part.is_empty() {
                 name_row = name_row.child(
                     div()
-                        .text_color(t.line_number)
+                        .text_color(t.hint)
                         .text_xs()
                         .child(parent_part),
                 );
@@ -532,7 +532,7 @@ impl GhostAppView {
             if let Some(suffix) = line_suffix {
                 name_row = name_row.child(
                     div()
-                        .text_color(t.line_number)
+                        .text_color(t.hint)
                         .text_xs()
                         .child(suffix),
                 );

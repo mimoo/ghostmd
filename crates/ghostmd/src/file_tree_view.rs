@@ -295,25 +295,23 @@ impl FileTreeView {
             self.nav_select_first(cx);
             return;
         };
-        // Snapshot: (is_expanded_dir, parent_index)
-        let snapshot: Option<(bool, Option<usize>)> = {
-            let flat = self.panel.tree.flatten();
-            let node = flat
-                .iter()
-                .find(|(_, n)| n.path() == cur_path.as_path())
-                .map(|(_, n)| (n.is_dir(), n.is_expanded()))?;
-            let is_expanded_dir = node.0 && node.1;
-            let parent_idx = cur_path
-                .parent()
-                .filter(|p| *p != self.panel.tree.root.as_path())
-                .and_then(|parent| {
-                    flat.iter()
-                        .position(|(_, n)| n.path() == parent)
-                });
-            Some((is_expanded_dir, parent_idx))
+        // Snapshot owned data out of the flat list, then drop the immutable
+        // borrow so we can mutate `self.panel.tree` below if needed.
+        let flat = self.panel.tree.flatten();
+        let Some((is_dir, is_expanded)) = flat
+            .iter()
+            .find(|(_, n)| n.path() == cur_path.as_path())
+            .map(|(_, n)| (n.is_dir(), n.is_expanded()))
+        else {
+            return;
         };
-        let Some((is_expanded_dir, parent_idx)) = snapshot else { return };
-        if is_expanded_dir {
+        let parent_idx = cur_path
+            .parent()
+            .filter(|p| *p != self.panel.tree.root.as_path())
+            .and_then(|parent| flat.iter().position(|(_, n)| n.path() == parent));
+        drop(flat);
+
+        if is_dir && is_expanded {
             self.panel.tree.toggle_dir(&cur_path);
             cx.notify();
         } else if let Some(idx) = parent_idx {
@@ -328,23 +326,25 @@ impl FileTreeView {
             self.nav_select_first(cx);
             return;
         };
-        // Snapshot: (is_dir, is_expanded, first_child_idx_if_any)
-        let snapshot: Option<(bool, bool, Option<usize>)> = {
-            let flat = self.panel.tree.flatten();
-            let cur_idx = flat
-                .iter()
-                .position(|(_, n)| n.path() == cur_path.as_path())?;
-            let (cur_depth, cur_node) = flat[cur_idx];
-            let first_child_idx = flat.get(cur_idx + 1).and_then(|(child_depth, _)| {
-                if *child_depth > cur_depth {
-                    Some(cur_idx + 1)
-                } else {
-                    None
-                }
-            });
-            Some((cur_node.is_dir(), cur_node.is_expanded(), first_child_idx))
+        let flat = self.panel.tree.flatten();
+        let Some(cur_idx) = flat
+            .iter()
+            .position(|(_, n)| n.path() == cur_path.as_path())
+        else {
+            return;
         };
-        let Some((is_dir, is_expanded, first_child_idx)) = snapshot else { return };
+        let (cur_depth, cur_node) = flat[cur_idx];
+        let is_dir = cur_node.is_dir();
+        let is_expanded = cur_node.is_expanded();
+        let first_child_idx = flat.get(cur_idx + 1).and_then(|(child_depth, _)| {
+            if *child_depth > cur_depth {
+                Some(cur_idx + 1)
+            } else {
+                None
+            }
+        });
+        drop(flat);
+
         if !is_dir {
             return;
         }
