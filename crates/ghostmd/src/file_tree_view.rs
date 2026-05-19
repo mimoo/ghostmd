@@ -392,11 +392,6 @@ impl FileTreeView {
         }
     }
 
-    /// Move keyboard focus into the file tree.
-    pub fn focus(&self, window: &mut Window) {
-        self.focus_handle.focus(window);
-    }
-
     /// Get the currently selected path (primary/last-clicked, for single-file operations).
     pub fn selected_path(&self) -> Option<&PathBuf> {
         self.last_clicked.as_ref()
