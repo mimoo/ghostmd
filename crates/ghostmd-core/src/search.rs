@@ -82,8 +82,17 @@ impl FuzzySearch {
             .file_cache
             .iter()
             .filter_map(|path| {
-                let file_name = path.file_name()?.to_string_lossy();
-                let haystack = Utf32Str::new(&file_name, &mut buf);
+                // Match against the relative path (forward-slash separated) so that a query
+                // like "13" matches notes inside a "13/" folder, not just files named "13".
+                // nucleo's `match_paths()` config still weights matches in the leaf segment
+                // highest, so filename hits continue to outrank deep mid-path hits.
+                let rel = path.strip_prefix(&self.root).unwrap_or(path);
+                let rel_str = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let haystack = Utf32Str::new(&rel_str, &mut buf);
                 let score = pattern.score(haystack, &mut matcher)?;
                 Some(SearchResult {
                     path: path.clone(),
@@ -274,6 +283,28 @@ mod tests {
         let searcher = ContentSearch::new(root.to_path_buf());
         let results = searcher.search("anything").unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn fuzzy_matches_files_inside_folder_by_folder_name() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("13/april")).unwrap();
+        fs::write(root.join("13/april/meeting.md"), "").unwrap();
+        fs::write(root.join("13/notes.md"), "").unwrap();
+        fs::write(root.join("other.md"), "").unwrap();
+
+        let mut search = FuzzySearch::new(root.to_path_buf());
+        search.refresh_cache().unwrap();
+
+        let results = search.search_files("13");
+        let paths: Vec<String> = results
+            .iter()
+            .map(|r| r.path.to_string_lossy().to_string())
+            .collect();
+        assert!(paths.iter().any(|p| p.contains("13/april/meeting.md")));
+        assert!(paths.iter().any(|p| p.contains("13/notes.md")));
+        assert!(!paths.iter().any(|p| p.ends_with("other.md")));
     }
 
     #[test]

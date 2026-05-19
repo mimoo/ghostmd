@@ -481,8 +481,15 @@ impl GhostAppView {
                 .trim_start_matches('/')
                 .to_string();
 
-            let display = match result {
-                crate::search::FinderResult::File(_) => display_path,
+            // Split "13/april/meeting.md" → ("meeting.md", "13/april") so we can render
+            // the filename bright and the parent path dim.
+            let (name_part, parent_part) = match display_path.rfind('/') {
+                Some(idx) => (display_path[idx + 1..].to_string(), display_path[..idx].to_string()),
+                None => (display_path.clone(), String::new()),
+            };
+
+            let line_suffix: Option<String> = match result {
+                crate::search::FinderResult::File(_) => None,
                 crate::search::FinderResult::Content(m) => {
                     let line_preview = m.line_text.trim();
                     let truncated = if line_preview.chars().count() > 60 {
@@ -491,11 +498,38 @@ impl GhostAppView {
                     } else {
                         line_preview.to_string()
                     };
-                    format!("{}:{} -- {}", display_path, m.line_number, truncated)
+                    Some(format!(":{} — {}", m.line_number, truncated))
                 }
             };
 
             let click_idx = i;
+            let mut name_row = div()
+                .flex()
+                .flex_row()
+                .items_baseline()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .text_color(t.fg)
+                        .child(name_part),
+                );
+            if !parent_part.is_empty() {
+                name_row = name_row.child(
+                    div()
+                        .text_color(t.line_number)
+                        .text_xs()
+                        .child(parent_part),
+                );
+            }
+            if let Some(suffix) = line_suffix {
+                name_row = name_row.child(
+                    div()
+                        .text_color(t.line_number)
+                        .text_xs()
+                        .child(suffix),
+                );
+            }
+
             list = list.child(
                 div()
                     .id(ElementId::NamedInteger("finder-item".into(), i as u64))
@@ -523,7 +557,7 @@ impl GhostAppView {
                             this.open_file(path, window, cx);
                         }
                     }))
-                    .child(display),
+                    .child(name_row),
             );
         }
 
