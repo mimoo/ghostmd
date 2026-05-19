@@ -82,6 +82,7 @@ Requires Rust 1.75+ and Xcode with Metal Toolchain on macOS.
 - **`EditorView` reload gotcha**: `skip_next_change` suppresses the `Change` event fired during external file reloads — otherwise reload would mark the buffer dirty and trigger auto-save loops.
 - **`ContentSearch` is regex, not literal**: `grep-regex` interprets the query as a regex pattern. Callers must escape special chars (`search.rs` in `crates/ghostmd/` has a regex-escape helper for literal matching).
 - **`ContentSearch` is uncached** — each call walks the entire tree. `FuzzySearch` caches file paths and must be refreshed via `refresh_cache()`.
+- **`FuzzySearch::refresh_cache()` caches files *and* folders** (root excluded) so cmd-P can surface folder names too. Haystack is the **relative path** (slash-joined), not just the leaf — so `"13"` matches `13/april/notes.md`. `nucleo`'s `match_paths()` config still weights leaf-segment hits highest. `refresh_dir_cache()` is the folder-only variant (used for the "move to folder" picker).
 - **`unique_path()` caps at 100** — if 99 collision-suffixed candidates exist it returns the original path unmodified. Don't rely on it for unbounded collision avoidance.
 - **`tree.rs` pins `diary/` first** — after every scan the diary dir is moved to index 0. Collapsed state is preserved across rescans. `.ghostmd/`, `.gitignore`, `.DS_Store` are filtered out.
 - **`diary::slugify()` is ASCII-only** — non-ASCII alphanum is stripped, which can reduce a CJK or accent-heavy title to `untitled`. Diary timestamps use `Local::now()`, not UTC. Full diary path: `diary/YYYY/MM-monthname/DD/HHMMSS-slug.md` (zero-padded DD, lowercase month).
@@ -98,6 +99,10 @@ The GPUI app uses a multi-workspace model:
 - **`Pane`** — Holds `active_path: Option<PathBuf>` and `editor: Option<Entity<EditorView>>`.
 
 Key patterns:
+- **`FileTreeView` is a focusable, keyboard-navigable "pane-like" target** but is NOT a real pane in `SplitNode`. It has its own `FocusHandle` and a `key_context("FileTree")` so context-scoped bindings (arrow keys, enter, cmd-enter, cmd-z/cmd-shift-z, esc) only fire when the tree is focused. Keyboard cursor uses the same `last_clicked` / `selected_paths` / `anchor_path` fields as mouse selection — `set_keyboard_selection()` keeps them in sync. `nav_move_left/right` are direction-aware: on dirs they expand/collapse; on files they jump to parent / first child.
+- **`alt-cmd-left` fallthrough**: when the focused pane has no left neighbor and the sidebar is visible, focus the tree instead of no-op. `alt-cmd-b` always focuses the tree (and shows the sidebar if hidden). `esc` / `alt-cmd-right` while the tree is focused return focus to the active pane editor.
+- **Hide-sidebar focus rescue**: `ToggleSidebar` when hiding refocuses the editor pane so arrow keys don't go to an invisible tree.
+- **Finder match highlights**: `FileTreeView` carries a `match_paths: HashSet<PathBuf>` (and a precomputed `match_ancestors` set) that `set_match_paths()` updates. `GhostAppView::sync_finder_match_highlights()` pushes the current fuzzy-finder result set into the tree after every `set_query()`, and `clear_finder_match_highlights()` resets it on dismiss. Matched rows render with the accent color; ancestor dirs get a blended tint so collapsed parents of a match still light up.
 - **Workspace ID vs index**: Always use `workspace.id` (stable) for async callbacks, never positional index which shifts on add/remove. `ai_loading: HashSet<usize>` stores workspace IDs.
 - **Empty workspace guard**: Always check `self.workspaces.is_empty()` before calling `self.active_ws()` / `self.active_ws_mut()` — they index directly and will panic on empty vec.
 - **Editor path updates**: Use `self.update_editor_paths(old, new, cx)` when renaming/moving files or directories. It handles both exact matches and child paths for directory moves.
@@ -134,8 +139,15 @@ Separate Swift / SwiftUI app, not part of the Cargo workspace. Targets iOS 17+. 
 | alt-cmd-arrows | Focus pane in direction |
 | cmd-s | Save |
 | cmd-b | Toggle sidebar |
-| cmd-p | File finder |
-| cmd-enter (in file finder) | Open selected file in a new split |
+| cmd-p | File finder (matches files **and** folders; folder names show with a trailing slash and reveal in the tree) |
+| cmd-enter (in file finder) | Open selected file in a new split (folder result falls back to "reveal in tree") |
+| alt-cmd-b | Focus the sidebar file tree (auto-shows it if hidden) |
+| alt-cmd-left (from leftmost pane) | Focus the sidebar file tree (otherwise: focus pane to the left) |
+| up / down (file tree focused) | Move tree cursor |
+| left / right (file tree focused) | Collapse / expand dir (or jump to parent / first child) |
+| enter (file tree focused) | Open file (or toggle directory expansion) |
+| cmd-enter (file tree focused) | Open file in a new split |
+| esc / alt-cmd-right (file tree focused) | Return focus to the editor pane |
 | cmd-shift-f | Agentic search (Claude-powered) |
 | cmd-shift-p | Command palette |
 | cmd-shift-a | Open note switcher (search open notes) |

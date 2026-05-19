@@ -4,6 +4,12 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Cmd+P fuzzy search now matches folder names in the path — searching `"13"` finds notes inside a `13/` folder, not just files literally named `13`. Results show the filename in normal weight with a dimmed parent-dir breadcrumb beside it.
+- Folders themselves are now valid Cmd+P results — they appear with a trailing `/` and selecting one reveals + expands the folder in the sidebar (instead of trying to open it as a file).
+- Cmd+P matches are highlighted in the file tree as you type: matched files use the accent color, and their ancestor directories get a subtle tint so collapsed parents that contain a match still stand out.
+- Keyboard navigation in the file tree: arrow keys move the cursor, left/right collapse and expand (or jump to parent / first child), Enter opens, Cmd+Enter opens in a split, Esc or Alt+Cmd+Right returns focus to the editor.
+- New shortcut Alt+Cmd+B focuses the sidebar (and shows it if hidden). Alt+Cmd+Left from the leftmost pane now falls through to the sidebar instead of doing nothing.
+
 ## [0.11.4] — 2026-05-14
 
 - Fix: file tree right-click context menus no longer get truncated near the bottom or right edge of the window — they flip up/shift left to stay fully visible
