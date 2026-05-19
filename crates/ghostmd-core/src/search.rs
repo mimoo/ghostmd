@@ -40,9 +40,8 @@ impl FuzzySearch {
         for entry in walker {
             let entry = entry?;
             let Some(ft) = entry.file_type() else { continue };
-            if ft.is_file() {
-                self.file_cache.push(entry.into_path());
-            } else if ft.is_dir() && entry.path() != self.root.as_path() {
+            let is_subdir = ft.is_dir() && entry.path() != self.root.as_path();
+            if ft.is_file() || is_subdir {
                 self.file_cache.push(entry.into_path());
             }
         }
