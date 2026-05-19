@@ -4,7 +4,7 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
-## [0.11.5] — 2026-05-19
+## [0.11.6] — 2026-05-19
 
 - Cmd+P fuzzy search now matches folder names in the path — searching `"13"` finds notes inside a `13/` folder, not just files literally named `13`. Results show the filename in normal weight with a dimmed parent-dir breadcrumb beside it.
 - Folders themselves are now valid Cmd+P results — they appear with a trailing `/` and selecting one reveals + expands the folder in the sidebar (instead of trying to open it as a file).
