@@ -336,6 +336,7 @@ impl GhostAppView {
                     } else {
                         this.file_finder.set_query(&value);
                     }
+                    this.sync_finder_match_highlights(cx);
                     cx.notify();
                 }
                 InputEvent::PressEnter { .. } if this.overlay_is(OverlayKind::FileFinder) => {

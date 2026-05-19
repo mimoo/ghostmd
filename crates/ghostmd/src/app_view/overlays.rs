@@ -8,11 +8,38 @@ impl GhostAppView {
         self.active_overlay = None;
         self.file_finder.close();
         self.folder_move_source = None;
+        self.clear_finder_match_highlights(cx);
         if !self.workspaces.is_empty() {
             let focused = self.active_ws().focused_pane;
             self.focus_pane_editor(focused, window, cx);
         }
         cx.notify();
+    }
+
+    /// Push the current set of finder result paths into the file tree so it can
+    /// render an accent indicator on matching nodes (and ancestor dirs). Clears
+    /// highlights when the finder query is empty so the tree doesn't light up
+    /// every file on open.
+    pub(crate) fn sync_finder_match_highlights(&mut self, cx: &mut Context<Self>) {
+        let query = self.file_finder.query.clone();
+        let paths: Vec<std::path::PathBuf> = if query.is_empty() {
+            Vec::new()
+        } else {
+            self.file_finder
+                .results
+                .iter()
+                .map(|r| r.path().to_path_buf())
+                .collect()
+        };
+        self.file_tree
+            .update(cx, |tree, cx| tree.set_match_paths(paths, cx));
+    }
+
+    /// Clear all fuzzy-finder match highlights in the file tree.
+    pub(crate) fn clear_finder_match_highlights(&mut self, cx: &mut Context<Self>) {
+        self.file_tree.update(cx, |tree, cx| {
+            tree.set_match_paths(std::iter::empty(), cx)
+        });
     }
 
     /// Close the command palette and refocus the editor.
@@ -237,6 +264,7 @@ impl GhostAppView {
             Some(OverlayKind::FileFinder) => {
                 self.file_finder.close();
                 self.folder_move_source = None;
+                self.clear_finder_match_highlights(cx);
             }
             Some(OverlayKind::Palette) => {
                 self.rename_mode = None;

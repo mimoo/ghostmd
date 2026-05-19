@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use gpui::prelude::FluentBuilder as _;
@@ -92,6 +92,13 @@ pub struct FileTreeView {
     editing_is_note: bool,
     /// Error message shown below the rename input (e.g. duplicate name).
     editing_error: Option<String>,
+    /// Paths surfaced by an active fuzzy-finder query — rendered with an accent
+    /// indicator so users can see where their matches live in the tree. Empty
+    /// when no finder is open (or the finder query is empty).
+    match_paths: HashSet<PathBuf>,
+    /// Ancestor directories of `match_paths`, precomputed so closed dirs that
+    /// hide a match still light up.
+    match_ancestors: HashSet<PathBuf>,
 }
 
 impl EventEmitter<FileSelected> for FileTreeView {}
@@ -149,7 +156,35 @@ impl FileTreeView {
             editing_is_new: false,
             editing_is_note: false,
             editing_error: None,
+            match_paths: HashSet::new(),
+            match_ancestors: HashSet::new(),
         }
+    }
+
+    /// Update the set of paths that should be highlighted as fuzzy-finder matches.
+    /// Pass an empty iterator to clear all highlights.
+    pub fn set_match_paths<I: IntoIterator<Item = PathBuf>>(
+        &mut self,
+        paths: I,
+        cx: &mut Context<Self>,
+    ) {
+        let root = self.panel.tree.root.clone();
+        self.match_paths = paths.into_iter().collect();
+        self.match_ancestors.clear();
+        for path in &self.match_paths {
+            let mut cur = path.parent();
+            while let Some(p) = cur {
+                if p == root {
+                    break;
+                }
+                if !p.starts_with(&root) {
+                    break;
+                }
+                self.match_ancestors.insert(p.to_path_buf());
+                cur = p.parent();
+            }
+        }
+        cx.notify();
     }
 
     /// Refresh the file tree from disk.
@@ -504,6 +539,8 @@ impl Render for FileTreeView {
         let selected = self.selected_paths.clone();
         let root_path = self.panel.tree.root.clone();
         let editing_path = self.editing_path.clone();
+        let match_paths = self.match_paths.clone();
+        let match_ancestors = self.match_ancestors.clone();
 
         let accent = rgb_to_hsla(ghost.accent.0, ghost.accent.1, ghost.accent.2);
         let drop_bg = hsla(accent.h, accent.s, accent.l, 0.15);
@@ -529,6 +566,8 @@ impl Render for FileTreeView {
             let name = node.name().to_string();
             let indent = *depth as f32 * 16.0;
             let is_editing = editing_path.as_ref() == Some(&node_path);
+            let is_match = match_paths.contains(&node_path);
+            let is_match_ancestor = match_ancestors.contains(&node_path);
 
             let is_diary_root = *depth == 0 && name == "diary";
 
@@ -639,7 +678,16 @@ impl Render for FileTreeView {
                         .id(ElementId::NamedInteger("tree-label".into(), i as u64))
                         .flex_1()
                         .text_sm()
-                        .text_color(fg)
+                        .text_color(if is_match {
+                            accent
+                        } else if is_match_ancestor {
+                            // Blend ancestor labels halfway toward the accent so collapsed
+                            // dirs hiding a match still light up, but more subtly than the
+                            // match itself.
+                            hsla(accent.h, accent.s, (fg.l + accent.l) * 0.5, fg.a)
+                        } else {
+                            fg
+                        })
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
