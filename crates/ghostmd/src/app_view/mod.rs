@@ -1491,7 +1491,10 @@ impl Render for GhostAppView {
                                             .flex_col()
                                             .relative()
                                             .child(self.render_tab_bar(cx))
-                                            .child(self.render_split_node(&split_root, &ws_clone, cx))
+                                            .child({
+                                                let tree_focused = self.file_tree.read(cx).focus_handle(cx).is_focused(window);
+                                                self.render_split_node(&split_root, &ws_clone, tree_focused, cx)
+                                            })
                                             .when(show_file_finder, |d| d.child(self.render_file_finder(cx)))
                                             .when(show_agentic_search, |d| d.child(self.render_agentic_search(cx)))
                                             .when(show_note_switcher, |d| d.child(self.render_note_switcher(cx)))

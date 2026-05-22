@@ -4,6 +4,8 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- When focus moves to the sidebar file tree (e.g. via Alt+Cmd+Left or Alt+Cmd+B), the previously-focused pane no longer keeps its accent border, and the tree's right divider switches to the accent color — making it visually obvious that keystrokes now go to the tree.
+
 ## [0.11.6] — 2026-05-19
 
 - Cmd+P fuzzy search now matches folder names in the path — searching `"13"` finds notes inside a `13/` folder, not just files literally named `13`. Results show the filename in normal weight with a dimmed parent-dir breadcrumb beside it.

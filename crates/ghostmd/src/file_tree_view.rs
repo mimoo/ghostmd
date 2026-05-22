@@ -715,10 +715,11 @@ impl Focusable for FileTreeView {
 }
 
 impl Render for FileTreeView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ghost = GhostTheme::from_name(self.active_theme);
         let sidebar_bg = rgb_to_hsla(ghost.sidebar_bg.0, ghost.sidebar_bg.1, ghost.sidebar_bg.2);
         let border_color = rgb_to_hsla(ghost.border.0, ghost.border.1, ghost.border.2);
+        let tree_focused = self.focus_handle.is_focused(window);
         let fg = rgb_to_hsla(ghost.fg.0, ghost.fg.1, ghost.fg.2);
         let selection_bg = rgb_to_hsla(ghost.selection.0, ghost.selection.1, ghost.selection.2);
         let hint_fg = rgb_to_hsla(ghost.line_number.0, ghost.line_number.1, ghost.line_number.2);
@@ -962,13 +963,18 @@ impl Render for FileTreeView {
                 })),
         );
 
+        // Right divider doubles as the focus indicator: theme border color when
+        // unfocused, accent color (and 2px wide) when the tree owns focus, so the
+        // user has a visible cue that keys go here rather than the editor pane.
+        let divider_color = if tree_focused { accent } else { border_color };
         div()
             .key_context("FileTree")
             .size_full()
             .relative()
             .bg(sidebar_bg)
-            .border_r_1()
-            .border_color(border_color)
+            .when(tree_focused, |d| d.border_r_2())
+            .when(!tree_focused, |d| d.border_r_1())
+            .border_color(divider_color)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(|this: &mut Self, _: &keybindings::TreeMoveUp, _window, cx| {
                 this.nav_move_up(cx);

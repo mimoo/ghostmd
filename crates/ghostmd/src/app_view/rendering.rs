@@ -200,13 +200,15 @@ impl GhostAppView {
         tabs
     }
 
-    pub(crate) fn render_split_node(&self, node: &SplitNode, ws: &Workspace, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_split_node(&self, node: &SplitNode, ws: &Workspace, tree_focused: bool, cx: &mut Context<Self>) -> AnyElement {
         let t = &self.theme;
         let multi_pane = ws.panes.len() > 1;
 
         match node {
             SplitNode::Leaf(pane_id) => {
-                let is_focused = *pane_id == ws.focused_pane;
+                // When the sidebar tree owns keyboard focus, don't highlight the
+                // pane as focused — otherwise it looks like both are active.
+                let is_focused = *pane_id == ws.focused_pane && !tree_focused;
                 let pid = *pane_id;
                 let pane = ws.panes.get(pane_id);
                 let has_editor = pane.map(|p| p.editor.is_some()).unwrap_or(false);
@@ -370,8 +372,8 @@ impl GhostAppView {
                 pane_div.into_any_element()
             }
             SplitNode::Split { direction, left, right } => {
-                let left_el = self.render_split_node(left, ws, cx);
-                let right_el = self.render_split_node(right, ws, cx);
+                let left_el = self.render_split_node(left, ws, tree_focused, cx);
+                let right_el = self.render_split_node(right, ws, tree_focused, cx);
                 let sid = node.stable_id();
                 let group = if *direction == SplitDirection::Vertical {
                     h_resizable(ElementId::NamedInteger("split-h".into(), sid as u64))
