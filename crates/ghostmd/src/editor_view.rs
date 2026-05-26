@@ -10,8 +10,10 @@ use ghostmd_core::note::Note;
 
 /// Events emitted by EditorView for cross-pane synchronization.
 pub enum EditorEvent {
-    /// Content changed (user edit). Carries the current text.
-    ContentChanged(String),
+    /// Content changed (user edit). Subscribers pull the text from the
+    /// source editor on demand so we don't allocate a full-text String per
+    /// keystroke when no other pane mirrors this file.
+    ContentChanged,
 }
 
 /// Detects URLs in text and provides them as "definitions" for Cmd+click.
@@ -131,8 +133,7 @@ impl EditorView {
                 } else {
                     this.dirty = true;
                     this.last_edit = Some(Instant::now());
-                    let text = this.input_state.read(cx).value().to_string();
-                    cx.emit(EditorEvent::ContentChanged(text));
+                    cx.emit(EditorEvent::ContentChanged);
                 }
             }
         })
@@ -197,6 +198,25 @@ impl EditorView {
         // Save recreated the file on disk, so it's no longer missing.
         self.missing = false;
         Ok(())
+    }
+
+    /// Auto-save variant: snapshots text on the UI thread, then performs the
+    /// actual disk write on the background executor so a slow fsync can't
+    /// stall keystrokes. `last_save` is set on the UI thread before the spawn
+    /// so the fs-watcher's "skip our own save" de-dup still works.
+    pub fn save_async(&mut self, cx: &mut Context<Self>) {
+        let text = self.input_state.read(cx).value().to_string();
+        let path = self.path.clone();
+        self.dirty = false;
+        self.last_save = Some(Instant::now());
+        self.missing = false;
+        cx.background_executor()
+            .spawn(async move {
+                let note = Note::new(path);
+                let _ = note.ensure_dir();
+                let _ = note.save(&text);
+            })
+            .detach();
     }
 
     /// Returns true if dirty and enough time has passed since the last edit.
@@ -295,8 +315,7 @@ impl EditorView {
                 } else {
                     this.dirty = true;
                     this.last_edit = Some(Instant::now());
-                    let text = this.input_state.read(cx).value().to_string();
-                    cx.emit(EditorEvent::ContentChanged(text));
+                    cx.emit(EditorEvent::ContentChanged);
                 }
             }
         })

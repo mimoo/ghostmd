@@ -13,7 +13,7 @@ impl GhostAppView {
                 if let Some(editor) = &pane.editor {
                     editor.update(cx, |e, cx| {
                         if e.should_auto_save(300) {
-                            e.save(cx).ok();
+                            e.save_async(cx);
                         }
                     });
                 }

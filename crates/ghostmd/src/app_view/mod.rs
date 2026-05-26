@@ -783,7 +783,7 @@ impl GhostAppView {
     /// Subscribe to an editor's content changes for cross-pane live sync.
     pub(crate) fn subscribe_editor(&mut self, editor: &Entity<EditorView>, window: &mut Window, cx: &mut Context<Self>) {
         cx.subscribe_in(editor, window, |this: &mut Self, changed_editor: &Entity<EditorView>, event: &EditorEvent, window, cx| {
-            let EditorEvent::ContentChanged(text) = event;
+            let EditorEvent::ContentChanged = event;
             let path = changed_editor.read(cx).path.clone();
             // Collect other editors showing the same file
             let mut targets: Vec<Entity<EditorView>> = Vec::new();
@@ -798,6 +798,11 @@ impl GhostAppView {
                     }
                 }
             }
+            if targets.is_empty() {
+                return;
+            }
+            // Only pay the full-text clone when there's actually another pane to sync.
+            let text = changed_editor.read(cx).text(cx);
             for target in targets {
                 target.update(cx, |e, cx| {
                     e.sync_content(text.clone(), window, cx);

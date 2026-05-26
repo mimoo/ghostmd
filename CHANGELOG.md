@@ -5,6 +5,7 @@ All notable changes to GhostMD are documented in this file.
 ## [Unreleased]
 
 - When focus moves to the sidebar file tree (e.g. via Alt+Cmd+Left or Alt+Cmd+B), the previously-focused pane no longer keeps its accent border, and the tree's right divider switches to the accent color — making it visually obvious that keystrokes now go to the tree.
+- Perf: typing in large notes no longer allocates a full copy of the file's text on every keystroke. Cross-pane live-sync now only pulls the text when another pane actually mirrors the file, and the auto-save disk write runs on a background executor so fsync can't stall keystrokes.
 
 ## [0.11.6] — 2026-05-19
 
