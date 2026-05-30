@@ -234,12 +234,16 @@ impl GhostAppView {
                         }
                     }));
 
-                if multi_pane {
-                    if is_focused {
-                        pane_div = pane_div.border_2().border_color(t.accent);
-                    } else {
-                        pane_div = pane_div.border_2().border_color(hsla(0., 0., 0., 0.)).opacity(0.85);
-                    }
+                // Always reserve a 2px border so focus changes never shift the
+                // layout. Accent when this pane owns focus (and the tree does
+                // not); transparent otherwise. We show it even with a single pane
+                // because the border is the only cue that distinguishes "editor
+                // focused" from "tree focused" — the tree itself tints its divider.
+                pane_div = pane_div
+                    .border_2()
+                    .border_color(if is_focused { t.accent } else { hsla(0., 0., 0., 0.) });
+                if multi_pane && !is_focused {
+                    pane_div = pane_div.opacity(0.85);
                 }
 
                 if has_editor {

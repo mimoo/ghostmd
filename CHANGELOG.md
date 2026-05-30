@@ -4,6 +4,9 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- The focused editor pane now always shows its accent focus ring (previously only when the workspace had multiple panes), so with a single pane it's clear whether keystrokes go to the editor or to the sidebar file tree.
+- The file tree's keyboard cursor row now gets a stronger accent-tinted background and a left accent bar while the tree is focused, so the current position (where Enter / C-n / arrows act) is obvious.
+- Added Emacs-style navigation in the file tree (when it owns focus): `C-n` / `C-p` move the cursor down / up, and `C-f` / `C-b` expand-into / collapse-to-parent.
 - When focus moves to the sidebar file tree (e.g. via Alt+Cmd+Left or Alt+Cmd+B), the previously-focused pane no longer keeps its accent border, and the tree's right divider switches to the accent color — making it visually obvious that keystrokes now go to the tree.
 - Perf: typing in large notes no longer allocates a full copy of the file's text on every keystroke. Cross-pane live-sync now only pulls the text when another pane actually mirrors the file, and the auto-save disk write runs on a background executor so fsync can't stall keystrokes.
 
