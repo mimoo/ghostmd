@@ -726,6 +726,7 @@ impl Render for FileTreeView {
 
         let flat = self.panel.tree.flatten();
         let selected = self.selected_paths.clone();
+        let cursor = self.last_clicked.clone();
         let root_path = self.panel.tree.root.clone();
         let editing_path = self.editing_path.clone();
         let match_paths = self.match_paths.clone();
@@ -750,6 +751,7 @@ impl Render for FileTreeView {
         for (i, (depth, node)) in flat.iter().enumerate() {
             let node_path = node.path().to_path_buf();
             let is_selected = selected.contains(&node_path);
+            let is_cursor = cursor.as_ref() == Some(&node_path);
             let is_dir = node.is_dir();
             let is_expanded = node.is_expanded();
             let name = node.name().to_string();
@@ -776,7 +778,21 @@ impl Render for FileTreeView {
                 );
             }
 
-            let row_bg = if is_selected { selection_bg } else { sidebar_bg };
+            // The keyboard cursor row gets a stronger accent-tinted background
+            // when the tree owns focus, so it's obvious where the next C-n / arrow
+            // / enter will act. A plain selection (or the cursor while the tree is
+            // unfocused) keeps the muted selection color.
+            let row_bg = if is_cursor && tree_focused {
+                hsla(accent.h, accent.s, accent.l, 0.25)
+            } else if is_selected {
+                selection_bg
+            } else {
+                sidebar_bg
+            };
+            // Accent bar on the left edge of the focused cursor row. Always reserve
+            // the 2px (matching the row background when not the cursor) so toggling
+            // it never shifts the row contents.
+            let cursor_bar = if is_cursor && tree_focused { accent } else { row_bg };
 
             let chevron_label = if is_dir {
                 if is_expanded { "\u{25bc}" } else { "\u{25b6}" }
@@ -830,6 +846,8 @@ impl Render for FileTreeView {
                 .flex_row()
                 .items_center()
                 .bg(row_bg)
+                .border_l_2()
+                .border_color(cursor_bar)
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this: &mut Self, event: &MouseDownEvent, _window, cx| {
                     // If right-clicked item is not in selection, select only it
                     if !this.selected_paths.contains(&right_click_path) {

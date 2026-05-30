@@ -121,6 +121,12 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("secondary-enter", TreeOpenInSplit, Some("FileTree")),
         GpuiKeyBinding::new("escape", FocusEditorFromTree, Some("FileTree")),
         GpuiKeyBinding::new("alt-secondary-right", FocusEditorFromTree, Some("FileTree")),
+        // Emacs-style tree navigation (active when the file tree owns focus):
+        // C-n/C-p move the cursor, C-f/C-b expand-into / collapse-to-parent.
+        GpuiKeyBinding::new("ctrl-n", TreeMoveDown, Some("FileTree")),
+        GpuiKeyBinding::new("ctrl-p", TreeMoveUp, Some("FileTree")),
+        GpuiKeyBinding::new("ctrl-f", TreeMoveRight, Some("FileTree")),
+        GpuiKeyBinding::new("ctrl-b", TreeMoveLeft, Some("FileTree")),
         // Emacs-style bindings (active when Input is focused)
         GpuiKeyBinding::new("ctrl-f", MoveRight, Some("Input")),
         GpuiKeyBinding::new("ctrl-b", MoveLeft, Some("Input")),
