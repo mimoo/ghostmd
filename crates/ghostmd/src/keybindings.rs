@@ -46,6 +46,8 @@ actions!(
         OpenNoteSwitcher,
         GoBack,
         GoForward,
+        GoBackPane,
+        GoForwardPane,
         NewDailyNote,
         FinderConfirmSplit,
         FocusTree,
@@ -102,9 +104,12 @@ pub fn register_keybindings(cx: &mut gpui::App) {
         GpuiKeyBinding::new("secondary-backspace", MoveToTrash, None),
         // Search open notes
         GpuiKeyBinding::new("secondary-shift-a", OpenNoteSwitcher, None),
-        // Navigation history
-        GpuiKeyBinding::new("secondary-[", GoBack, None),
-        GpuiKeyBinding::new("secondary-]", GoForward, None),
+        // Per-pane navigation history
+        GpuiKeyBinding::new("secondary-[", GoBackPane, None),
+        GpuiKeyBinding::new("secondary-]", GoForwardPane, None),
+        // Global navigation history (across panes and workspaces)
+        GpuiKeyBinding::new("alt-secondary-[", GoBack, None),
+        GpuiKeyBinding::new("alt-secondary-]", GoForward, None),
         // Daily note with pending items
         GpuiKeyBinding::new("alt-secondary-n", NewDailyNote, None),
         GpuiKeyBinding::new("secondary-enter", FinderConfirmSplit, None),

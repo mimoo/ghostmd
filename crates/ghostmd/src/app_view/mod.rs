@@ -162,8 +162,10 @@ pub struct GhostAppView {
     // Update check
     pub(crate) update_available: Option<String>,
     pub(crate) update_in_progress: bool,
-    // Navigation history (cmd-[ / cmd-])
+    // Global navigation history (alt-cmd-[ / alt-cmd-])
     nav_history: NavHistory,
+    // Per-pane navigation history (cmd-[ / cmd-]), keyed by stable pane id
+    pane_nav_history: HashMap<usize, NavHistory>,
     navigating_history: bool,
     // File watcher for external changes
     pub(crate) _watcher: Option<notify::RecommendedWatcher>,
@@ -495,6 +497,7 @@ impl GhostAppView {
             update_available: None,
             update_in_progress: false,
             nav_history: NavHistory::new(),
+            pane_nav_history: HashMap::new(),
             navigating_history: false,
             _watcher: None,
             fs_events_rx: None,
@@ -636,7 +639,7 @@ impl GhostAppView {
             .and_then(|p| p.active_path.clone())
     }
 
-    // ── Navigation history (cmd-[ / cmd-]) ─────────────────────────
+    // ── Navigation history (global: alt-cmd-[ / alt-cmd-], per-pane: cmd-[ / cmd-]) ──
 
     /// Capture the current location as a NavEntry, if a file is open.
     fn capture_nav_location(&self, cx: &App) -> Option<NavEntry> {
@@ -665,6 +668,20 @@ impl GhostAppView {
         }
         if let Some(entry) = self.capture_nav_location(cx) {
             self.nav_history.push(entry);
+        }
+    }
+
+    /// Push the focused pane's current location onto that pane's own
+    /// history stack (unless we're currently navigating history ourselves).
+    pub(crate) fn push_pane_nav_history(&mut self, cx: &App) {
+        if self.navigating_history {
+            return;
+        }
+        if let Some(entry) = self.capture_nav_location(cx) {
+            self.pane_nav_history
+                .entry(entry.pane_id)
+                .or_insert_with(NavHistory::new)
+                .push(entry);
         }
     }
 
@@ -699,6 +716,72 @@ impl GhostAppView {
                 return;
             }
         }
+    }
+
+    /// Navigate back within the focused pane's own history (cmd-[).
+    /// Never changes workspace or pane focus — only the file shown in the pane.
+    fn go_back_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() {
+            return;
+        }
+        let pane_id = self.active_ws().focused_pane;
+        // Push current location so we can come back with go_forward_pane
+        if let Some(current) = self.capture_nav_location(cx) {
+            self.pane_nav_history
+                .entry(pane_id)
+                .or_insert_with(NavHistory::new)
+                .push(current);
+        }
+        let entry = {
+            let Some(history) = self.pane_nav_history.get_mut(&pane_id) else { return };
+            loop {
+                let Some(e) = history.go_back() else { break None };
+                if e.path.exists() {
+                    break Some(e.clone());
+                }
+            }
+        };
+        if let Some(entry) = entry {
+            self.navigate_pane_to_entry(entry, window, cx);
+        }
+    }
+
+    /// Navigate forward within the focused pane's own history (cmd-]).
+    fn go_forward_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspaces.is_empty() {
+            return;
+        }
+        let pane_id = self.active_ws().focused_pane;
+        let entry = {
+            let Some(history) = self.pane_nav_history.get_mut(&pane_id) else { return };
+            loop {
+                let Some(e) = history.go_forward() else { break None };
+                if e.path.exists() {
+                    break Some(e.clone());
+                }
+            }
+        };
+        if let Some(entry) = entry {
+            self.navigate_pane_to_entry(entry, window, cx);
+        }
+    }
+
+    /// Open a per-pane history entry in the focused pane, restoring the cursor.
+    fn navigate_pane_to_entry(&mut self, entry: NavEntry, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigating_history = true;
+        self.open_file(entry.path.clone(), window, cx);
+        let editor = {
+            let ws = self.active_ws();
+            ws.panes.get(&ws.focused_pane).and_then(|p| p.editor.clone())
+        };
+        if let Some(editor) = editor {
+            let offset = entry.cursor_offset;
+            editor.update(cx, |e, cx| {
+                e.set_cursor_offset(offset, window, cx);
+            });
+        }
+        self.navigating_history = false;
+        cx.notify();
     }
 
     /// Restore the app state to a nav history entry.
@@ -1167,6 +1250,12 @@ impl Render for GhostAppView {
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::GoForward, window, cx| {
                 this.go_forward(window, cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::GoBackPane, window, cx| {
+                this.go_back_pane(window, cx);
+            }))
+            .on_action(cx.listener(|this: &mut Self, _action: &keybindings::GoForwardPane, window, cx| {
+                this.go_forward_pane(window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _action: &keybindings::Escape, window, cx| {
                 let editing = this.file_tree.read(cx).is_editing();

@@ -28,7 +28,7 @@ Cargo workspace with two crates (`crates/ghostmd`, `crates/ghostmd-core`). The w
     - `session.rs` — Session persistence (save/restore workspaces to JSON)
     - `split_node.rs` — `SplitNode` binary tree with directional navigation
     - `fs_watcher.rs` — File system watcher for external changes (notify crate)
-    - `nav_history.rs` — Back/forward navigation stack (cursor + path + workspace/pane id). Max 100 entries, dedupes when cursor moves <50 bytes, truncates forward branch on new push. `navigating_history` flag prevents recursive pushes during navigation. Not persisted across sessions.
+    - `nav_history.rs` — Back/forward navigation stack (cursor + path + workspace/pane id). Max 100 entries, dedupes when cursor moves <50 bytes, truncates forward branch on new push. `navigating_history` flag prevents recursive pushes during navigation. Not persisted across sessions. Used twice: one global stack (`nav_history`, alt-cmd-[/]) and one per-pane stack (`pane_nav_history: HashMap<pane_id, NavHistory>`, cmd-[/], never switches workspace/pane focus).
     - `file_undo.rs` — In-memory undo/redo for file ops (`Delete`, `DeleteBatch`, `Rename`, `Move`, `Create`). Backs up entire directory trees recursively as `(path, bytes)` pairs. Max 50 entries. `reverse_op()` morphs `Create` into `Delete`. Used by trash and file-tree rename/move.
   - `editor_view.rs` — GPUI view wrapping `InputState` for editing a single note. Tracks path, dirty flag, auto-save timing
   - `file_tree_view.rs` — GPUI view for the sidebar file tree (renders `FileTreePanel`)
@@ -86,7 +86,7 @@ Requires Rust 1.75+ and Xcode with Metal Toolchain on macOS.
 - **`unique_path()` caps at 100** — if 99 collision-suffixed candidates exist it returns the original path unmodified. Don't rely on it for unbounded collision avoidance.
 - **`tree.rs` pins `diary/` first** — after every scan the diary dir is moved to index 0. Collapsed state is preserved across rescans. `.ghostmd/`, `.gitignore`, `.DS_Store` are filtered out.
 - **`diary::slugify()` is ASCII-only** — non-ASCII alphanum is stripped, which can reduce a CJK or accent-heavy title to `untitled`. Diary timestamps use `Local::now()`, not UTC. Full diary path: `diary/YYYY/MM-monthname/DD/HHMMSS-slug.md` (zero-padded DD, lowercase month).
-- **Two distinct history stacks**: `nav_history` (workspace-level back/forward across panes, cmd-`[` / cmd-`]`) is separate from `Pane.path_history` (per-pane fallback used when the open file is deleted/moved). Don't conflate them.
+- **Three distinct history stacks**: `nav_history` (global back/forward across panes and workspaces, alt-cmd-`[` / alt-cmd-`]`), `pane_nav_history` (per-pane back/forward, cmd-`[` / cmd-`]`, keyed by pane id — only changes the file shown in the focused pane), and `Pane.path_history` (per-pane fallback used when the open file is deleted/moved). Don't conflate them. Per-pane histories survive workspace close/restore (pane ids are stable) but are dropped when a pane is closed via cmd-w.
 - **`OverlayKind` variants**: `Palette`, `FileFinder`, `AgenticSearch`, `NoteSwitcher` (plus location picker and context menu, which are not part of the enum). Always exactly one or zero overlays open.
 
 ## App Structure (app_view/)
@@ -152,7 +152,8 @@ Separate Swift / SwiftUI app, not part of the Cargo workspace. Targets iOS 17+. 
 | cmd-shift-p | Command palette |
 | cmd-shift-a | Open note switcher (search open notes) |
 | cmd-f | Find in file |
-| cmd-[ / cmd-] | Navigate back / forward (nav history) |
+| cmd-[ / cmd-] | Navigate back / forward within the focused pane |
+| alt-cmd-[ / alt-cmd-] | Navigate back / forward globally (across panes and workspaces) |
 | cmd-z / cmd-shift-z (file tree focused) | Undo / redo file ops (delete, rename, move, create) |
 | cmd-backspace | Move to trash |
 | cmd-q | Quit |

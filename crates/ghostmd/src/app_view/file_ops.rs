@@ -65,8 +65,9 @@ impl GhostAppView {
         };
 
         if !already_open {
-            // Record location for nav history (cmd-[/cmd-])
+            // Record location for global (alt-cmd-[/]) and per-pane (cmd-[/]) nav history
             self.push_nav_history(cx);
+            self.push_pane_nav_history(cx);
             // Push current path to history before switching
             {
                 let ws = self.active_ws_mut();

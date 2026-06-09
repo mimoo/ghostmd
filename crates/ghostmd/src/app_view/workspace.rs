@@ -384,6 +384,10 @@ impl GhostAppView {
             }
         }
 
+        // Drop the pane's own nav history — pane ids are never reused, and a
+        // pane closed via cmd-w (unlike a closed workspace) is not restorable.
+        self.pane_nav_history.remove(&focused_id);
+
         let focused = self.active_ws().focused_pane;
         self.focus_pane_editor(focused, window, cx);
         self.sync_file_tree_selection(cx);

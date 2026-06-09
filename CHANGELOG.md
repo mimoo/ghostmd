@@ -4,6 +4,7 @@ All notable changes to GhostMD are documented in this file.
 
 ## [Unreleased]
 
+- Cmd+[ / Cmd+] now navigate back/forward within the focused pane only (each pane keeps its own file history, including cursor position). The old global navigation — which could jump across panes and workspace tabs — moved to Opt+Cmd+[ / Opt+Cmd+]. Both flavors are also in the command palette ("Go Back" and "Go Back (All Panes)").
 - The focused editor pane now always shows its accent focus ring (previously only when the workspace had multiple panes), so with a single pane it's clear whether keystrokes go to the editor or to the sidebar file tree.
 - The file tree's keyboard cursor row now gets a stronger accent-tinted background and a left accent bar while the tree is focused, so the current position (where Enter / C-n / arrows act) is obvious.
 - Added Emacs-style navigation in the file tree (when it owns focus): `C-n` / `C-p` move the cursor down / up, and `C-f` / `C-b` expand-into / collapse-to-parent.
